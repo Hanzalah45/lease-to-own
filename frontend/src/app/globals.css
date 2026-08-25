@@ -33,3 +33,14 @@ h6,
 .font-heading {
   font-family: var(--font-heading), Arial, Helvetica, sans-serif;
 }
+
+button:not(:disabled),
+a,
+[role="button"],
+[onclick] {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}

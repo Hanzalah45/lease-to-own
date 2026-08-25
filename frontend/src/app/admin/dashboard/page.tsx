@@ -89,7 +89,7 @@ export default function AdminDashboardPage() {
             <button
               disabled
               title="Coming once the application workflow (Milestone 5) is wired up"
-              className="font-heading shrink-0 rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white"
+              className="font-heading shrink-0 rounded-md bg-red-600 px-6 py-2 text-sm font-bold text-white"
             >
               Start →
             </button>
@@ -108,7 +108,7 @@ export default function AdminDashboardPage() {
         </div>
         <Link
           href="/admin/applications"
-          className="font-heading self-start whitespace-nowrap rounded-md border border-red-600 bg-white px-3.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50"
+          className="font-heading self-start whitespace-nowrap rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
         >
           View Pending
         </Link>

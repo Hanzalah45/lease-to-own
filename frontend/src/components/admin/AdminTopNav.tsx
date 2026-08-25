@@ -53,13 +53,13 @@ export function AdminTopNav() {
 
   return (
     <header className="bg-neutral-950">
-      <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4  sm:px-8 lg:gap-6 lg:px-16">
+      <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4  sm:px-8 lg:gap-6 lg:px-16 py-4 ">
         <Image
           src="/prostartLeasing.png"
           alt="Outdoor Fix"
           width={159}
           height={103}
-          className="w-auto"
+          className="h-8 w-auto sm:h-11"
           priority
         />
 
