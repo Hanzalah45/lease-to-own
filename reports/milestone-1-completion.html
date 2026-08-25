@@ -1,0 +1,568 @@
+<title>Milestone 1 Report</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #faf9f7;
+    --surface: #ffffff;
+    --surface-sunken: #f3f1ee;
+    --ink: #1b1714;
+    --ink-muted: #6f675f;
+    --ink-faint: #a39b91;
+    --line: #e7e2db;
+    --accent: #d1281f;
+    --accent-deep: #7a1518;
+    --accent-tint: #fbebe9;
+    --good: #1c6b4a;
+    --good-tint: #e7f3ec;
+    --warn: #a6650a;
+    --warn-tint: #fbf0dd;
+    --font-display: 'Barlow Condensed', Arial Narrow, sans-serif;
+    --font-body: 'Barlow', Arial, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16130f;
+      --surface: #1f1b16;
+      --surface-sunken: #262019;
+      --ink: #f3ede4;
+      --ink-muted: #b3a99b;
+      --ink-faint: #7a7166;
+      --line: #352e26;
+      --accent: #ef4a3f;
+      --accent-deep: #f0847c;
+      --accent-tint: #3a1613;
+      --good: #4fbf8f;
+      --good-tint: #163227;
+      --warn: #e0a237;
+      --warn-tint: #332409;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #16130f;
+    --surface: #1f1b16;
+    --surface-sunken: #262019;
+    --ink: #f3ede4;
+    --ink-muted: #b3a99b;
+    --ink-faint: #7a7166;
+    --line: #352e26;
+    --accent: #ef4a3f;
+    --accent-deep: #f0847c;
+    --accent-tint: #3a1613;
+    --good: #4fbf8f;
+    --good-tint: #163227;
+    --warn: #e0a237;
+    --warn-tint: #332409;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 3.5rem 1.5rem 6rem;
+  }
+
+  h1, h2, h3, .label {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+
+  /* ---------- Header ---------- */
+
+  .masthead {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .brandrow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .wordmark {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.05rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+
+  .wordmark span { color: var(--accent); }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--good);
+    background: var(--good-tint);
+    border-radius: 999px;
+    padding: 0.32rem 0.75rem 0.28rem;
+  }
+
+  .badge::before {
+    content: "";
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: var(--good);
+  }
+
+  h1 {
+    font-weight: 900;
+    font-size: clamp(2.1rem, 5vw, 2.75rem);
+    line-height: 1.02;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+    margin: 0;
+  }
+
+  .subhead {
+    color: var(--ink-muted);
+    font-size: 1.05rem;
+    max-width: 34rem;
+  }
+
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.5rem;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+  }
+
+  .meta-row strong { color: var(--ink-muted); font-weight: 600; }
+
+  /* ---------- Milestone track ---------- */
+
+  .track {
+    padding: 1.75rem 0 2rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .track-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.6rem;
+  }
+
+  .track-label .label {
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+  }
+
+  .track-label .count {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--ink-muted);
+  }
+
+  .segments {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 0.3rem;
+  }
+
+  .segments i {
+    display: block;
+    height: 0.4rem;
+    border-radius: 999px;
+    background: var(--surface-sunken);
+    font-style: normal;
+  }
+
+  .segments i.done { background: var(--accent); }
+
+  .track-names {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 0.3rem;
+    margin-top: 0.5rem;
+    font-size: 0.62rem;
+    color: var(--ink-faint);
+    line-height: 1.3;
+  }
+
+  .track-names span { display: block; }
+  .track-names span.done { color: var(--accent); font-weight: 600; }
+
+  /* ---------- Sections ---------- */
+
+  section { padding: 2.5rem 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: none; }
+
+  .eyebrow {
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+
+  h2 {
+    font-weight: 800;
+    font-size: 1.7rem;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+    margin: 0 0 0.4rem;
+  }
+
+  .section-intro {
+    color: var(--ink-muted);
+    max-width: 38rem;
+    margin-bottom: 1.75rem;
+  }
+
+  h3 {
+    font-weight: 700;
+    font-size: 1.05rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    margin: 0 0 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  h3::before {
+    content: "";
+    width: 3px;
+    height: 1.05em;
+    background: var(--accent);
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .subgrid { display: grid; gap: 2rem; }
+  @media (min-width: 640px) { .subgrid.cols-2 { grid-template-columns: 1fr 1fr; } }
+
+  ul.check { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+
+  ul.check li {
+    position: relative;
+    padding-left: 1.4rem;
+    font-size: 0.95rem;
+    color: var(--ink);
+  }
+
+  ul.check li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.45em;
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 2px;
+    background: var(--good);
+  }
+
+  ul.check li .fine { display: block; color: var(--ink-muted); font-size: 0.85rem; margin-top: 0.1rem; }
+
+  /* verified strip */
+  .verified {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 0.6rem;
+    padding: 1.25rem 1.4rem;
+    margin-top: 1.75rem;
+  }
+
+  .verified h3 { margin-bottom: 0.9rem; }
+
+  .verified ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.5rem;
+    counter-reset: v;
+  }
+
+  .verified li {
+    counter-increment: v;
+    font-size: 0.9rem;
+    color: var(--ink-muted);
+    display: flex;
+    gap: 0.6rem;
+  }
+
+  .verified li::before {
+    content: counter(v);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--accent);
+    background: var(--accent-tint);
+    border-radius: 50%;
+    width: 1.3rem;
+    height: 1.3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 0.05rem;
+  }
+
+  /* credentials */
+  .creds {
+    margin-top: 1.75rem;
+    display: grid;
+    gap: 0.6rem;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  @media (max-width: 480px) { .creds { grid-template-columns: 1fr; } }
+
+  .cred-card {
+    background: var(--surface-sunken);
+    border-radius: 0.5rem;
+    padding: 0.9rem 1rem;
+  }
+
+  .cred-card .role {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin-bottom: 0.4rem;
+  }
+
+  .cred-card code {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.83rem;
+    color: var(--ink);
+  }
+
+  /* deferred list */
+  .deferred { display: grid; gap: 0.6rem; }
+
+  .deferred-row {
+    display: grid;
+    grid-template-columns: 2.75rem 1fr;
+    gap: 0.9rem;
+    align-items: baseline;
+    padding: 0.6rem 0;
+    border-bottom: 1px dashed var(--line);
+  }
+
+  .deferred-row:last-child { border-bottom: none; }
+
+  .deferred-row .num {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+  }
+
+  .deferred-row .name { font-weight: 600; color: var(--ink); font-size: 0.95rem; }
+  .deferred-row .what { color: var(--ink-muted); font-size: 0.88rem; }
+
+  /* open items */
+  .open-item {
+    background: var(--warn-tint);
+    border-radius: 0.5rem;
+    padding: 0.9rem 1.1rem;
+    margin-bottom: 0.6rem;
+    font-size: 0.9rem;
+  }
+
+  .open-item:last-child { margin-bottom: 0; }
+  .open-item strong { color: var(--warn); font-weight: 700; }
+
+  /* footer / next step */
+  .closing {
+    padding-top: 2.5rem;
+  }
+
+  .next-step {
+    background: var(--ink);
+    color: var(--bg);
+    border-radius: 0.75rem;
+    padding: 1.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .next-step .eyebrow { color: var(--accent-deep); }
+  .next-step h3 { color: var(--bg); }
+  .next-step h3::before { background: var(--accent); }
+  .next-step p { color: color-mix(in srgb, var(--bg) 75%, transparent); margin: 0; font-size: 0.92rem; }
+
+  .signoff {
+    margin-top: 2rem;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+  }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="brandrow">
+      <span class="wordmark">Outdoor<span>Fix</span></span>
+      <span class="badge">Milestone 1 complete</span>
+    </div>
+    <h1>Setup &amp; Architecture</h1>
+    <p class="subhead">Foundation for the lease-to-own platform is built and verified: database schema, role-based authentication, and the base API structure are in place for both the customer and admin sides.</p>
+    <div class="meta-row">
+      <span><strong>Prepared for</strong> Joel Stebbins</span>
+      <span><strong>Prepared by</strong> Hanzalah</span>
+      <span><strong>Date</strong> August 25, 2026</span>
+    </div>
+  </header>
+
+  <div class="track">
+    <div class="track-label">
+      <span class="label">Project timeline</span>
+      <span class="count">1 / 8 milestones</span>
+    </div>
+    <div class="segments">
+      <i class="done"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+    </div>
+    <div class="track-names">
+      <span class="done">Setup</span>
+      <span>Lease Engine</span>
+      <span>Risk</span>
+      <span>Equipment</span>
+      <span>Contracts</span>
+      <span>Admin UI</span>
+      <span>Accounting</span>
+      <span>QA &amp; Launch</span>
+    </div>
+  </div>
+
+  <section>
+    <p class="eyebrow">What shipped</p>
+    <h2>Backend &amp; frontend, built together</h2>
+    <p class="section-intro">Per the technical plan, Milestone 1 is environment setup, database schema, role-based authentication, and the base API structure — no lease pricing, risk scoring, or payment logic yet. That's intentional; those are Milestones 2–8.</p>
+
+    <div class="subgrid cols-2">
+      <div>
+        <h3>Backend — Laravel API</h3>
+        <ul class="check">
+          <li>Full database schema across every entity in the plan
+            <span class="fine">Customers, Applications, Lease Agreements, Equipment Units + service history, Risk Profiles + red flags, Contracts, Payments, Admin permissions — plus a GPS Events table reserved for the Phase 2 tracking upgrade.</span>
+          </li>
+          <li>Role-based authentication (Laravel Sanctum)
+            <span class="fine">Two account types — Customer and Admin. Admin access splits into five permission areas: application review, risk assessment, contract generation, equipment tracking, payment tracking.</span>
+          </li>
+          <li>Base REST API for every module
+            <span class="fine">Routes and controllers scaffolded and ready — business logic lands module by module in the coming milestones.</span>
+          </li>
+          <li>Third-party connection points prepared
+            <span class="fine">Stripe, Plaid, SendGrid, and QuickBooks each have a configuration slot ready to receive live credentials when those milestones start.</span>
+          </li>
+        </ul>
+      </div>
+      <div>
+        <h3>Frontend — Next.js</h3>
+        <ul class="check">
+          <li>Customer portal and Admin dashboard
+            <span class="fine">Separate, role-gated sections with their own navigation.</span>
+          </li>
+          <li>Working registration, login, and logout
+            <span class="fine">Customers self-register; admin accounts are created by an existing admin, never through public signup.</span>
+          </li>
+          <li>Admin can manage other admins
+            <span class="fine">Create accounts and assign any combination of the five permission areas.</span>
+          </li>
+          <li>Branded to the approved identity
+            <span class="fine">PROSTART Leasing logo, Barlow / Barlow Condensed type, red-on-black palette.</span>
+          </li>
+          <li>Responsive down to mobile
+            <span class="fine">Navigation collapses to a menu below tablet width.</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="verified">
+      <h3>Verified, not just built</h3>
+      <ol>
+        <li>Customer registers and lands on their dashboard.</li>
+        <li>Admin logs in and sees only the sections their permissions allow.</li>
+        <li>Admin creates a second admin account and assigns it specific permissions.</li>
+        <li>Role checks are enforced twice — once in the interface, again by the API itself.</li>
+      </ol>
+
+      <div class="creds">
+        <div class="cred-card">
+          <p class="role">Admin login</p>
+          <code>admin@outdoorfix.test</code>
+          <code>password</code>
+        </div>
+        <div class="cred-card">
+          <p class="role">Customer login</p>
+          <code>customer@outdoorfix.test</code>
+          <code>password</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Not in this milestone</p>
+    <h2>Coming next, in order</h2>
+    <p class="section-intro">Nothing below is missing — it's scoped to a later milestone by design, so each phase stays reviewable on its own.</p>
+
+    <div class="deferred">
+      <div class="deferred-row"><span class="num">02</span><div><div class="name">Lease &amp; Ownership Engine</div><div class="what">Monthly billing, the full-term / EPO pricing engine, live payoff schedule.</div></div></div>
+      <div class="deferred-row"><span class="num">03</span><div><div class="name">Risk Assessment Engine</div><div class="what">Identity, employment, and Plaid bank verification; red-flag tracking.</div></div></div>
+      <div class="deferred-row"><span class="num">04</span><div><div class="name">Equipment Tracking</div><div class="what">Serial-number tracking workflow on top of the schema already in place.</div></div></div>
+      <div class="deferred-row"><span class="num">05</span><div><div class="name">Contracts &amp; E-Signature</div><div class="what">In-platform signing, storage, and the application status workflow.</div></div></div>
+      <div class="deferred-row"><span class="num">06</span><div><div class="name">Admin Dashboard &amp; Roles</div><div class="what">Full review, override, and reporting views built on this milestone's foundation.</div></div></div>
+      <div class="deferred-row"><span class="num">07</span><div><div class="name">Accounting Integration</div><div class="what">QuickBooks sync for payments, deposits, and reporting.</div></div></div>
+      <div class="deferred-row"><span class="num">08</span><div><div class="name">Testing, QA &amp; Launch</div><div class="what">End-to-end pass across every module, then handoff.</div></div></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Worth a decision</p>
+    <h2>Open items from the design review</h2>
+    <p class="section-intro">Three things noted as unconfirmed in the shared design reference — flagging here so nothing gets built twice.</p>
+
+    <div class="open-item"><strong>Navigation placement.</strong> Built at the top per the current direction; the reference notes it could move to the left if preferred.</div>
+    <div class="open-item"><strong>Variation 2 elements.</strong> A few liked pieces from the second Figma variation were mentioned as candidates to fold in — send the specifics and they'll be matched.</div>
+    <div class="open-item"><strong>Light vs. dark mode.</strong> Built in light mode for now; the final direction was left to be decided against the logo.</div>
+  </section>
+
+  <div class="closing">
+    <div class="next-step">
+      <p class="eyebrow">Next</p>
+      <h3>Milestone 2 — Lease &amp; Ownership Engine</h3>
+      <p>Starts once this milestone is reviewed: the monthly billing cycle, the full-term and early-purchase pricing engine, and the live balance display in the customer portal.</p>
+    </div>
+    <p class="signoff">Outdoor Fix — Lease to Own Platform · Technical build log</p>
+  </div>
+
+</div>

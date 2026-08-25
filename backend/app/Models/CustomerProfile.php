@@ -1,0 +1,54 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class CustomerProfile extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'user_id',
+        'government_id_type',
+        'government_id_number',
+        'identity_verified_at',
+        'address_line_1',
+        'address_line_2',
+        'city',
+        'state',
+        'zip',
+        'residence_type',
+        'landlord_name',
+        'landlord_phone',
+        'move_notification_agreed',
+        'employment_status',
+        'employer_name',
+        'employer_phone',
+        'plaid_item_id',
+        'plaid_access_token',
+        'bank_verified_at',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'identity_verified_at' => 'datetime',
+            'bank_verified_at' => 'datetime',
+            'move_notification_agreed' => 'boolean',
+            'plaid_access_token' => 'encrypted',
+        ];
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function isApartment(): bool
+    {
+        return $this->residence_type === 'apartment';
+    }
+}
