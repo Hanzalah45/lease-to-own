@@ -18,7 +18,7 @@ class EnsureAdminHasPermission
     {
         $user = $request->user();
 
-        if (! $user || ! $user->isAdmin()) {
+        if (! $user || ! $user->isStaff()) {
             abort(403, 'You do not have access to this resource.');
         }
 

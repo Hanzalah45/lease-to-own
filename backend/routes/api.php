@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\Admin\AdminUserController;
 use App\Http\Controllers\Api\Admin\ApplicationController as AdminApplicationController;
 use App\Http\Controllers\Api\Admin\ContractController as AdminContractController;
+use App\Http\Controllers\Api\Admin\CustomerController as AdminCustomerController;
 use App\Http\Controllers\Api\Admin\EquipmentUnitController as AdminEquipmentUnitController;
 use App\Http\Controllers\Api\Admin\LeaseAgreementController as AdminLeaseAgreementController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
@@ -45,12 +46,17 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // Admin dashboard — role gate first, then per-module permission gate.
-    Route::middleware('role:admin')->prefix('admin')->name('admin.')->group(function () {
-        Route::apiResource('admin-users', AdminUserController::class)
-            ->parameters(['admin-users' => 'adminUser']);
+    // Both admin and super_admin land here; managing admin accounts is
+    // super_admin only (see the nested group below).
+    Route::middleware('role:admin,super_admin')->prefix('admin')->name('admin.')->group(function () {
+        Route::middleware('role:super_admin')->group(function () {
+            Route::apiResource('admin-users', AdminUserController::class)
+                ->parameters(['admin-users' => 'adminUser']);
+        });
 
         Route::middleware('permission:application_review')->group(function () {
             Route::apiResource('applications', AdminApplicationController::class);
+            Route::apiResource('customers', AdminCustomerController::class)->only(['index', 'show']);
         });
 
         Route::middleware('permission:risk_assessment')->group(function () {

@@ -18,6 +18,7 @@ class User extends Authenticatable
 
     public const ROLE_CUSTOMER = 'customer';
     public const ROLE_ADMIN = 'admin';
+    public const ROLE_SUPER_ADMIN = 'super_admin';
 
     /**
      * The attributes that are mass assignable.
@@ -66,9 +67,38 @@ class User extends Authenticatable
         return $this->role === self::ROLE_ADMIN;
     }
 
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === self::ROLE_SUPER_ADMIN;
+    }
+
+    /** True for any staff account — used wherever "admin or super admin" access applies. */
+    public function isStaff(): bool
+    {
+        return $this->isAdmin() || $this->isSuperAdmin();
+    }
+
+    /**
+     * Super admin always passes. An admin has every permission by default —
+     * admin_permissions is an opt-in *restriction* list, not a grant list:
+     * once a super admin adds any row for that admin, they're limited to
+     * exactly the permissions listed there.
+     */
     public function hasAdminPermission(string $permission): bool
     {
-        return $this->isAdmin() && $this->adminPermissions()->where('permission', $permission)->exists();
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        if (! $this->isAdmin()) {
+            return false;
+        }
+
+        if (! $this->adminPermissions()->exists()) {
+            return true;
+        }
+
+        return $this->adminPermissions()->where('permission', $permission)->exists();
     }
 
     public function customerProfile(): HasOne

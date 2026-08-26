@@ -18,7 +18,18 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $superAdmin = User::create([
+        // Super admin — the client. Unrestricted by definition; not created
+        // through the admin-users endpoint, only ever seeded/bootstrapped.
+        User::create([
+            'name' => 'Joel Stebbins',
+            'email' => 'superadmin@outdoorfix.test',
+            'password' => Hash::make('password'),
+            'role' => User::ROLE_SUPER_ADMIN,
+            'status' => 'active',
+        ]);
+
+        // Admin with no restriction rows — full access by default.
+        User::create([
             'name' => 'Outdoor Fix Admin',
             'email' => 'admin@outdoorfix.test',
             'password' => Hash::make('password'),
@@ -26,14 +37,16 @@ class DatabaseSeeder extends Seeder
             'status' => 'active',
         ]);
 
-        foreach ([
-            AdminPermission::APPLICATION_REVIEW,
-            AdminPermission::RISK_ASSESSMENT,
-            AdminPermission::CONTRACT_GENERATION,
-            AdminPermission::EQUIPMENT_TRACKING,
-            AdminPermission::PAYMENT_TRACKING,
-        ] as $permission) {
-            AdminPermission::create(['user_id' => $superAdmin->id, 'permission' => $permission]);
+        // Admin restricted (opt-in) to just two modules, to demo the restriction path.
+        $restrictedAdmin = User::create([
+            'name' => 'Equipment & Payments Admin',
+            'email' => 'restricted.admin@outdoorfix.test',
+            'password' => Hash::make('password'),
+            'role' => User::ROLE_ADMIN,
+            'status' => 'active',
+        ]);
+        foreach ([AdminPermission::EQUIPMENT_TRACKING, AdminPermission::PAYMENT_TRACKING] as $permission) {
+            AdminPermission::create(['user_id' => $restrictedAdmin->id, 'permission' => $permission]);
         }
 
         // Dummy customer account for local testing / demoing the customer portal.

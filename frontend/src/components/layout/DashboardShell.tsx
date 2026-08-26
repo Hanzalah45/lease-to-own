@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { logout } from "@/lib/auth";
+import { Footer } from "@/components/layout/Footer";
 
 export interface NavItem {
   label: string;
@@ -61,6 +62,7 @@ export function DashboardShell({
           </button>
         </header>
         <main className="flex-1 p-6">{children}</main>
+        <Footer />
       </div>
     </div>
   );

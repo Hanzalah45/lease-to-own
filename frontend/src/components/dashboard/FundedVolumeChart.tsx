@@ -19,10 +19,16 @@ export function FundedVolumeChart({
   data,
   total,
   growthLabel,
+  title = "Funded volume",
+  unitLabel = "units funded",
+  tooltipVerb = "Funded",
 }: {
   data: WeekPoint[];
   total?: number;
   growthLabel?: string;
+  title?: string;
+  unitLabel?: string;
+  tooltipVerb?: string;
 }) {
   const [hovered, setHovered] = useState<number | null>(null);
   const max = Math.max(...data.map((d) => d.target ?? d.units), 1);
@@ -30,7 +36,7 @@ export function FundedVolumeChart({
   return (
     <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white p-4 sm:p-5">
       <div className="mb-8 flex flex-col gap-3 sm:mb-10 sm:flex-row sm:items-start sm:justify-between">
-        <SectionHeading title="Funded volume" subtitle={`Last ${data.length} weeks · units funded`} />
+        <SectionHeading title={title} subtitle={`Last ${data.length} weeks · ${unitLabel}`} />
         {total !== undefined && (
           <div className="text-left sm:whitespace-nowrap sm:text-right">
             <p className="font-heading text-2xl font-black text-neutral-900">{total}</p>
@@ -74,7 +80,7 @@ export function FundedVolumeChart({
                   style={{ bottom: barHeight + 12 }}
                 >
                   <p className="font-bold">{point.label.toUpperCase()}</p>
-                  <p className="text-neutral-300">Funded: {point.units} Unit</p>
+                  <p className="text-neutral-300">{tooltipVerb}: {point.units} Unit</p>
                 </div>
               )}
 

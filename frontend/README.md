@@ -44,12 +44,19 @@ src/
 
 ## Roles
 
-Two account types: `customer`, `admin`. `middleware.ts` gates `/customer`,
-`/admin` by the `auth_role` cookie set at login/register; the Laravel API
-independently re-checks role and admin permission on every request, so this
-is a UX convenience, not the security boundary.
+Three account types: `customer`, `admin`, `super_admin`. `middleware.ts`
+gates `/customer` and `/admin` (both `admin` and `super_admin` land in
+`/admin`) by the `auth_role` cookie set at login; the Laravel API
+independently re-checks role and admin access on every request, so this is a
+UX convenience, not the security boundary.
 
-Admin permission management (`/admin/admin-users`) is fully wired to
-`POST/PUT /api/admin/admin-users` — create admins and assign any subset of
-`application_review`, `risk_assessment`, `contract_generation`,
-`equipment_tracking`, `payment_tracking`.
+Admins have full access by default. `admin_permissions` is an opt-in
+*restriction* list — assigning one or more areas limits that admin to only
+those; leaving it empty means full access. `AdminTopNav` only shows the
+"Admin users" link to `super_admin`, and `/admin/admin-users` redirects any
+other role away client-side (the API blocks it regardless).
+
+Admin management (`/admin/admin-users`, super admin only) is fully wired to
+`POST/PUT /api/admin/admin-users` — create admins and optionally restrict
+them to any subset of `application_review`, `risk_assessment`,
+`contract_generation`, `equipment_tracking`, `payment_tracking`.

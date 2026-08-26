@@ -1,4 +1,4 @@
-export type UserRole = "customer" | "admin";
+export type UserRole = "customer" | "admin" | "super_admin";
 
 export type UserStatus = "active" | "suspended" | "pending";
 
@@ -9,6 +9,7 @@ export type AdminPermissionKey =
   | "equipment_tracking"
   | "payment_tracking";
 
+/** One row = one area this admin is restricted to. No rows = full access. */
 export interface AdminPermission {
   id: number;
   permission: AdminPermissionKey;

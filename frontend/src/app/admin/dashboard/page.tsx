@@ -1,10 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { AccessTabs, type DashboardTabKey } from "@/components/dashboard/AccessTabs";
 import { FundedVolumeChart, type WeekPoint } from "@/components/dashboard/FundedVolumeChart";
 import { RecentActivityTable, type ActivityRow } from "@/components/dashboard/RecentActivityTable";
 import { StatCard } from "@/components/dashboard/StatCard";
+import { ApplicationReviewPanel } from "@/components/dashboard/panels/ApplicationReviewPanel";
+import { RiskAssessmentPanel } from "@/components/dashboard/panels/RiskAssessmentPanel";
+import { ContractGenerationPanel } from "@/components/dashboard/panels/ContractGenerationPanel";
+import { EquipmentTrackingPanel } from "@/components/dashboard/panels/EquipmentTrackingPanel";
+import { PaymentTrackingPanel } from "@/components/dashboard/panels/PaymentTrackingPanel";
 import {
   AlertCircleIcon,
   ArrowUpRightIcon,
@@ -13,6 +20,7 @@ import {
   CheckIcon,
   ClockIcon,
   CreditCardIcon,
+  PlusIcon,
 } from "@/components/icons";
 
 const SAMPLE_CHART: WeekPoint[] = [
@@ -43,7 +51,16 @@ function greeting() {
 
 export default function AdminDashboardPage() {
   const { user } = useAuth();
-  const permissions = user?.admin_permissions?.map((p) => p.permission) ?? [];
+  const restrictions = user?.admin_permissions?.map((p) => p.permission) ?? [];
+  const isSuperAdmin = user?.role === "super_admin";
+  const hasFullAccess = isSuperAdmin || restrictions.length === 0;
+  const accessLabel = isSuperAdmin
+    ? "Super admin · full access"
+    : restrictions.length > 0
+      ? `Restricted to ${restrictions.length} area${restrictions.length > 1 ? "s" : ""}`
+      : "Full access";
+
+  const [activeTab, setActiveTab] = useState<DashboardTabKey>("owner");
 
   return (
     <div className="space-y-6">
@@ -61,109 +78,139 @@ export default function AdminDashboardPage() {
               Outdoor Fix Admin
             </h1>
             <p className="text-sm text-neutral-400">
-              Signed in as <span className="font-semibold text-neutral-600">{user?.name}</span>
-              {permissions.length > 0 ? ` · ${permissions.length} permission${permissions.length > 1 ? "s" : ""}` : ""}
+              Signed in as <span className="font-semibold text-neutral-600">{user?.name}</span> · {accessLabel}
             </p>
           </div>
-          <Link
-            href="/admin/applications"
-            className="font-heading self-start rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
-          >
-            View All Applications
-          </Link>
-        </div>
-
-        <div className="flex flex-col gap-3 rounded-xl bg-neutral-950 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <div>
-            <p className="font-heading text-sm font-bold uppercase tracking-wide text-white">
-              Start a new lease application
-            </p>
-            <p className="text-xs text-neutral-400">Enter the customer&apos;s ZIP to get started.</p>
-          </div>
-          <div className="flex gap-2">
-            <input
-              disabled
-              placeholder="Customer ZIP"
-              className="w-full min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-white placeholder:text-neutral-500 sm:w-36 sm:flex-none"
-            />
+          {activeTab === "owner" ? (
             <button
               disabled
               title="Coming once the application workflow (Milestone 5) is wired up"
-              className="font-heading shrink-0 rounded-md bg-red-600 px-6 py-2 text-sm font-bold text-white"
+              className="font-heading flex items-center gap-1.5 self-start rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
             >
-              Start →
+              <PlusIcon className="h-4 w-4" />
+              New Application
             </button>
+          ) : (
+            <Link
+              href="/admin/applications"
+              className="font-heading self-start whitespace-nowrap rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
+            >
+              View All Applications
+            </Link>
+          )}
+        </div>
+
+        <AccessTabs
+          ownerLabel={isSuperAdmin ? "Owner" : "Admin"}
+          hasFullAccess={hasFullAccess}
+          restrictions={restrictions}
+          activeKey={activeTab}
+          onSelect={setActiveTab}
+        />
+
+        {activeTab === "owner" && (
+          <div className="flex flex-col gap-3 rounded-xl bg-neutral-950 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div>
+              <p className="font-heading text-sm font-bold uppercase tracking-wide text-white">
+                Start a new lease application
+              </p>
+              <p className="text-xs text-neutral-400">Enter the customer&apos;s ZIP to get started.</p>
+            </div>
+            <div className="flex gap-2">
+              <input
+                disabled
+                placeholder="Customer ZIP"
+                className="w-full min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-white placeholder:text-neutral-500 sm:w-36 sm:flex-none"
+              />
+              <button
+                disabled
+                title="Coming once the application workflow (Milestone 5) is wired up"
+                className="font-heading shrink-0 rounded-md bg-red-600 px-6 py-2 text-sm font-bold text-white"
+              >
+                Start →
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-        <div>
-          <p className="text-sm text-neutral-800">
-            <span className="font-bold text-amber-700">3 applications</span> have items to complete
-          </p>
-          <p className="text-xs text-neutral-500">
-            Some may already be approved but still need something from you.
-          </p>
-        </div>
-        <Link
-          href="/admin/applications"
-          className="font-heading self-start whitespace-nowrap rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
-        >
-          View Pending
-        </Link>
-      </div>
+      {activeTab === "owner" && (
+        <>
+          <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <div>
+              <p className="text-sm text-neutral-800">
+                <span className="font-bold text-amber-700">3 applications</span> have items to complete
+              </p>
+              <p className="text-xs text-neutral-500">
+                Some may already be approved but still need something from you.
+              </p>
+            </div>
+            <Link
+              href="/admin/applications"
+              className="font-heading self-start whitespace-nowrap rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
+            >
+              View Pending
+            </Link>
+          </div>
 
-      <div className="grid grid-cols-1 divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
-        <StatCard
-          label="Total applications"
-          value="50"
-          note="+12% this month"
-          noteTone="positive"
-          icon={BriefcaseIcon}
-          iconBg="#FCE7EE"
-          iconColor="#E11D48"
-          noteIcon={ArrowUpRightIcon}
-          viewHref="/admin/applications"
-        />
-        <StatCard
-          label="Needs info"
-          value="3"
-          note="Requires immediate action"
-          noteTone="warning"
-          icon={AlertCircleIcon}
-          iconBg="#FEF3C7"
-          iconColor="#D97706"
-          noteIcon={ClockIcon}
-          viewHref="/admin/applications"
-        />
-        <StatCard
-          label="Approved"
-          value="6"
-          note="Ready for funding"
-          noteTone="positive"
-          icon={CheckCircleIcon}
-          iconBg="#FCE7EE"
-          iconColor="#DC2626"
-          noteIcon={CheckIcon}
-          viewHref="/admin/applications"
-        />
-        <StatCard
-          label="Funded volume"
-          value="$44K"
-          note="+44% vs last 4 weeks"
-          noteTone="positive"
-          icon={CreditCardIcon}
-          iconBg="#DBEAFE"
-          iconColor="#2563EB"
-          noteIcon={ArrowUpRightIcon}
-          viewHref="/admin/payments"
-        />
-      </div>
+          <div className="grid grid-cols-1 divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
+            <StatCard
+              label="Total applications"
+              value="50"
+              note="+12% this month"
+              noteTone="positive"
+              icon={BriefcaseIcon}
+              iconBg="#FCE7EE"
+              iconColor="#E11D48"
+              noteIcon={ArrowUpRightIcon}
+              viewHref="/admin/applications"
+            />
+            <StatCard
+              label="Needs info"
+              value="3"
+              note="Requires immediate action"
+              noteTone="warning"
+              icon={AlertCircleIcon}
+              iconBg="#FEF3C7"
+              iconColor="#D97706"
+              noteIcon={ClockIcon}
+              viewHref="/admin/applications"
+            />
+            <StatCard
+              label="Approved"
+              value="6"
+              note="Ready for funding"
+              noteTone="positive"
+              icon={CheckCircleIcon}
+              iconBg="#FCE7EE"
+              iconColor="#DC2626"
+              noteIcon={CheckIcon}
+              viewHref="/admin/applications"
+            />
+            <StatCard
+              label="Funded volume"
+              value="$44K"
+              note="+44% vs last 4 weeks"
+              noteTone="positive"
+              icon={CreditCardIcon}
+              iconBg="#DBEAFE"
+              iconColor="#2563EB"
+              noteIcon={ArrowUpRightIcon}
+              viewHref="/admin/payments"
+            />
+          </div>
 
-      <FundedVolumeChart data={SAMPLE_CHART} total={44} growthLabel="+44% vs prior 4 wks" />
+          <FundedVolumeChart data={SAMPLE_CHART} total={44} growthLabel="+44% vs prior 4 wks" />
 
-      <RecentActivityTable rows={SAMPLE_ACTIVITY} />
+          <RecentActivityTable rows={SAMPLE_ACTIVITY} />
+        </>
+      )}
+
+      {activeTab === "application_review" && <ApplicationReviewPanel />}
+      {activeTab === "risk_assessment" && <RiskAssessmentPanel />}
+      {activeTab === "contract_generation" && <ContractGenerationPanel />}
+      {activeTab === "equipment_tracking" && <EquipmentTrackingPanel />}
+      {activeTab === "payment_tracking" && <PaymentTrackingPanel />}
     </div>
   );
 }

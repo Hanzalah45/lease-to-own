@@ -41,3 +41,10 @@ export async function updateAdmin(
   });
   return data.data;
 }
+
+export async function deleteAdmin(id: number): Promise<void> {
+  await apiFetch<void>(`/admin/admin-users/${id}`, {
+    method: "DELETE",
+    token: getToken(),
+  });
+}

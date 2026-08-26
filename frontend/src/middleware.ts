@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 const ROLE_SECTIONS = ["customer", "admin"] as const;
 
+/** Which URL section (/customer, /admin) each role is allowed into. */
+const ALLOWED_SECTION: Record<string, (typeof ROLE_SECTIONS)[number]> = {
+  customer: "customer",
+  admin: "admin",
+  super_admin: "admin",
+};
+
 /**
  * Gates /customer, /admin route groups by the auth_role cookie set
  * at login (see lib/auth.ts). This is a cheap first line of defense — every
@@ -11,7 +18,7 @@ const ROLE_SECTIONS = ["customer", "admin"] as const;
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  const section = ROLE_SECTIONS.find((role) => pathname.startsWith(`/${role}`));
+  const section = ROLE_SECTIONS.find((s) => pathname.startsWith(`/${s}`));
   if (!section) {
     return NextResponse.next();
   }
@@ -25,8 +32,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (role !== section) {
-    return NextResponse.redirect(new URL(`/${role}/dashboard`, request.url));
+  const allowedSection = ALLOWED_SECTION[role];
+
+  if (allowedSection !== section) {
+    return NextResponse.redirect(new URL(`/${allowedSection ?? "login"}/dashboard`, request.url));
   }
 
   return NextResponse.next();

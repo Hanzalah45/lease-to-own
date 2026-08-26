@@ -103,6 +103,7 @@ export function dashboardPathForRole(role: UserRole): string {
     case "customer":
       return "/customer/dashboard";
     case "admin":
+    case "super_admin":
       return "/admin/dashboard";
   }
 }

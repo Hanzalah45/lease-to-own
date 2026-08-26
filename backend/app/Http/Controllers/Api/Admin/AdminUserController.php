@@ -3,17 +3,25 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Mail\AdminAccountCreatedMail;
 use App\Models\AdminPermission;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 
+/**
+ * Super-admin-only: create and manage Admin accounts. Admins never
+ * self-register — the super admin sets an initial password here, and it's
+ * emailed to the admin so they have a way to receive it.
+ */
 class AdminUserController extends Controller
 {
     /**
-     * List every admin account and its permission set. The team isn't capped
-     * at a fixed number of admins — any admin can create more here.
+     * List every admin account and its restriction list. No restriction
+     * rows means that admin has full access. The team isn't capped at a
+     * fixed number of admins — the super admin can create more here.
      */
     public function index()
     {
@@ -29,6 +37,7 @@ class AdminUserController extends Controller
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'phone' => ['nullable', 'string', 'max:30'],
             'password' => ['required', 'string', 'min:8'],
+            // Restriction list — leave empty/omitted for full access.
             'permissions' => ['array'],
             'permissions.*' => ['in:'.implode(',', [
                 AdminPermission::APPLICATION_REVIEW,
@@ -58,11 +67,15 @@ class AdminUserController extends Controller
             AdminPermission::create(['user_id' => $admin->id, 'permission' => $permission]);
         }
 
+        Mail::to($admin->email)->send(new AdminAccountCreatedMail($admin, $data['password']));
+
         return response()->json(['data' => $admin->load('adminPermissions')], 201);
     }
 
     public function show(User $adminUser)
     {
+        $this->assertIsAdmin($adminUser);
+
         return response()->json(['data' => $adminUser->load('adminPermissions')]);
     }
 
@@ -71,6 +84,8 @@ class AdminUserController extends Controller
      */
     public function update(Request $request, User $adminUser)
     {
+        $this->assertIsAdmin($adminUser);
+
         $validator = Validator::make($request->all(), [
             'name' => ['sometimes', 'string', 'max:255'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:30'],
@@ -105,8 +120,20 @@ class AdminUserController extends Controller
 
     public function destroy(User $adminUser)
     {
+        $this->assertIsAdmin($adminUser);
+
         $adminUser->delete();
 
         return response()->json(null, 204);
+    }
+
+    /**
+     * This endpoint only ever targets Admin accounts — never a customer or
+     * another super admin, even though route-model binding would resolve
+     * any user ID.
+     */
+    private function assertIsAdmin(User $user): void
+    {
+        abort_unless($user->isAdmin(), 404);
     }
 }

@@ -5,6 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * One row = one area a specific admin is *restricted to*. An admin with no
+ * rows here has full access to everything; adding rows narrows them down to
+ * just those areas. See User::hasAdminPermission().
+ */
 class AdminPermission extends Model
 {
     public const APPLICATION_REVIEW = 'application_review';

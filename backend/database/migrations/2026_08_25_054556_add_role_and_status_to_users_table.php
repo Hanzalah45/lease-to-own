@@ -7,15 +7,16 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * The two account types the platform recognizes.
-     * Admin sub-permissions (application review, risk assessment, contract
-     * generation, equipment tracking, payment tracking) are handled by the
-     * separate admin_permissions table, not by this column.
+     * The three account types the platform recognizes: super_admin (the
+     * client — one account, created only by seeding), admin (staff, created
+     * only by a super admin), customer (self-registers). Admins get full
+     * access by default; the admin_permissions table holds an *opt-in
+     * restriction* list, not a grant list — see User::hasAdminPermission().
      */
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->enum('role', ['customer', 'admin'])->default('customer')->after('email');
+            $table->enum('role', ['customer', 'admin', 'super_admin'])->default('customer')->after('email');
             $table->enum('status', ['active', 'suspended', 'pending'])->default('active')->after('role');
             $table->string('phone')->nullable()->after('status');
         });
