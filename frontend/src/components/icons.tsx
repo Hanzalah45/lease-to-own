@@ -259,3 +259,47 @@ export function LockIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function UploadIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M12 16V4M7 9l5-5 5 5" />
+      <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+    </Icon>
+  );
+}
+
+export function ThumbsUpIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M7 10v11" />
+      <path d="M11 21h6.3a2 2 0 0 0 2-1.6l1.3-7a2 2 0 0 0-2-2.4H14l.7-4.3a1.6 1.6 0 0 0-3-1L7 10v11h4Z" />
+    </Icon>
+  );
+}
+
+export function KeyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="8" cy="15" r="4" />
+      <path d="m10.5 12.5 8-8M16 6l2 2M19 3l2 2" />
+    </Icon>
+  );
+}
+
+export function DollarIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M12 2v20M17 6.5c0-1.9-2.2-3.5-5-3.5s-5 1.6-5 3.5 2.2 3 5 3.5c2.8.5 5 1.6 5 3.5S14.8 21 12 21s-5-1.6-5-3.5" />
+    </Icon>
+  );
+}
+
+export function RefreshCwIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M21 12a9 9 0 0 1-15.4 6.4M3 12a9 9 0 0 1 15.4-6.4" />
+      <path d="M21 3v6h-6M3 21v-6h6" />
+    </Icon>
+  );
+}
+

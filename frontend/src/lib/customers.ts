@@ -20,3 +20,42 @@ export async function getCustomer(id: number): Promise<CustomerDetail> {
   const data = await apiFetch<{ data: CustomerDetail }>(`/admin/customers/${id}`, { token: getToken() });
   return data.data;
 }
+
+export interface CustomerPayload {
+  name: string;
+  email: string;
+  phone?: string;
+  password?: string;
+  status?: string;
+  address_line_1?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  date_of_birth?: string;
+  internal_notes?: string;
+}
+
+export async function createCustomer(payload: CustomerPayload): Promise<AuthUser> {
+  const data = await apiFetch<{ data: AuthUser }>("/admin/customers", {
+    method: "POST",
+    token: getToken(),
+    body: payload,
+  });
+  return data.data;
+}
+
+export async function updateCustomer(id: number, payload: Partial<CustomerPayload>): Promise<AuthUser> {
+  const data = await apiFetch<{ data: AuthUser }>(`/admin/customers/${id}`, {
+    method: "PUT",
+    token: getToken(),
+    body: payload,
+  });
+  return data.data;
+}
+
+export async function deleteCustomer(id: number): Promise<void> {
+  await apiFetch<void>(`/admin/customers/${id}`, {
+    method: "DELETE",
+    token: getToken(),
+  });
+}

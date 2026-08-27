@@ -10,27 +10,23 @@ import { useClickOutside } from "@/hooks/useClickOutside";
 import {
   BellIcon,
   ChevronDownIcon,
+  DollarIcon,
   DocumentIcon,
-  HomeIcon,
+  KeyIcon,
   LogOutIcon,
   MenuIcon,
-  SettingsIcon,
   UserIcon,
   XIcon,
 } from "@/components/icons";
 
-const BASE_NAV_ITEMS = [
-  { label: "Dashboard", href: "/admin/dashboard", icon: HomeIcon },
-  { label: "My Applications", href: "/admin/applications", icon: DocumentIcon },
+const NAV_ITEMS = [
+  { label: "My Lease", href: "/customer/dashboard", icon: KeyIcon },
+  { label: "Payment", href: "/customer/payments", icon: DollarIcon },
+  { label: "Contract", href: "/customer/contracts", icon: DocumentIcon },
+  { label: "Account", href: "/customer/account", icon: UserIcon },
 ];
 
-// Requires the application_review permission (or full/super-admin access).
-const CUSTOMERS_ITEM = { label: "Customer Accounts", href: "/admin/customers", icon: UserIcon };
-
-// Managing admin accounts is super_admin only.
-const SUPER_ADMIN_ONLY_ITEM = { label: "Admin Accounts", href: "/admin/admin-users", icon: SettingsIcon };
-
-export function AdminTopNav() {
+export function CustomerTopNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
@@ -43,23 +39,13 @@ export function AdminTopNav() {
     router.push("/login");
   }
 
-  const adminName = user?.name ?? "Admin";
-  const isSuperAdmin = user?.role === "super_admin";
-  const restrictions = user?.admin_permissions?.map((p) => p.permission) ?? [];
-  const hasFullAccess = isSuperAdmin || restrictions.length === 0;
-  const canSeeCustomers = hasFullAccess || restrictions.includes("application_review");
-
-  const navItems = [
-    ...BASE_NAV_ITEMS,
-    ...(canSeeCustomers ? [CUSTOMERS_ITEM] : []),
-    ...(isSuperAdmin ? [SUPER_ADMIN_ONLY_ITEM] : []),
-  ];
+  const name = user?.name ?? "Customer";
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
     <header className="bg-neutral-950">
-      <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4  sm:px-8 lg:gap-6 lg:px-16 py-4 ">
-        <Link href="/admin/dashboard">
+      <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4 sm:px-8 lg:gap-6 lg:px-16 py-4">
+        <Link href="/customer/dashboard">
           <Image
             src="/prostartLeasing.png"
             alt="Outdoor Fix"
@@ -70,9 +56,8 @@ export function AdminTopNav() {
           />
         </Link>
 
-        {/* All sections visible directly on md+ screens; collapses into the hamburger below md. */}
         <nav className="hidden items-center justify-center gap-1 md:flex lg:gap-1.5">
-          {navItems.map((item) => {
+          {NAV_ITEMS.map((item) => {
             const active = isActive(item.href);
             const ItemIcon = item.icon;
             return (
@@ -96,7 +81,7 @@ export function AdminTopNav() {
 
         <div className="flex items-center justify-self-end gap-2 sm:gap-3">
           <Link
-            href="/admin/notifications"
+            href="/customer/notifications"
             className="relative flex items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 p-2 text-neutral-300 hover:text-white"
           >
             <BellIcon className="h-4 w-4" />
@@ -111,14 +96,9 @@ export function AdminTopNav() {
               className="font-heading flex items-center gap-2 rounded-md bg-neutral-900 px-2.5 py-2 text-sm font-semibold text-white hover:bg-neutral-800"
             >
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">
-                {adminName.slice(0, 2).toUpperCase()}
+                {name.slice(0, 2).toUpperCase()}
               </span>
-              <span className="flex flex-col items-start leading-tight">
-                <span className="max-w-[10rem] truncate">{adminName}</span>
-                {isSuperAdmin && (
-                  <span className="text-[10px] font-bold uppercase tracking-wide text-red-500">Super admin</span>
-                )}
-              </span>
+              <span className="max-w-[10rem] truncate">{name}</span>
               <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
             </button>
 
@@ -135,7 +115,6 @@ export function AdminTopNav() {
             )}
           </div>
 
-          {/* Mobile hamburger — everything (nav + account menu) collapses in here below md */}
           <button
             onClick={() => setMobileOpen((v) => !v)}
             className="flex items-center justify-center rounded-md bg-neutral-900 p-2 text-white md:hidden"
@@ -148,14 +127,11 @@ export function AdminTopNav() {
       {mobileOpen && (
         <div className="space-y-1 border-t border-neutral-800 px-4 py-3 sm:px-8 md:hidden">
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">
-            {adminName.slice(0, 2).toUpperCase()}
+            {name.slice(0, 2).toUpperCase()}
           </span>
-          <p className="font-heading px-1 py-1 text-sm font-semibold text-white">
-            {adminName}
-            {isSuperAdmin && <span className="ml-2 text-[10px] uppercase tracking-wide text-red-500">Super admin</span>}
-          </p>
+          <p className="font-heading px-1 py-1 text-sm font-semibold text-white">{name}</p>
 
-          {navItems.map((item) => {
+          {NAV_ITEMS.map((item) => {
             const active = isActive(item.href);
             const ItemIcon = item.icon;
             return (

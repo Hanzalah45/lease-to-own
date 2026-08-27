@@ -20,10 +20,12 @@ class CustomerProfile extends Model
         'city',
         'state',
         'zip',
+        'date_of_birth',
         'residence_type',
         'landlord_name',
         'landlord_phone',
         'move_notification_agreed',
+        'internal_notes',
         'employment_status',
         'employer_name',
         'employer_phone',
@@ -37,6 +39,7 @@ class CustomerProfile extends Model
         return [
             'identity_verified_at' => 'datetime',
             'bank_verified_at' => 'datetime',
+            'date_of_birth' => 'date',
             'move_notification_agreed' => 'boolean',
             'plaid_access_token' => 'encrypted',
         ];

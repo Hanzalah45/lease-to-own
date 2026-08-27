@@ -23,10 +23,12 @@ export interface CustomerProfile {
   city: string | null;
   state: string | null;
   zip: string | null;
+  date_of_birth: string | null;
   residence_type: "apartment" | "house" | "other" | null;
   landlord_name: string | null;
   landlord_phone: string | null;
   move_notification_agreed: boolean;
+  internal_notes: string | null;
   employment_status: string | null;
   employer_name: string | null;
   employer_phone: string | null;

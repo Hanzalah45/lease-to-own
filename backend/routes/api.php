@@ -56,7 +56,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::middleware('permission:application_review')->group(function () {
             Route::apiResource('applications', AdminApplicationController::class);
-            Route::apiResource('customers', AdminCustomerController::class)->only(['index', 'show']);
+            Route::apiResource('customers', AdminCustomerController::class);
         });
 
         Route::middleware('permission:risk_assessment')->group(function () {

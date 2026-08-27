@@ -1,19 +1,12 @@
-"use client";
-
-import { DashboardShell, type NavItem } from "@/components/layout/DashboardShell";
-
-const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", href: "/customer/dashboard" },
-  { label: "Applications", href: "/customer/applications" },
-  { label: "Lease agreement", href: "/customer/lease-agreements" },
-  { label: "Contracts", href: "/customer/contracts" },
-  { label: "Payments", href: "/customer/payments" },
-];
+import { CustomerTopNav } from "@/components/customer/CustomerTopNav";
+import { Footer } from "@/components/layout/Footer";
 
 export default function CustomerLayout({ children }: { children: React.ReactNode }) {
   return (
-    <DashboardShell navItems={NAV_ITEMS} sectionLabel="Customer portal">
-      {children}
-    </DashboardShell>
+    <div className="flex flex-1 flex-col bg-neutral-50">
+      <CustomerTopNav />
+      <main className="flex-1 px-4 py-4 sm:px-8 sm:py-6 lg:px-16">{children}</main>
+      <Footer />
+    </div>
   );
 }

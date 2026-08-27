@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { AccessTabs, type DashboardTabKey } from "@/components/dashboard/AccessTabs";
@@ -61,6 +62,13 @@ export default function AdminDashboardPage() {
       : "Full access";
 
   const [activeTab, setActiveTab] = useState<DashboardTabKey>("owner");
+  const [zip, setZip] = useState("");
+  const router = useRouter();
+
+  function startApplication() {
+    const query = zip.trim() ? `?zip=${encodeURIComponent(zip.trim())}` : "";
+    router.push(`/admin/applications/new${query}`);
+  }
 
   return (
     <div className="space-y-6">
@@ -82,14 +90,13 @@ export default function AdminDashboardPage() {
             </p>
           </div>
           {activeTab === "owner" ? (
-            <button
-              disabled
-              title="Coming once the application workflow (Milestone 5) is wired up"
+            <Link
+              href="/admin/applications/new"
               className="font-heading flex items-center gap-1.5 self-start rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
             >
               <PlusIcon className="h-4 w-4" />
               New Application
-            </button>
+            </Link>
           ) : (
             <Link
               href="/admin/applications"
@@ -118,14 +125,15 @@ export default function AdminDashboardPage() {
             </div>
             <div className="flex gap-2">
               <input
-                disabled
+                value={zip}
+                onChange={(e) => setZip(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && startApplication()}
                 placeholder="Customer ZIP"
                 className="w-full min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-white placeholder:text-neutral-500 sm:w-36 sm:flex-none"
               />
               <button
-                disabled
-                title="Coming once the application workflow (Milestone 5) is wired up"
-                className="font-heading shrink-0 rounded-md bg-red-600 px-6 py-2 text-sm font-bold text-white"
+                onClick={startApplication}
+                className="font-heading shrink-0 rounded-md bg-red-600 px-6 py-2 text-sm font-bold text-white hover:bg-red-700"
               >
                 Start →
               </button>

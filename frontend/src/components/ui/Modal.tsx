@@ -28,10 +28,10 @@ export function Modal({
       onClick={onClose}
     >
       <div
-        className={`w-full ${maxWidthClassName} rounded-xl bg-white shadow-2xl`}
+        className={`flex max-h-[90vh] w-full ${maxWidthClassName} flex-col rounded-xl bg-white shadow-2xl`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-neutral-100 px-5 py-4">
           <div className="flex items-center gap-2">
             <span className="h-4 w-1 shrink-0 rounded-full bg-red-600" />
             <h2 className="text-lg font-bold uppercase tracking-wide text-neutral-900">{title}</h2>
@@ -43,7 +43,7 @@ export function Modal({
             <XIcon className="h-4 w-4" />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="overflow-y-auto p-5">{children}</div>
       </div>
     </div>
   );

@@ -44,3 +44,34 @@ a,
 button:disabled {
   cursor: not-allowed;
 }
+
+@media print {
+  @page {
+    margin: 0.5in;
+  }
+
+  header,
+  footer {
+    display: none !important;
+  }
+
+  html,
+  body {
+    width: auto !important;
+    height: auto !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    background: #ffffff;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+
+  * {
+    box-shadow: none !important;
+  }
+}
