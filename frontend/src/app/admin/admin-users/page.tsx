@@ -252,7 +252,9 @@ function AdminForm({
     admin?.admin_permissions?.map((p) => p.permission) ?? [],
   );
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [submitting, setSubmitting] = useState(false);
+  const err = (key: string) => fieldErrors[key]?.[0];
 
   function togglePermission(key: AdminPermissionKey) {
     setPermissions((prev) => (prev.includes(key) ? prev.filter((p) => p !== key) : [...prev, key]));
@@ -261,6 +263,7 @@ function AdminForm({
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    setFieldErrors({});
     setSubmitting(true);
     try {
       if (isEdit) {
@@ -269,8 +272,12 @@ function AdminForm({
         await createAdmin({ name, email, password, permissions });
       }
       onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save admin.");
+    } catch (submitErr) {
+      if (submitErr instanceof ApiError && submitErr.errors) {
+        setFieldErrors(submitErr.errors);
+      } else {
+        setError(submitErr instanceof ApiError ? submitErr.message : "Could not save admin.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -288,6 +295,7 @@ function AdminForm({
           onChange={(e) => setName(e.target.value)}
           className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-600"
         />
+        {err("name") && <p className="text-xs font-medium text-red-600">{err("name")}</p>}
       </div>
 
       <div className="space-y-1">
@@ -300,10 +308,14 @@ function AdminForm({
           onChange={(e) => setEmail(e.target.value)}
           className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm disabled:bg-neutral-50 disabled:text-neutral-400 focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-600"
         />
-        {!isEdit && (
-          <p className="text-xs text-neutral-400">
-            Credentials go to this address once notifications are wired up. For now, share the password directly.
-          </p>
+        {err("email") ? (
+          <p className="text-xs font-medium text-red-600">{err("email")}</p>
+        ) : (
+          !isEdit && (
+            <p className="text-xs text-neutral-400">
+              Credentials go to this address once notifications are wired up. For now, share the password directly.
+            </p>
+          )
         )}
       </div>
 
@@ -331,6 +343,7 @@ function AdminForm({
             onChange={(e) => setPassword(e.target.value)}
             className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-600"
           />
+          {err("password") && <p className="text-xs font-medium text-red-600">{err("password")}</p>}
         </div>
       )}
 

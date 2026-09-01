@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\CustomerProfile;
 use App\Models\User;
+use App\Notifications\NewCustomerRegisteredNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Validator;
 
 class RegisterController extends Controller
@@ -41,6 +43,9 @@ class RegisterController extends Controller
         ]);
 
         CustomerProfile::create(['user_id' => $user->id]);
+
+        $staff = User::whereIn('role', [User::ROLE_ADMIN, User::ROLE_SUPER_ADMIN])->get();
+        Notification::send($staff, new NewCustomerRegisteredNotification($user));
 
         $token = $user->createToken('auth_token')->plainTextToken;
 

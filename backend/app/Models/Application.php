@@ -16,9 +16,22 @@ class Application extends Model
     public const STATUS_NEEDS_INFO = 'needs_info';
     public const STATUS_APPROVED = 'approved';
     public const STATUS_COMPLETED = 'completed';
+    public const STATUS_PROCESSED = 'processed';
     public const STATUS_FUNDED_PAID = 'funded_paid';
     public const STATUS_DECLINED = 'declined';
     public const STATUS_WITHDRAWN = 'withdrawn';
+
+    public const ALL_STATUSES = [
+        self::STATUS_SUBMITTED,
+        self::STATUS_UNDER_REVIEW,
+        self::STATUS_NEEDS_INFO,
+        self::STATUS_APPROVED,
+        self::STATUS_COMPLETED,
+        self::STATUS_PROCESSED,
+        self::STATUS_FUNDED_PAID,
+        self::STATUS_DECLINED,
+        self::STATUS_WITHDRAWN,
+    ];
 
     protected $fillable = [
         'customer_id',

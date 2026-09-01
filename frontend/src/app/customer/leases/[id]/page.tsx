@@ -2,18 +2,39 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { money } from "@/components/applications/wizard/types";
-import { epoAt, getLease, SAMPLE_LEASES } from "@/lib/sample-lease";
+import { getMyLeaseAgreement } from "@/lib/lease-agreements";
+import { ApiError } from "@/lib/api";
+import type { LeaseAgreement } from "@/types/lease-agreement";
+
+function num(value: string | number | null | undefined): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
 
 export default function CustomerLeaseDetailPage() {
   const params = useParams<{ id: string }>();
-  const lease = getLease(Number(params.id)) ?? SAMPLE_LEASES[0];
+  const { user } = useAuth();
+  const [lease, setLease] = useState<LeaseAgreement | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const totalRentalPrice = lease.monthlyRental * lease.term;
-  const paidToDate = lease.monthlyRental * lease.paymentsMade;
-  const progress = Math.round((lease.paymentsMade / lease.term) * 100);
-  const paymentsRemaining = lease.term - lease.paymentsMade;
-  const buyoutToday = epoAt(Math.max(1, lease.paymentsMade));
+  useEffect(() => {
+    getMyLeaseAgreement(params.id)
+      .then(setLease)
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load this lease."))
+      .finally(() => setLoading(false));
+  }, [params.id]);
+
+  if (loading) return <p className="py-12 text-center text-sm text-neutral-400">Loading…</p>;
+  if (error || !lease) return <p className="py-12 text-center text-sm text-red-600">{error ?? "Lease not found."}</p>;
+
+  const totalRentalPrice = num(lease.total_rental_purchase_price);
+  const paidToDate = num(lease.rental_payments_paid_to_date);
+  const progress = lease.term_months ? Math.round((lease.payments_made / lease.term_months) * 100) : 0;
+  const paymentsRemaining = lease.term_months - lease.payments_made;
 
   return (
     <div className="space-y-6">
@@ -28,13 +49,11 @@ export default function CustomerLeaseDetailPage() {
           <div>
             <p className="font-heading text-sm font-bold uppercase tracking-wide text-red-600">Welcome back</p>
             <h1 className="mt-1 text-3xl font-black uppercase tracking-tight text-neutral-900 sm:text-4xl">
-              Robert Kirkland
+              {user?.name ?? "—"}
             </h1>
             <p className="text-sm text-neutral-400">
-              {lease.equipment} · {lease.term}-month lease ·{" "}
-              <span className="font-semibold text-green-600">
-                {lease.status === "active" ? "Active" : lease.status === "paid_off" ? "Paid Off" : "Needs Info"}
-              </span>
+              {lease.equipment_unit?.model ?? "Equipment"} · {lease.term_months}-month lease ·{" "}
+              <span className="font-semibold text-green-600">{lease.ownership_status === "owned" ? "Paid Off" : "Active"}</span>
             </p>
           </div>
           <Link
@@ -47,9 +66,9 @@ export default function CustomerLeaseDetailPage() {
       </div>
 
       <div className="rounded-xl border border-neutral-200 bg-neutral-100 px-5 py-3.5 text-sm text-neutral-700">
-        <span className="font-bold">Renewal due day: 15th</span> · Individual lease term is 1 month. Keeping the
-        equipment past your due date without notice automatically renews the lease for another month at the same
-        terms.
+        <span className="font-bold">Renewal due day: {lease.payment_due_day ?? "—"}</span> · Individual lease term is 1
+        month. Keeping the equipment past your due date without notice automatically renews the lease for another
+        month at the same terms.
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -82,7 +101,7 @@ export default function CustomerLeaseDetailPage() {
             <div className="flex items-center justify-between">
               <span className="text-neutral-500">Payments made</span>
               <span className="font-semibold text-neutral-900">
-                {lease.paymentsMade} of {lease.term}
+                {lease.payments_made} of {lease.term_months}
               </span>
             </div>
             <div className="flex items-center justify-between">
@@ -101,12 +120,14 @@ export default function CustomerLeaseDetailPage() {
           </div>
           <p className="mb-4 text-sm text-neutral-600">Buy out the equipment today instead of finishing the full term.</p>
 
-          <p className="font-heading text-4xl font-black text-red-600">{money(buyoutToday)}</p>
+          <p className="font-heading text-4xl font-black text-red-600">{money(lease.epo_today)}</p>
           <p className="mb-4 text-sm text-neutral-500">Excludes tax — recalculates live as you pay</p>
 
           <div className="mb-4 flex items-center justify-between text-sm">
             <span className="text-neutral-500">Pricing rule applied</span>
-            <span className="font-semibold text-neutral-900">After 90 days</span>
+            <span className="font-semibold text-neutral-900">
+              {lease.payments_made <= 3 ? "Within 90 days" : "After 90 days"}
+            </span>
           </div>
 
           <Link
@@ -129,28 +150,28 @@ export default function CustomerLeaseDetailPage() {
           <div className="space-y-2.5 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-neutral-500">Rental payment</span>
-              <span className="font-semibold text-neutral-900">{money(lease.monthlyRental)}</span>
+              <span className="font-semibold text-neutral-900">{money(num(lease.monthly_rental_payment))}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-neutral-500">Sales tax</span>
-              <span className="font-semibold text-neutral-900">{money(lease.salesTax)}</span>
+              <span className="font-semibold text-neutral-900">{money(lease.sales_tax_amount)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-neutral-500">LDW (Loss Damage Waiver)</span>
-              <span className="font-semibold text-green-600">{lease.ldw ? "Included · Active" : "Not enrolled"}</span>
+              <span className="font-semibold text-green-600">{lease.ldw_selected ? "Included · Active" : "Not enrolled"}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-neutral-500">Promo applied</span>
-              <span className="font-semibold text-neutral-900">{lease.promo}</span>
+              <span className="font-semibold text-neutral-900">{lease.promo_code ?? "—"}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-neutral-500">AutoPay</span>
-              <span className="font-semibold text-neutral-900">{lease.autopay ? "Yes · Checking" : "No"}</span>
+              <span className="font-semibold text-neutral-900">{lease.autopay_enabled ? "Yes" : "No"}</span>
             </div>
           </div>
           <div className="mt-4 flex items-center justify-between rounded-md bg-red-50 px-4 py-3">
             <span className="text-sm font-bold text-red-700">Total monthly</span>
-            <span className="font-heading text-lg font-black text-red-600">{money(lease.totalMonthly)}</span>
+            <span className="font-heading text-lg font-black text-red-600">{money(lease.total_monthly_payment)}</span>
           </div>
         </div>
 
@@ -164,27 +185,27 @@ export default function CustomerLeaseDetailPage() {
           <div className="space-y-2.5 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-neutral-500">Security deposit paid</span>
-              <span className="font-semibold text-neutral-900">{money(lease.securityDeposit)}</span>
+              <span className="font-semibold text-neutral-900">{money(num(lease.security_deposit))}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-neutral-500">Total initial payment</span>
-              <span className="font-semibold text-neutral-900">{money(lease.totalDue)}</span>
+              <span className="font-semibold text-neutral-900">{money(lease.total_monthly_payment + num(lease.security_deposit))}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-neutral-500">Make / model</span>
-              <span className="font-semibold text-neutral-900">{lease.equipment}</span>
+              <span className="font-semibold text-neutral-900">{lease.equipment_unit?.model ?? "—"}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-neutral-500">Serial #</span>
-              <span className="font-semibold text-neutral-900">{lease.serial}</span>
+              <span className="font-semibold text-neutral-900">{lease.equipment_unit?.serial_number ?? "—"}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-neutral-500">Delivered</span>
-              <span className="font-semibold text-neutral-900">{lease.delivered}</span>
+              <span className="font-semibold text-neutral-900">{lease.equipment_unit?.delivery_date ?? "—"}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-neutral-500">Cash price</span>
-              <span className="font-semibold text-neutral-900">{money(lease.cashPrice)}</span>
+              <span className="font-semibold text-neutral-900">{money(num(lease.cash_price))}</span>
             </div>
           </div>
         </div>

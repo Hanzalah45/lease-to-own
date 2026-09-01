@@ -18,11 +18,13 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    setFieldErrors({});
     setSubmitting(true);
 
     try {
@@ -36,7 +38,11 @@ export default function RegisterPage() {
       await refresh();
       router.push(dashboardPathForRole(user.role));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      if (err instanceof ApiError && err.errors) {
+        setFieldErrors(err.errors);
+      } else {
+        setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -59,7 +65,14 @@ export default function RegisterPage() {
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <p className="text-sm text-red-600">{error}</p>}
 
-        <AuthField label="Full name" id="name" required value={name} onChange={setName} />
+        <AuthField
+          label="Full name"
+          id="name"
+          required
+          value={name}
+          onChange={setName}
+          error={fieldErrors.name?.[0]}
+        />
 
         <div className="grid grid-cols-2 gap-3">
           <AuthField
@@ -70,6 +83,7 @@ export default function RegisterPage() {
             value={email}
             onChange={setEmail}
             placeholder="you@outdoorfix.org"
+            error={fieldErrors.email?.[0]}
           />
           <AuthField
             label="Phone"
@@ -77,6 +91,7 @@ export default function RegisterPage() {
             value={phone}
             onChange={setPhone}
             placeholder="(000) 000-0000"
+            error={fieldErrors.phone?.[0]}
           />
         </div>
 
@@ -89,6 +104,7 @@ export default function RegisterPage() {
             minLength={8}
             value={password}
             onChange={setPassword}
+            error={fieldErrors.password?.[0]}
           />
           <AuthField
             label="Confirm password"

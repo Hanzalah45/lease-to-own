@@ -32,4 +32,5 @@ export interface RiskProfile {
   landlord_contact_required: boolean;
   landlord_contact_reason: string | null;
   red_flags?: RiskRedFlag[];
+  customer?: { id: number; name: string; email: string };
 }

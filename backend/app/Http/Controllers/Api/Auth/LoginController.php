@@ -24,9 +24,17 @@ class LoginController extends Controller
 
         $credentials = $validator->validated();
 
+        $user = User::where('email', $credentials['email'])->first();
+
+        if (! $user) {
+            throw ValidationException::withMessages([
+                'email' => ['No account found with this email address.'],
+            ]);
+        }
+
         if (! Auth::attempt($credentials)) {
             throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
+                'password' => ['Incorrect password.'],
             ]);
         }
 

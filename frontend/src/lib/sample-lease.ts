@@ -18,6 +18,8 @@ export interface SampleLease {
   ldw: boolean;
   promo: string;
   paymentsMade: number;
+  /** Extra funds paid over the required deposit/first payment — reduces the EPO price per the contract. */
+  additionalFunds?: number;
   status: LeaseStatus;
   delivered: string;
   signed: boolean;
@@ -100,56 +102,47 @@ export function getLease(id: number): SampleLease | undefined {
 }
 
 /**
- * Sample Early Purchase Option payoff schedule — matches the reference
- * design's numbers exactly. The real pricing engine (with its "step-up after
- * the first 90 days, then decline to $0 at term end" rule) ships in
- * Milestone 2; this is illustrative sample data kept consistent across
- * every screen that shows an EPO price.
+ * Real Early Purchase Option formula, straight from the signed contract
+ * (Section 3, "Rental-Purchase Ownership"):
+ *
+ *   Within 90 days of the effective date:
+ *     EPO = Cash Price − Rental Payments paid to date (excludes tax/fees)
+ *
+ *   After 90 days:
+ *     EPO = Cash Price − 50% of Rental Payments scheduled to date
+ *           + Rental Payments still owed + any additional funds
+ *
+ * Taxes are due separately at the time the EPO is exercised — they are not
+ * part of this number. At the final month the customer already owns the
+ * unit via the full-term path (Section 2), so EPO is moot there.
+ *
+ * 90 days is treated as 3 monthly cycles, matching the monthly payment
+ * schedule everywhere else in the app.
  */
-export const EPO_SCHEDULE_FULL: { month: number; value: number }[] = [
-  { month: 1, value: 7025.31 },
-  { month: 2, value: 6651.62 },
-  { month: 3, value: 6277.93 },
-  { month: 4, value: 18609.7 },
-  { month: 5, value: 18049.17 },
-  { month: 6, value: 17488.63 },
-  { month: 7, value: 16928.1 },
-  { month: 8, value: 16367.56 },
-  { month: 9, value: 15807.03 },
-  { month: 10, value: 15246.49 },
-  { month: 11, value: 14685.95 },
-  { month: 12, value: 14125.42 },
-  { month: 13, value: 13564.88 },
-  { month: 14, value: 13004.35 },
-  { month: 15, value: 12443.81 },
-  { month: 16, value: 11883.28 },
-  { month: 17, value: 11322.75 },
-  { month: 18, value: 10762.21 },
-  { month: 19, value: 10201.68 },
-  { month: 20, value: 9641.14 },
-  { month: 21, value: 9080.6 },
-  { month: 22, value: 8520.07 },
-  { month: 23, value: 7959.53 },
-  { month: 24, value: 7399.0 },
-  { month: 25, value: 6838.47 },
-  { month: 26, value: 6277.93 },
-  { month: 27, value: 5717.4 },
-  { month: 28, value: 5156.86 },
-  { month: 29, value: 4596.32 },
-  { month: 30, value: 4035.79 },
-  { month: 31, value: 3475.26 },
-  { month: 32, value: 2914.72 },
-  { month: 33, value: 2354.18 },
-  { month: 34, value: 1793.65 },
-  { month: 35, value: 1233.12 },
-  { month: 36, value: 0.0 },
-];
+const EPO_NINETY_DAY_MONTH_CUTOFF = 3;
 
-export function epoAt(month: number): number {
-  const point = EPO_SCHEDULE_FULL.find((p) => p.month === month);
-  if (point) return point.value;
-  const clamped = Math.max(1, Math.min(36, month));
-  return EPO_SCHEDULE_FULL[clamped - 1].value;
+export function computeEpoAt(lease: SampleLease, month: number): number {
+  const m = Math.max(0, Math.min(lease.term, month));
+  if (m >= lease.term) return 0;
+
+  const additionalFunds = lease.additionalFunds ?? 0;
+  const paymentsToDate = m * lease.monthlyRental;
+
+  if (m <= EPO_NINETY_DAY_MONTH_CUTOFF) {
+    return Math.max(0, lease.cashPrice - paymentsToDate);
+  }
+
+  const stillOwed = (lease.term - m) * lease.monthlyRental;
+  return Math.max(0, lease.cashPrice - 0.5 * paymentsToDate + stillOwed + additionalFunds);
 }
 
-export const EPO_SCHEDULE_SAMPLE = EPO_SCHEDULE_FULL.filter((p) => p.month === 1 || p.month % 3 === 0);
+export function computeEpoSchedule(lease: SampleLease): { month: number; value: number }[] {
+  return Array.from({ length: lease.term }, (_, i) => {
+    const month = i + 1;
+    return { month, value: computeEpoAt(lease, month) };
+  });
+}
+
+export function computeEpoScheduleSample(lease: SampleLease): { month: number; value: number }[] {
+  return computeEpoSchedule(lease).filter((p) => p.month === 1 || p.month % 3 === 0);
+}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { CUSTOMER_ADDRESS } from "@/lib/sample-lease";
+import { PlaidConnectButton } from "@/components/customer/PlaidConnectButton";
 
 const inputClass =
   "w-full rounded-md border-0 border-b border-neutral-200 bg-transparent px-0 py-2 text-sm text-neutral-500 focus:outline-none";
@@ -52,6 +53,14 @@ export default function CustomerAccountPage() {
         <p className="mt-4 text-sm text-neutral-600">
           Profile info was entered by your dealer at signup. Contact Outdoor Fix to update it.
         </p>
+      </div>
+
+      <div className="rounded-xl border border-neutral-200 bg-white p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <span className="h-4 w-1 shrink-0 rounded-full bg-red-600" />
+          <h2 className="font-heading text-base font-bold uppercase tracking-wide text-neutral-900">Bank verification</h2>
+        </div>
+        <PlaidConnectButton />
       </div>
 
       <div className="rounded-xl border border-neutral-200 bg-white p-5">

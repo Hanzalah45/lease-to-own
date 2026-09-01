@@ -7,7 +7,7 @@ const STEPS = [
   { key: "approved", label: "Approved", icon: ThumbsUpIcon },
   { key: "completed", label: "Completed", icon: CheckCircleIcon },
   { key: "processed", label: "Processed", icon: CheckIcon },
-  { key: "funded", label: "Funded", icon: DollarGlyph },
+  { key: "funded_paid", label: "Funded", icon: DollarGlyph },
 ] as const;
 
 function DollarGlyph({ className }: { className?: string }) {

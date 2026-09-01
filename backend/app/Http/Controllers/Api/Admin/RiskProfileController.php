@@ -5,46 +5,37 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\RiskProfile;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class RiskProfileController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index()
     {
-        //
+        $profiles = RiskProfile::with(['customer:id,name,email', 'redFlags'])->latest()->get();
+
+        return response()->json(['data' => $profiles]);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
-    {
-        //
-    }
-
-    /**
-     * Display the specified resource.
-     */
     public function show(RiskProfile $riskProfile)
     {
-        //
+        return response()->json(['data' => $riskProfile->load(['customer:id,name,email', 'redFlags'])]);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
+    /** Manual admin override of a customer's risk profile — used from the application detail page's Risk card. */
     public function update(Request $request, RiskProfile $riskProfile)
     {
-        //
-    }
+        $data = $request->validate([
+            'identity_verification_status' => ['sometimes', Rule::in(['pending', 'verified', 'failed'])],
+            'employment_verification_status' => ['sometimes', Rule::in(['pending', 'verified', 'failed'])],
+            'bank_verification_status' => ['sometimes', Rule::in(['pending', 'verified', 'failed'])],
+            'background_check_status' => ['sometimes', Rule::in(['pending', 'clear', 'flagged'])],
+            'background_check_notes' => ['sometimes', 'nullable', 'string'],
+            'landlord_contact_required' => ['sometimes', 'boolean'],
+            'landlord_contact_reason' => ['sometimes', 'nullable', 'string'],
+        ]);
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(RiskProfile $riskProfile)
-    {
-        //
+        $riskProfile->update($data);
+
+        return response()->json(['data' => $riskProfile->fresh()->load('redFlags')]);
     }
 }

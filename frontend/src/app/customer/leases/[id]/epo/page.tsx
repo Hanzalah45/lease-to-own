@@ -2,16 +2,31 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { money } from "@/components/applications/wizard/types";
 import { EpoChart } from "@/components/applications/wizard/EpoChart";
-import { epoAt, EPO_SCHEDULE_SAMPLE, getLease, SAMPLE_LEASES } from "@/lib/sample-lease";
+import { getMyLeaseAgreement } from "@/lib/lease-agreements";
+import { ApiError } from "@/lib/api";
+import type { LeaseAgreement } from "@/types/lease-agreement";
 
 export default function CustomerEpoSchedulePage() {
   const params = useParams<{ id: string }>();
-  const lease = getLease(Number(params.id)) ?? SAMPLE_LEASES[0];
-  const buyoutToday = epoAt(Math.max(1, lease.paymentsMade));
-  const paymentsRemaining = lease.term - lease.paymentsMade;
-  const schedule = EPO_SCHEDULE_SAMPLE.filter((p) => p.month <= lease.term);
+  const [lease, setLease] = useState<LeaseAgreement | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getMyLeaseAgreement(params.id)
+      .then(setLease)
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load this lease."))
+      .finally(() => setLoading(false));
+  }, [params.id]);
+
+  if (loading) return <p className="py-12 text-center text-sm text-neutral-400">Loading…</p>;
+  if (error || !lease) return <p className="py-12 text-center text-sm text-red-600">{error ?? "Lease not found."}</p>;
+
+  const paymentsRemaining = lease.term_months - lease.payments_made;
+  const schedule = (lease.epo_schedule ?? []).filter((p) => p.month === 1 || p.month % 3 === 0);
 
   return (
     <div className="space-y-6">
@@ -40,7 +55,7 @@ export default function CustomerEpoSchedulePage() {
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
         <div className="rounded-xl border border-neutral-200 bg-white px-5 py-4">
-          <p className="font-heading text-3xl font-black text-red-600">{money(buyoutToday)}</p>
+          <p className="font-heading text-3xl font-black text-red-600">{money(lease.epo_today)}</p>
           <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Buyout price today</p>
           <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
             <div className="h-full rounded-full bg-red-600" style={{ width: "70%" }} />
@@ -48,13 +63,13 @@ export default function CustomerEpoSchedulePage() {
         </div>
         <div className="rounded-xl border border-neutral-200 bg-white px-5 py-4">
           <p className="font-heading text-3xl font-black text-neutral-900">
-            {lease.paymentsMade} of {lease.term}
+            {lease.payments_made} of {lease.term_months}
           </p>
           <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Payments made</p>
           <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
             <div
               className="h-full rounded-full bg-neutral-900"
-              style={{ width: `${Math.round((lease.paymentsMade / lease.term) * 100)}%` }}
+              style={{ width: `${lease.term_months ? Math.round((lease.payments_made / lease.term_months) * 100) : 0}%` }}
             />
           </div>
         </div>
@@ -64,7 +79,7 @@ export default function CustomerEpoSchedulePage() {
           <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
             <div
               className="h-full rounded-full bg-green-600"
-              style={{ width: `${Math.round((paymentsRemaining / lease.term) * 100)}%` }}
+              style={{ width: `${lease.term_months ? Math.round((paymentsRemaining / lease.term_months) * 100) : 0}%` }}
             />
           </div>
         </div>

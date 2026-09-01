@@ -16,6 +16,8 @@ use App\Http\Controllers\Api\Customer\ApplicationController;
 use App\Http\Controllers\Api\Customer\ContractController;
 use App\Http\Controllers\Api\Customer\LeaseAgreementController;
 use App\Http\Controllers\Api\Customer\PaymentController;
+use App\Http\Controllers\Api\Customer\PlaidController;
+use App\Http\Controllers\Api\NotificationController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -35,6 +37,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/logout', LogoutController::class);
     Route::get('/auth/me', MeController::class);
 
+    // Shared — works for whichever role is signed in (admin or customer).
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead']);
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+
     // Customer portal
     Route::middleware('role:customer')->prefix('customer')->name('customer.')->group(function () {
         Route::apiResource('applications', ApplicationController::class)->only(['index', 'store', 'show']);
@@ -43,6 +50,10 @@ Route::middleware('auth:sanctum')->group(function () {
             ->parameters(['lease-agreements' => 'leaseAgreement']);
         Route::apiResource('contracts', ContractController::class)->only(['index', 'show']);
         Route::apiResource('payments', PaymentController::class)->only(['index', 'show']);
+
+        Route::post('/plaid/link-token', [PlaidController::class, 'linkToken']);
+        Route::post('/plaid/exchange', [PlaidController::class, 'exchange']);
+        Route::get('/plaid/status', [PlaidController::class, 'status']);
     });
 
     // Admin dashboard — role gate first, then per-module permission gate.
@@ -56,6 +67,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::middleware('permission:application_review')->group(function () {
             Route::apiResource('applications', AdminApplicationController::class);
+            Route::get('/applications/{application}/id-document', [AdminApplicationController::class, 'idDocument']);
             Route::apiResource('customers', AdminCustomerController::class);
         });
 

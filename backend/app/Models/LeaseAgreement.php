@@ -19,8 +19,11 @@ class LeaseAgreement extends Model
         'application_id',
         'customer_id',
         'equipment_unit_id',
+        'term_months',
         'start_date',
         'renewal_date',
+        'payment_due_day',
+        'autopay_enabled',
         'monthly_rental_payment',
         'sales_tax_rate',
         'security_deposit',
@@ -50,6 +53,7 @@ class LeaseAgreement extends Model
             'ldw_selected' => 'boolean',
             'ldw_amount' => 'decimal:2',
             'promo_discount' => 'decimal:2',
+            'autopay_enabled' => 'boolean',
         ];
     }
 
@@ -78,6 +82,18 @@ class LeaseAgreement extends Model
         return $this->hasMany(Payment::class);
     }
 
-    // Full-term and EPO pricing engine (Milestone 2) is intentionally not
-    // implemented here yet — this model only carries the schema for it.
+    public function paymentsMadeCount(): int
+    {
+        return $this->payments()->where('status', Payment::STATUS_PAID)->count();
+    }
+
+    public function salesTaxAmount(): float
+    {
+        return round((float) $this->monthly_rental_payment * (float) $this->sales_tax_rate, 2);
+    }
+
+    public function totalMonthlyPayment(): float
+    {
+        return round((float) $this->monthly_rental_payment + $this->salesTaxAmount(), 2);
+    }
 }

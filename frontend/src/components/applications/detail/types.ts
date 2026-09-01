@@ -5,7 +5,7 @@ export type AppStatus =
   | "approved"
   | "completed"
   | "processed"
-  | "funded"
+  | "funded_paid"
   | "declined"
   | "withdrawn";
 

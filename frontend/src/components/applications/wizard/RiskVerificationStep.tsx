@@ -1,5 +1,5 @@
 import { Field, SelectInput, TextInput } from "@/components/applications/wizard/fields";
-import type { WizardState } from "@/components/applications/wizard/types";
+import { fieldError, type WizardState } from "@/components/applications/wizard/types";
 import { SectionHeading } from "@/components/dashboard/SectionHeading";
 import { CheckIcon } from "@/components/icons";
 
@@ -28,11 +28,14 @@ const INCOME_OPTIONS = [
 export function RiskVerificationStep({
   state,
   set,
+  fieldErrors,
 }: {
   state: WizardState;
   set: <K extends keyof WizardState>(key: K, value: WizardState[K]) => void;
+  fieldErrors?: Record<string, string[]>;
 }) {
   const isApartment = state.residenceType === "rent_apartment";
+  const err = (key: string) => fieldError(fieldErrors, key);
 
   return (
     <div className="space-y-6">
@@ -42,31 +45,40 @@ export function RiskVerificationStep({
           <Field
             label="Residence Type"
             required
+            error={err("residence_type")}
             hint={isApartment ? "Apartments are automatically declined per underwriting policy." : undefined}
           >
             <SelectInput
               value={state.residenceType}
               onChange={(v) => set("residenceType", v)}
               options={RESIDENCE_OPTIONS}
+              hasError={!!err("residence_type")}
             />
           </Field>
-          <Field label="Years at Residence" required>
+          <Field label="Years at Residence" required error={err("years_at_residence")}>
             <SelectInput
               value={state.yearsAtResidence}
               onChange={(v) => set("yearsAtResidence", v)}
               options={YEARS_OPTIONS}
+              hasError={!!err("years_at_residence")}
             />
           </Field>
 
-          <Field label="Income Source" required>
-            <SelectInput value={state.incomeSource} onChange={(v) => set("incomeSource", v)} options={INCOME_OPTIONS} />
+          <Field label="Income Source" required error={err("income_source")}>
+            <SelectInput
+              value={state.incomeSource}
+              onChange={(v) => set("incomeSource", v)}
+              options={INCOME_OPTIONS}
+              hasError={!!err("income_source")}
+            />
           </Field>
-          <Field label="Gross Monthly Income" required>
+          <Field label="Gross Monthly Income" required error={err("gross_monthly_income")}>
             <TextInput
               value={state.grossMonthlyIncome}
               onChange={(v) => set("grossMonthlyIncome", v)}
               placeholder="5000"
               type="number"
+              hasError={!!err("gross_monthly_income")}
             />
           </Field>
         </div>
@@ -87,15 +99,23 @@ export function RiskVerificationStep({
               {label}
             </div>
           ))}
-          <label className="flex cursor-pointer items-center gap-2.5 pt-1 text-sm text-neutral-700">
-            <input
-              type="checkbox"
-              checked={state.moveNotificationAgreed}
-              onChange={(e) => set("moveNotificationAgreed", e.target.checked)}
-              className="h-4 w-4 accent-red-600"
-            />
-            Customer agrees to notify Outdoor Fix if they move, per lease terms.
-          </label>
+          <div className="pt-1">
+            <label className={`flex cursor-pointer items-center gap-2.5 text-sm ${err("move_notification_agreed") ? "text-red-600 font-semibold" : "text-neutral-700"}`}>
+              <input
+                type="checkbox"
+                checked={state.moveNotificationAgreed}
+                onChange={(e) => set("moveNotificationAgreed", e.target.checked)}
+                className="h-4 w-4 accent-red-600"
+              />
+              Customer agrees to notify Outdoor Fix if they move, per lease terms. <span className="font-bold text-red-600">*</span>
+            </label>
+            {err("move_notification_agreed") && (
+              <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-red-600">
+                <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-600" />
+                {err("move_notification_agreed")}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>

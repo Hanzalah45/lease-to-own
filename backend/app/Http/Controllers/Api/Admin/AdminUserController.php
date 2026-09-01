@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\AdminAccountCreatedMail;
 use App\Models\AdminPermission;
 use App\Models\User;
+use App\Notifications\AdminAccountCreatedNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
@@ -68,6 +69,7 @@ class AdminUserController extends Controller
         }
 
         Mail::to($admin->email)->send(new AdminAccountCreatedMail($admin, $data['password']));
+        $admin->notify(new AdminAccountCreatedNotification());
 
         return response()->json(['data' => $admin->load('adminPermissions')], 201);
     }

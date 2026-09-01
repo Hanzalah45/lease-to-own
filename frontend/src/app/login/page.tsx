@@ -24,11 +24,13 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    setFieldErrors({});
     setSubmitting(true);
 
     try {
@@ -37,7 +39,11 @@ function LoginForm() {
       const next = searchParams.get("next") ?? dashboardPathForRole(user.role);
       router.push(next);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      if (err instanceof ApiError && err.errors) {
+        setFieldErrors(err.errors);
+      } else {
+        setError(err instanceof ApiError ? err.message : "Something went wrong.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -60,7 +66,15 @@ function LoginForm() {
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && <p className="text-sm text-red-600">{error}</p>}
 
-        <AuthField label="Email" id="email" type="email" required value={email} onChange={setEmail} />
+        <AuthField
+          label="Email"
+          id="email"
+          type="email"
+          required
+          value={email}
+          onChange={setEmail}
+          error={fieldErrors.email?.[0]}
+        />
         <AuthField
           label="Password"
           id="password"
@@ -68,6 +82,7 @@ function LoginForm() {
           required
           value={password}
           onChange={setPassword}
+          error={fieldErrors.password?.[0]}
         />
 
         <AuthSubmitButton disabled={submitting}>

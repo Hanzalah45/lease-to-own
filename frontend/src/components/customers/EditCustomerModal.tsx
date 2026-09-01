@@ -34,7 +34,9 @@ export function EditCustomerModal({
     notes: profile?.internal_notes ?? "",
   });
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [submitting, setSubmitting] = useState(false);
+  const err = (key: string) => fieldErrors[key]?.[0];
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -43,6 +45,7 @@ export function EditCustomerModal({
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    setFieldErrors({});
     setSubmitting(true);
     try {
       const payload = {
@@ -64,8 +67,12 @@ export function EditCustomerModal({
 
       onSaved(saved);
       onClose();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not save this customer.");
+    } catch (submitErr) {
+      if (submitErr instanceof ApiError && submitErr.errors) {
+        setFieldErrors(submitErr.errors);
+      } else {
+        setError(submitErr instanceof ApiError ? submitErr.message : "Could not save this customer.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -90,6 +97,7 @@ export function EditCustomerModal({
             value={form.name}
             onChange={(e) => set("name", e.target.value)}
           />
+          {err("name") && <p className="mt-1 text-xs font-medium text-red-600">{err("name")}</p>}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -104,6 +112,7 @@ export function EditCustomerModal({
               value={form.email}
               onChange={(e) => set("email", e.target.value)}
             />
+            {err("email") && <p className="mt-1 text-xs font-medium text-red-600">{err("email")}</p>}
           </div>
           <div>
             <label className={labelClass}>Phone</label>
@@ -115,6 +124,7 @@ export function EditCustomerModal({
               value={form.phone}
               onChange={(e) => set("phone", e.target.value)}
             />
+            {err("phone") && <p className="mt-1 text-xs font-medium text-red-600">{err("phone")}</p>}
           </div>
         </div>
 
@@ -130,6 +140,7 @@ export function EditCustomerModal({
             value={form.password}
             onChange={(e) => set("password", e.target.value)}
           />
+          {err("password") && <p className="mt-1 text-xs font-medium text-red-600">{err("password")}</p>}
         </div>
 
         <div className="border-t border-dashed border-neutral-200 pt-5">
@@ -144,6 +155,7 @@ export function EditCustomerModal({
                 value={form.street}
                 onChange={(e) => set("street", e.target.value)}
               />
+              {err("address_line_1") && <p className="mt-1 text-xs font-medium text-red-600">{err("address_line_1")}</p>}
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
@@ -154,6 +166,7 @@ export function EditCustomerModal({
                   value={form.city}
                   onChange={(e) => set("city", e.target.value)}
                 />
+                {err("city") && <p className="mt-1 text-xs font-medium text-red-600">{err("city")}</p>}
               </div>
               <div>
                 <label className={labelClass}>State</label>
@@ -163,6 +176,7 @@ export function EditCustomerModal({
                   value={form.state}
                   onChange={(e) => set("state", e.target.value)}
                 />
+                {err("state") && <p className="mt-1 text-xs font-medium text-red-600">{err("state")}</p>}
               </div>
             </div>
             <div className="sm:w-1/2 sm:pr-2">
@@ -173,6 +187,7 @@ export function EditCustomerModal({
                 value={form.zip}
                 onChange={(e) => set("zip", e.target.value)}
               />
+              {err("zip") && <p className="mt-1 text-xs font-medium text-red-600">{err("zip")}</p>}
             </div>
           </div>
         </div>
@@ -188,6 +203,7 @@ export function EditCustomerModal({
               value={form.dob}
               onChange={(e) => set("dob", e.target.value)}
             />
+            {err("date_of_birth") && <p className="mt-1 text-xs font-medium text-red-600">{err("date_of_birth")}</p>}
           </div>
         </div>
 
@@ -201,6 +217,7 @@ export function EditCustomerModal({
             value={form.notes}
             onChange={(e) => set("notes", e.target.value)}
           />
+          {err("internal_notes") && <p className="mt-1 text-xs font-medium text-red-600">{err("internal_notes")}</p>}
         </div>
 
         <div className="flex gap-3 pt-1">

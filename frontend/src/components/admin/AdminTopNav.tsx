@@ -3,9 +3,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { logout } from "@/lib/auth";
+import { listNotifications } from "@/lib/notifications";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import {
   BellIcon,
@@ -37,6 +38,13 @@ export function AdminTopNav() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useClickOutside<HTMLDivElement>(useCallback(() => setMenuOpen(false), []));
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    listNotifications()
+      .then((r) => setUnreadCount(r.unread_count))
+      .catch(() => {});
+  }, []);
 
   async function handleLogout() {
     await logout();
@@ -100,9 +108,11 @@ export function AdminTopNav() {
             className="relative flex items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 p-2 text-neutral-300 hover:text-white"
           >
             <BellIcon className="h-4 w-4" />
-            <span className="font-heading absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white">
-              5
-            </span>
+            {unreadCount > 0 && (
+              <span className="font-heading absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
           </Link>
 
           <div className="relative hidden md:block" ref={menuRef}>

@@ -14,6 +14,7 @@ class CustomerProfile extends Model
         'user_id',
         'government_id_type',
         'government_id_number',
+        'government_id_document_path',
         'identity_verified_at',
         'address_line_1',
         'address_line_2',
@@ -22,6 +23,7 @@ class CustomerProfile extends Model
         'zip',
         'date_of_birth',
         'residence_type',
+        'years_at_residence',
         'landlord_name',
         'landlord_phone',
         'move_notification_agreed',
@@ -29,6 +31,7 @@ class CustomerProfile extends Model
         'employment_status',
         'employer_name',
         'employer_phone',
+        'monthly_income',
         'plaid_item_id',
         'plaid_access_token',
         'bank_verified_at',
@@ -42,6 +45,7 @@ class CustomerProfile extends Model
             'date_of_birth' => 'date',
             'move_notification_agreed' => 'boolean',
             'plaid_access_token' => 'encrypted',
+            'monthly_income' => 'decimal:2',
         ];
     }
 

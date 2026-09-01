@@ -8,43 +8,20 @@ use Illuminate\Http\Request;
 
 class PaymentController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    public function index(Request $request)
     {
-        //
+        $payments = Payment::whereHas(
+            'leaseAgreement',
+            fn ($query) => $query->where('customer_id', $request->user()->id),
+        )->with('leaseAgreement.equipmentUnit')->latest('due_date')->get();
+
+        return response()->json(['data' => $payments]);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
+    public function show(Request $request, Payment $payment)
     {
-        //
-    }
+        abort_unless($payment->leaseAgreement->customer_id === $request->user()->id, 404);
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(Payment $payment)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, Payment $payment)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(Payment $payment)
-    {
-        //
+        return response()->json(['data' => $payment->load('leaseAgreement.equipmentUnit')]);
     }
 }

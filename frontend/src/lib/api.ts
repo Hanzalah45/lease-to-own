@@ -22,16 +22,19 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
  */
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, token, headers, ...rest } = options;
+  const isFormData = body instanceof FormData;
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...rest,
     headers: {
-      "Content-Type": "application/json",
+      // Omit Content-Type for FormData — the browser sets the multipart
+      // boundary itself; setting it manually breaks the upload.
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       Accept: "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body === undefined ? undefined : isFormData ? (body as FormData) : JSON.stringify(body),
   });
 
   if (response.status === 204) {

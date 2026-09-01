@@ -11,6 +11,14 @@ class RiskProfile extends Model
 {
     use HasFactory;
 
+    public const VERIFICATION_PENDING = 'pending';
+    public const VERIFICATION_VERIFIED = 'verified';
+    public const VERIFICATION_FAILED = 'failed';
+
+    public const BACKGROUND_PENDING = 'pending';
+    public const BACKGROUND_CLEAR = 'clear';
+    public const BACKGROUND_FLAGGED = 'flagged';
+
     protected $fillable = [
         'customer_id',
         'identity_verification_status',

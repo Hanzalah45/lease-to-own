@@ -4,47 +4,40 @@ namespace App\Http\Controllers\Api\Customer;
 
 use App\Http\Controllers\Controller;
 use App\Models\LeaseAgreement;
+use App\Services\LeaseEngine;
 use Illuminate\Http\Request;
 
 class LeaseAgreementController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    public function index(Request $request)
     {
-        //
+        $leases = $request->user()->leaseAgreements()->with('equipmentUnit')->latest()->get();
+
+        return response()->json(['data' => $leases->map(fn ($lease) => $this->present($lease))]);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
+    public function show(Request $request, LeaseAgreement $leaseAgreement)
     {
-        //
+        abort_unless($leaseAgreement->customer_id === $request->user()->id, 404);
+
+        $leaseAgreement->load('equipmentUnit');
+
+        return response()->json(['data' => $this->present($leaseAgreement, includeSchedule: true)]);
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(LeaseAgreement $leaseAgreement)
+    private function present(LeaseAgreement $lease, bool $includeSchedule = false): array
     {
-        //
-    }
+        $payload = array_merge($lease->toArray(), [
+            'sales_tax_amount' => $lease->salesTaxAmount(),
+            'total_monthly_payment' => $lease->totalMonthlyPayment(),
+            'payments_made' => $lease->paymentsMadeCount(),
+            'epo_today' => LeaseEngine::epoToday($lease),
+        ]);
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, LeaseAgreement $leaseAgreement)
-    {
-        //
-    }
+        if ($includeSchedule) {
+            $payload['epo_schedule'] = LeaseEngine::fullSchedule($lease);
+        }
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(LeaseAgreement $leaseAgreement)
-    {
-        //
+        return $payload;
     }
 }

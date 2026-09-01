@@ -5,9 +5,12 @@ namespace Database\Seeders;
 use App\Models\AdminPermission;
 use App\Models\CustomerProfile;
 use App\Models\User;
+use App\Notifications\AdminAccountCreatedNotification;
+use App\Notifications\NewCustomerRegisteredNotification;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 
 class DatabaseSeeder extends Seeder
 {
@@ -58,5 +61,11 @@ class DatabaseSeeder extends Seeder
             'status' => 'active',
         ]);
         CustomerProfile::create(['user_id' => $customer->id]);
+
+        // Seed a couple of real notifications (same classes the live triggers use)
+        // so the notification feeds aren't empty on first login.
+        $staff = User::whereIn('role', [User::ROLE_ADMIN, User::ROLE_SUPER_ADMIN])->get();
+        Notification::send($staff, new NewCustomerRegisteredNotification($customer));
+        $restrictedAdmin->notify(new AdminAccountCreatedNotification());
     }
 }

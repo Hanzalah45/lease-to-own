@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { money } from "@/components/applications/wizard/types";
-import { EPO_SCHEDULE_FULL, CUSTOMER_ADDRESS, CUSTOMER_COUNTY, CUSTOMER_NAME, CUSTOMER_OWN_RENT, type SampleLease } from "@/lib/sample-lease";
+import { computeEpoSchedule, CUSTOMER_ADDRESS, CUSTOMER_COUNTY, CUSTOMER_NAME, CUSTOMER_OWN_RENT, type SampleLease } from "@/lib/sample-lease";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -60,6 +60,7 @@ export function LeaseAgreementDocument({ lease }: { lease: SampleLease }) {
             <Row label="Make" value={lease.equipment} />
             <Row label="Condition" value={lease.condition} />
             <Row label="Serial # / VIN" value={lease.serial} />
+            <Row label="Description or Damage to Property" value="None noted" />
           </div>
         </div>
 
@@ -74,14 +75,28 @@ export function LeaseAgreementDocument({ lease }: { lease: SampleLease }) {
             <Row label="Security Deposit" value={money(lease.securityDeposit)} />
             <Row label="TOTAL DUE" value={money(lease.totalDue)} />
             <Row label="AutoPay" value={lease.autopay ? "Yes · Checking" : "No"} />
+            <Row label="Total Rental-Purchase Price" value={money(lease.monthlyRental * lease.term)} />
           </div>
         </div>
 
         <p className="mt-5 text-xs italic leading-relaxed text-neutral-400">
-          This transaction is a lease/rental-purchase agreement. You may cancel the lease without penalty after the
-          first payment. Individual lease term is 1 month. You will not own the property until the total amount
-          necessary to acquire ownership is paid in full or you exercise the early purchase option in accordance
-          with the lease.
+          <strong>2. Lease Term &amp; Payment Schedule.</strong> This Agreement is for one month. It begins on the
+          effective date of this Agreement and expires one month later. You can renew the Agreement for additional
+          one-month terms at your option by making a monthly rental renewal payment on or before the expiration
+          date. The Agreement will also renew if you continue to possess the Property until you notify us that you
+          want to end the rental and make the Property available for pickup.
+        </p>
+        <p className="mt-3 text-xs italic leading-relaxed text-neutral-400">
+          <strong>3. Rental-Purchase Ownership.</strong> If you renew this Agreement for {lease.term} months in a
+          row, you will have paid the Total Rental-Purchase Price of {money(lease.monthlyRental * lease.term)}, not
+          including taxes or fees, and you will obtain ownership of the Property after the final payment. Or, you
+          can exercise an early purchase option (&quot;EPO&quot;). Any time within 90 days of the effective date of
+          this Agreement, your EPO price will be the Cash Price less all Rental Payments paid to date (excludes
+          taxes and fees). After that time, your EPO price will be the Cash Price less 50% of Rental Payments
+          scheduled to date, plus any Rental Payments still owed and any additional funds. You will not own the
+          Property unless you pay the Total Rental-Purchase Price or exercise an EPO. The Total Rental-Purchase
+          Price does not include other charges such as late fees, disclosed below. Taxes are also due at the time
+          of exercising an EPO.
         </p>
       </div>
 
@@ -111,7 +126,7 @@ export function LeaseAgreementDocument({ lease }: { lease: SampleLease }) {
           EPO price after each rental renewal payment, assuming on-time payments. Excludes tax.
         </p>
         <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3 lg:grid-cols-6 print:grid-cols-6">
-          {EPO_SCHEDULE_FULL.slice(0, lease.term).map((row) => (
+          {computeEpoSchedule(lease).map((row) => (
             <div key={row.month} className="flex items-center justify-between border-b border-neutral-100 py-1.5">
               <span className="text-neutral-400">{row.month}</span>
               <span className="font-semibold text-neutral-800">{row.value.toFixed(2)}</span>
