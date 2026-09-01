@@ -26,3 +26,4 @@ dist/
 # IDE files
 .idea/
 .vscode/
+reports/~$*.docx

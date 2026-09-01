@@ -18,6 +18,7 @@ class RiskRedFlag extends Model
 
     protected $fillable = [
         'risk_profile_id',
+        'payment_id',
         'type',
         'description',
         'flagged_at',
@@ -35,5 +36,10 @@ class RiskRedFlag extends Model
     public function riskProfile(): BelongsTo
     {
         return $this->belongsTo(RiskProfile::class);
+    }
+
+    public function payment(): BelongsTo
+    {
+        return $this->belongsTo(Payment::class);
     }
 }

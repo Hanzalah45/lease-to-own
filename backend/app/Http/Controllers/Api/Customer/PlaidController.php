@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api\Customer;
 
 use App\Http\Controllers\Controller;
+use App\Models\RiskRedFlag;
 use App\Notifications\BankVerifiedNotification;
 use App\Services\PlaidClient;
+use App\Services\RiskRedFlagger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -48,11 +50,23 @@ class PlaidController extends Controller
         }
 
         $profile = $request->user()->customerProfile()->firstOrCreate([]);
+        $isReconnectToDifferentAccount = $profile->bank_verified_at
+            && $profile->plaid_item_id
+            && $profile->plaid_item_id !== $exchange['item_id'];
+
         $profile->update([
             'plaid_item_id' => $exchange['item_id'],
             'plaid_access_token' => $exchange['access_token'],
             'bank_verified_at' => now(),
         ]);
+
+        if ($isReconnectToDifferentAccount) {
+            RiskRedFlagger::flag(
+                $request->user()->id,
+                RiskRedFlag::TYPE_BANK_ACCOUNT_CHANGE,
+                'Customer reconnected Plaid to a different bank account than the one previously verified.',
+            );
+        }
 
         $request->user()->notify(new BankVerifiedNotification());
 

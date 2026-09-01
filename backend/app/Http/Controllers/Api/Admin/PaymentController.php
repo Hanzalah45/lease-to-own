@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Payment;
+use App\Models\RiskRedFlag;
 use App\Services\LeaseEngine;
+use App\Services\RiskRedFlagger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -35,12 +37,28 @@ class PaymentController extends Controller
             'method' => ['sometimes', 'nullable', Rule::in(['ach', 'card', 'cash', 'other'])],
         ]);
 
+        $wasFailed = $payment->status === Payment::STATUS_FAILED;
+
         $payment->update([
             'status' => $data['status'],
             'method' => $data['method'] ?? $payment->method,
             'paid_date' => $data['status'] === Payment::STATUS_PAID ? now()->toDateString() : $payment->paid_date,
             'recorded_by' => Auth::id(),
         ]);
+
+        if ($data['status'] === Payment::STATUS_FAILED && ! $wasFailed) {
+            RiskRedFlagger::flag(
+                $payment->leaseAgreement->customer_id,
+                RiskRedFlag::TYPE_FAILED_ACH,
+                sprintf(
+                    '%s payment of $%s (due %s) was marked failed.',
+                    $payment->method ? strtoupper($payment->method) : 'A',
+                    number_format((float) $payment->amount, 2),
+                    $payment->due_date?->toDateString() ?? 'unknown date',
+                ),
+                $payment,
+            );
+        }
 
         LeaseEngine::syncPaymentsPaidToDate($payment->leaseAgreement);
 

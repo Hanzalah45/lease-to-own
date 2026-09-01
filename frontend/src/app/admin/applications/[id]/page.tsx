@@ -16,7 +16,7 @@ import { EpoChart } from "@/components/applications/wizard/EpoChart";
 import type { AppStatus, DealerNote } from "@/components/applications/detail/types";
 import type { AdminPermissionKey } from "@/types/auth";
 import type { Application } from "@/types/application";
-import { downloadIdDocument, getApplication, updateApplication } from "@/lib/applications";
+import { downloadIdDocument, getApplication, resolveRiskRedFlag, updateApplication } from "@/lib/applications";
 import { money } from "@/components/applications/wizard/types";
 import { ApiError } from "@/lib/api";
 import {
@@ -37,6 +37,17 @@ const RISK_COLOR: Record<string, string> = {
   clear: "text-green-600",
   failed: "text-red-600",
   flagged: "text-red-600",
+};
+
+const RED_FLAG_LABEL: Record<string, string> = {
+  missed_payment: "Missed payment",
+  late_payment: "Late payment",
+  failed_ach: "Failed ACH",
+  unreachable_customer: "Unreachable customer",
+  bank_account_change: "Bank account changed",
+  suspicious_behavior: "Suspicious behavior",
+  undisclosed_move: "Undisclosed move",
+  gps_anomaly: "GPS anomaly",
 };
 
 const BADGE_STYLE: Record<AppStatus, { label: string; color: string }> = {
@@ -133,6 +144,18 @@ export default function ApplicationDetailPage() {
       );
     } finally {
       setActing(false);
+    }
+  }
+
+  const [resolvingFlagId, setResolvingFlagId] = useState<number | null>(null);
+
+  async function resolveFlag(riskProfileId: number, redFlagId: number) {
+    setResolvingFlagId(redFlagId);
+    try {
+      await resolveRiskRedFlag(riskProfileId, redFlagId);
+      await load();
+    } finally {
+      setResolvingFlagId(null);
     }
   }
 
@@ -476,7 +499,34 @@ export default function ApplicationDetailPage() {
                 { label: "Risk score", value: risk?.risk_score != null ? `${risk.risk_score} / 100` : "—" },
                 { label: "Residence type", value: RESIDENCE_LABEL[profile?.residence_type ?? ""] ?? "—" },
               ]}
-              note={risk?.background_check_notes ?? "No flags on file."}
+              note={
+                <>
+                  {risk?.background_check_notes && <p>{risk.background_check_notes}</p>}
+                  {risk?.red_flags && risk.red_flags.length > 0 ? (
+                    <ul className="mt-2 space-y-1.5">
+                      {risk.red_flags.map((flag) => (
+                        <li key={flag.id} className="flex items-start justify-between gap-2 rounded bg-red-50 px-2 py-1.5">
+                          <span className={flag.resolved ? "text-neutral-400 line-through" : "text-red-700"}>
+                            <span className="font-semibold">{RED_FLAG_LABEL[flag.type] ?? flag.type}</span>
+                            {flag.description && <span> — {flag.description}</span>}
+                          </span>
+                          {!flag.resolved && can("risk_assessment") && (
+                            <button
+                              onClick={() => risk && resolveFlag(risk.id, flag.id)}
+                              disabled={resolvingFlagId === flag.id}
+                              className="shrink-0 font-heading text-[11px] font-bold uppercase tracking-wide text-red-600 hover:underline disabled:opacity-50"
+                            >
+                              {resolvingFlagId === flag.id ? "…" : "Resolve"}
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    !risk?.background_check_notes && "No flags on file."
+                  )}
+                </>
+              }
             />
           </div>
 

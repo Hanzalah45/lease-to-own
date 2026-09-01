@@ -74,6 +74,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware('permission:risk_assessment')->group(function () {
             Route::apiResource('risk-profiles', RiskProfileController::class)
                 ->parameters(['risk-profiles' => 'riskProfile']);
+            Route::patch('/risk-profiles/{riskProfile}/red-flags/{redFlag}/resolve', [RiskProfileController::class, 'resolveRedFlag']);
         });
 
         Route::middleware('permission:contract_generation')->group(function () {

@@ -15,6 +15,13 @@ export async function getApplication(id: number | string): Promise<Application> 
   return data.data;
 }
 
+export async function resolveRiskRedFlag(riskProfileId: number, redFlagId: number): Promise<void> {
+  await apiFetch(`/admin/risk-profiles/${riskProfileId}/red-flags/${redFlagId}/resolve`, {
+    method: "PATCH",
+    token: getToken(),
+  });
+}
+
 /** Maps the wizard's local field names onto the API's snake_case contract, including the ID document file. */
 export function wizardStateToFormData(state: WizardState): FormData {
   const form = new FormData();

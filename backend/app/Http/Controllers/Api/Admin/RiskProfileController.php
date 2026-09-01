@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\RiskProfile;
+use App\Models\RiskRedFlag;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -35,6 +36,16 @@ class RiskProfileController extends Controller
         ]);
 
         $riskProfile->update($data);
+
+        return response()->json(['data' => $riskProfile->fresh()->load('redFlags')]);
+    }
+
+    /** Marks one red flag resolved — used from the application detail page's Risk card. */
+    public function resolveRedFlag(RiskProfile $riskProfile, RiskRedFlag $redFlag)
+    {
+        abort_unless($redFlag->risk_profile_id === $riskProfile->id, 404);
+
+        $redFlag->update(['resolved' => true]);
 
         return response()->json(['data' => $riskProfile->fresh()->load('redFlags')]);
     }
