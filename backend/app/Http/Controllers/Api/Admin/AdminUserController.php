@@ -33,13 +33,13 @@ class AdminUserController extends Controller
 
     public function store(Request $request)
     {
-        $validator = Validator::make($request->all(), [
+        $data = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'phone' => ['nullable', 'string', 'max:30'],
             'password' => ['required', 'string', 'min:8'],
             // Restriction list — leave empty/omitted for full access.
-            'permissions' => ['array'],
+            'permissions' => ['nullable', 'array'],
             'permissions.*' => ['in:'.implode(',', [
                 AdminPermission::APPLICATION_REVIEW,
                 AdminPermission::RISK_ASSESSMENT,
@@ -47,13 +47,7 @@ class AdminUserController extends Controller
                 AdminPermission::EQUIPMENT_TRACKING,
                 AdminPermission::PAYMENT_TRACKING,
             ])],
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        $data = $validator->validated();
+        ])->validate();
 
         $admin = User::create([
             'name' => $data['name'],
@@ -88,11 +82,11 @@ class AdminUserController extends Controller
     {
         $this->assertIsAdmin($adminUser);
 
-        $validator = Validator::make($request->all(), [
+        $data = Validator::make($request->all(), [
             'name' => ['sometimes', 'string', 'max:255'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:30'],
             'status' => ['sometimes', 'in:active,suspended,pending'],
-            'permissions' => ['sometimes', 'array'],
+            'permissions' => ['sometimes', 'nullable', 'array'],
             'permissions.*' => ['in:'.implode(',', [
                 AdminPermission::APPLICATION_REVIEW,
                 AdminPermission::RISK_ASSESSMENT,
@@ -100,13 +94,7 @@ class AdminUserController extends Controller
                 AdminPermission::EQUIPMENT_TRACKING,
                 AdminPermission::PAYMENT_TRACKING,
             ])],
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        $data = $validator->validated();
+        ])->validate();
 
         $adminUser->update(collect($data)->only(['name', 'phone', 'status'])->toArray());
 

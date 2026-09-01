@@ -7,6 +7,7 @@ import { ADMIN_PERMISSIONS, createAdmin, deleteAdmin, listAdmins, updateAdmin } 
 import { ApiError } from "@/lib/api";
 import { Modal } from "@/components/ui/Modal";
 import { PencilIcon, PlusIcon, TrashIcon, UserIcon } from "@/components/icons";
+import { validateEmail, validateName, validatePassword } from "@/lib/validation";
 import type { AdminPermissionKey, AuthUser, UserStatus } from "@/types/auth";
 
 const STATUS_BADGE: Record<UserStatus, string> = {
@@ -252,18 +253,53 @@ function AdminForm({
     admin?.admin_permissions?.map((p) => p.permission) ?? [],
   );
   const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
-  const err = (key: string) => fieldErrors[key]?.[0];
+
+  function touch(key: string) {
+    setTouched((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+  }
+
+  function clearServerError(key: string) {
+    setServerErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
 
   function togglePermission(key: AdminPermissionKey) {
     setPermissions((prev) => (prev.includes(key) ? prev.filter((p) => p !== key) : [...prev, key]));
   }
 
+  const clientErrors: Record<string, string> = {};
+  const nameErr = validateName(name, "Name");
+  if (nameErr) clientErrors.name = nameErr;
+  if (!isEdit) {
+    const emailErr = validateEmail(email);
+    if (emailErr) clientErrors.email = emailErr;
+    const passwordErr = validatePassword(password, true);
+    if (passwordErr) clientErrors.password = passwordErr;
+  }
+
+  const isValid = Object.keys(clientErrors).length === 0;
+
+  function fieldError(key: string): string | undefined {
+    return serverErrors[key] ?? (touched[key] ? clientErrors[key] : undefined);
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (submitting) return; // guard against a double-click/double-Enter race
     setError(null);
-    setFieldErrors({});
+
+    if (!isValid) {
+      setTouched({ name: true, email: true, password: true });
+      return;
+    }
+
     setSubmitting(true);
     try {
       if (isEdit) {
@@ -272,57 +308,92 @@ function AdminForm({
         await createAdmin({ name, email, password, permissions });
       }
       onSaved();
-    } catch (submitErr) {
-      if (submitErr instanceof ApiError && submitErr.errors) {
-        setFieldErrors(submitErr.errors);
+    } catch (err) {
+      if (err instanceof ApiError && err.errors) {
+        // Each message is already shown inline under its field — no need
+        // to repeat it in a summary banner too.
+        setServerErrors(
+          Object.fromEntries(Object.entries(err.errors).map(([key, messages]) => [key, messages[0]])),
+        );
       } else {
-        setError(submitErr instanceof ApiError ? submitErr.message : "Could not save admin.");
+        setError(err instanceof ApiError ? err.message : "Could not save admin.");
       }
     } finally {
       setSubmitting(false);
     }
   }
 
+  const inputClass = (hasError: boolean) =>
+    `w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 disabled:bg-neutral-50 disabled:text-neutral-400 ${
+      hasError ? "border-red-400 focus:border-red-600 focus:ring-red-600" : "border-neutral-300 focus:border-red-600 focus:ring-red-600"
+    }`;
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} noValidate className="space-y-4">
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div className="space-y-1">
-        <label className="font-heading text-sm font-semibold">Name</label>
+        <label htmlFor="admin-name" className="font-heading text-sm font-semibold">
+          Name<span className="ml-0.5 text-red-600">*</span>
+        </label>
         <input
+          id="admin-name"
           required
           value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-600"
+          onChange={(e) => {
+            setName(e.target.value);
+            clearServerError("name");
+          }}
+          onBlur={() => touch("name")}
+          aria-invalid={!!fieldError("name")}
+          aria-describedby={fieldError("name") ? "admin-name-error" : undefined}
+          className={inputClass(!!fieldError("name"))}
         />
-        {err("name") && <p className="text-xs font-medium text-red-600">{err("name")}</p>}
+        {fieldError("name") && (
+          <p id="admin-name-error" className="text-xs font-medium text-red-600">
+            {fieldError("name")}
+          </p>
+        )}
       </div>
 
       <div className="space-y-1">
-        <label className="font-heading text-sm font-semibold">Email</label>
+        <label htmlFor="admin-email" className="font-heading text-sm font-semibold">
+          Email{!isEdit && <span className="ml-0.5 text-red-600">*</span>}
+        </label>
         <input
+          id="admin-email"
           type="email"
-          required
+          required={!isEdit}
           disabled={isEdit}
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm disabled:bg-neutral-50 disabled:text-neutral-400 focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-600"
+          onChange={(e) => {
+            setEmail(e.target.value);
+            clearServerError("email");
+          }}
+          onBlur={() => touch("email")}
+          aria-invalid={!!fieldError("email")}
+          aria-describedby={fieldError("email") ? "admin-email-error" : undefined}
+          className={inputClass(!!fieldError("email"))}
         />
-        {err("email") ? (
-          <p className="text-xs font-medium text-red-600">{err("email")}</p>
-        ) : (
-          !isEdit && (
-            <p className="text-xs text-neutral-400">
-              Credentials go to this address once notifications are wired up. For now, share the password directly.
-            </p>
-          )
+        {fieldError("email") && (
+          <p id="admin-email-error" className="text-xs font-medium text-red-600">
+            {fieldError("email")}
+          </p>
+        )}
+        {!isEdit && (
+          <p className="text-xs text-neutral-400">
+            Credentials go to this address once notifications are wired up. For now, share the password directly.
+          </p>
         )}
       </div>
 
       {isEdit ? (
         <div className="space-y-1">
-          <label className="font-heading text-sm font-semibold">Status</label>
+          <label htmlFor="admin-status" className="font-heading text-sm font-semibold">
+            Status
+          </label>
           <select
+            id="admin-status"
             value={status}
             onChange={(e) => setStatus(e.target.value as UserStatus)}
             className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-600"
@@ -334,16 +405,30 @@ function AdminForm({
         </div>
       ) : (
         <div className="space-y-1">
-          <label className="font-heading text-sm font-semibold">Temporary password</label>
+          <label htmlFor="admin-password" className="font-heading text-sm font-semibold">
+            Temporary password<span className="ml-0.5 text-red-600">*</span>
+          </label>
           <input
+            id="admin-password"
             type="password"
             required
             minLength={8}
+            placeholder="Letter + number, 8+ chars"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-red-600 focus:outline-none focus:ring-1 focus:ring-red-600"
+            onChange={(e) => {
+              setPassword(e.target.value);
+              clearServerError("password");
+            }}
+            onBlur={() => touch("password")}
+            aria-invalid={!!fieldError("password")}
+            aria-describedby={fieldError("password") ? "admin-password-error" : undefined}
+            className={inputClass(!!fieldError("password"))}
           />
-          {err("password") && <p className="text-xs font-medium text-red-600">{err("password")}</p>}
+          {fieldError("password") && (
+            <p id="admin-password-error" className="text-xs font-medium text-red-600">
+              {fieldError("password")}
+            </p>
+          )}
         </div>
       )}
 
@@ -370,13 +455,14 @@ function AdminForm({
         <button
           type="button"
           onClick={onCancel}
-          className="font-heading rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50"
+          disabled={submitting}
+          className="font-heading rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !isValid}
           className="font-heading rounded-md bg-neutral-900 px-4 py-2 text-sm font-bold uppercase tracking-wide text-white hover:bg-neutral-800 disabled:opacity-50"
         >
           {submitting ? "Saving…" : isEdit ? "Save changes" : "Create admin"}

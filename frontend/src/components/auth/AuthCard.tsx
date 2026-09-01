@@ -48,8 +48,10 @@ export function AuthField({
   type = "text",
   value,
   onChange,
+  onBlur,
   required,
   minLength,
+  maxLength,
   placeholder,
   error,
 }: {
@@ -58,10 +60,12 @@ export function AuthField({
   type?: string;
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   required?: boolean;
   minLength?: number;
+  maxLength?: number;
   placeholder?: string;
-  error?: string;
+  error?: string | null;
 }) {
   return (
     <div className="space-y-1">
@@ -74,17 +78,24 @@ export function AuthField({
         type={type}
         required={required}
         minLength={minLength}
+        maxLength={maxLength}
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         aria-invalid={!!error}
+        aria-describedby={error ? `${id}-error` : undefined}
         className={`w-full rounded-md border px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-1 ${
           error
             ? "border-red-400 focus:border-red-600 focus:ring-red-600"
             : "border-neutral-300 focus:border-red-600 focus:ring-red-600"
         }`}
       />
-      {error && <p className="text-xs font-medium text-red-600">{error}</p>}
+      {error && (
+        <p id={`${id}-error`} className="text-xs font-medium text-red-600">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

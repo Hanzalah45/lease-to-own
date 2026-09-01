@@ -24,13 +24,43 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  function touch(key: string) {
+    setTouched((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+  }
+
+  function clearServerError(key: string) {
+    setServerErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
+  const clientErrors: Record<string, string> = {};
+  if (!email.trim()) clientErrors.email = "Email is required.";
+  if (!password) clientErrors.password = "Password is required.";
+
+  const isValid = Object.keys(clientErrors).length === 0;
+
+  function fieldError(key: string): string | undefined {
+    return serverErrors[key] ?? (touched[key] ? clientErrors[key] : undefined);
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (submitting) return; // guard against a double-click/double-Enter race
     setError(null);
-    setFieldErrors({});
+
+    if (!isValid) {
+      setTouched({ email: true, password: true });
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -40,7 +70,10 @@ function LoginForm() {
       router.push(next);
     } catch (err) {
       if (err instanceof ApiError && err.errors) {
-        setFieldErrors(err.errors);
+        setServerErrors(
+          Object.fromEntries(Object.entries(err.errors).map(([key, messages]) => [key, messages[0]])),
+        );
+        setError(null);
       } else {
         setError(err instanceof ApiError ? err.message : "Something went wrong.");
       }
@@ -63,7 +96,7 @@ function LoginForm() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <AuthField
@@ -72,8 +105,12 @@ function LoginForm() {
           type="email"
           required
           value={email}
-          onChange={setEmail}
-          error={fieldErrors.email?.[0]}
+          onChange={(v) => {
+            setEmail(v);
+            clearServerError("email");
+          }}
+          onBlur={() => touch("email")}
+          error={fieldError("email")}
         />
         <AuthField
           label="Password"
@@ -81,11 +118,15 @@ function LoginForm() {
           type="password"
           required
           value={password}
-          onChange={setPassword}
-          error={fieldErrors.password?.[0]}
+          onChange={(v) => {
+            setPassword(v);
+            clearServerError("password");
+          }}
+          onBlur={() => touch("password")}
+          error={fieldError("password")}
         />
 
-        <AuthSubmitButton disabled={submitting}>
+        <AuthSubmitButton disabled={submitting || !isValid}>
           {submitting ? "Signing in…" : "Sign in →"}
         </AuthSubmitButton>
       </form>

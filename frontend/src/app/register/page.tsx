@@ -7,6 +7,7 @@ import { AuthCard, AuthField, AuthSubmitButton } from "@/components/auth/AuthCar
 import { useAuth } from "@/context/AuthContext";
 import { ApiError } from "@/lib/api";
 import { dashboardPathForRole, register } from "@/lib/auth";
+import { validateEmail, validateName, validatePassword, validatePhone } from "@/lib/validation";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -18,13 +19,56 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  function touch(key: string) {
+    setTouched((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+  }
+
+  function clearServerError(key: string) {
+    setServerErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
+  // Same shared validators (@/lib/validation) used across every form in the
+  // dashboard. Phone stays optional here (unlike the admin customer form) —
+  // this is a public self-signup, and the backend treats phone as nullable.
+  const clientErrors: Record<string, string> = {};
+  const nameErr = validateName(name, "Full name");
+  if (nameErr) clientErrors.name = nameErr;
+  const emailErr = validateEmail(email);
+  if (emailErr) clientErrors.email = emailErr;
+  const phoneErr = validatePhone(phone, false);
+  if (phoneErr) clientErrors.phone = phoneErr;
+  const passwordErr = validatePassword(password, true);
+  if (passwordErr) clientErrors.password = passwordErr;
+  if (!passwordConfirmation) clientErrors.password_confirmation = "Please confirm your password.";
+  else if (password !== passwordConfirmation) clientErrors.password_confirmation = "Passwords do not match.";
+
+  const isValid = Object.keys(clientErrors).length === 0;
+
+  // Server error takes priority (it's authoritative); otherwise show the
+  // live client-side error once the field has been touched (blurred).
+  function fieldError(key: string): string | undefined {
+    return serverErrors[key] ?? (touched[key] ? clientErrors[key] : undefined);
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (submitting) return; // guard against a double-click/double-Enter race
     setError(null);
-    setFieldErrors({});
+
+    if (!isValid) {
+      setTouched({ name: true, email: true, phone: true, password: true, password_confirmation: true });
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -39,7 +83,11 @@ export default function RegisterPage() {
       router.push(dashboardPathForRole(user.role));
     } catch (err) {
       if (err instanceof ApiError && err.errors) {
-        setFieldErrors(err.errors);
+        // Each message is already shown inline under its field — no need
+        // to repeat it in a summary banner too.
+        setServerErrors(
+          Object.fromEntries(Object.entries(err.errors).map(([key, messages]) => [key, messages[0]])),
+        );
       } else {
         setError(err instanceof ApiError ? err.message : "Something went wrong.");
       }
@@ -62,7 +110,7 @@ export default function RegisterPage() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <AuthField
@@ -70,8 +118,12 @@ export default function RegisterPage() {
           id="name"
           required
           value={name}
-          onChange={setName}
-          error={fieldErrors.name?.[0]}
+          onChange={(v) => {
+            setName(v);
+            clearServerError("name");
+          }}
+          onBlur={() => touch("name")}
+          error={fieldError("name")}
         />
 
         <div className="grid grid-cols-2 gap-3">
@@ -81,17 +133,25 @@ export default function RegisterPage() {
             type="email"
             required
             value={email}
-            onChange={setEmail}
+            onChange={(v) => {
+              setEmail(v);
+              clearServerError("email");
+            }}
+            onBlur={() => touch("email")}
             placeholder="you@outdoorfix.org"
-            error={fieldErrors.email?.[0]}
+            error={fieldError("email")}
           />
           <AuthField
             label="Phone"
             id="phone"
             value={phone}
-            onChange={setPhone}
+            onChange={(v) => {
+              setPhone(v);
+              clearServerError("phone");
+            }}
+            onBlur={() => touch("phone")}
             placeholder="(000) 000-0000"
-            error={fieldErrors.phone?.[0]}
+            error={fieldError("phone")}
           />
         </div>
 
@@ -102,9 +162,14 @@ export default function RegisterPage() {
             type="password"
             required
             minLength={8}
+            placeholder="Letter + number, 8+ chars"
             value={password}
-            onChange={setPassword}
-            error={fieldErrors.password?.[0]}
+            onChange={(v) => {
+              setPassword(v);
+              clearServerError("password");
+            }}
+            onBlur={() => touch("password")}
+            error={fieldError("password")}
           />
           <AuthField
             label="Confirm password"
@@ -113,11 +178,16 @@ export default function RegisterPage() {
             required
             minLength={8}
             value={passwordConfirmation}
-            onChange={setPasswordConfirmation}
+            onChange={(v) => {
+              setPasswordConfirmation(v);
+              clearServerError("password_confirmation");
+            }}
+            onBlur={() => touch("password_confirmation")}
+            error={fieldError("password_confirmation")}
           />
         </div>
 
-        <AuthSubmitButton disabled={submitting}>
+        <AuthSubmitButton disabled={submitting || !isValid}>
           {submitting ? "Creating account…" : "Create account →"}
         </AuthSubmitButton>
 
