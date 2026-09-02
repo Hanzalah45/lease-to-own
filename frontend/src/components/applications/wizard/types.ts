@@ -1,4 +1,21 @@
 import type { StepKey } from "@/components/applications/wizard/WizardSteps";
+import {
+  DRIVERS_LICENSE_MAX,
+  validateCity,
+  validateDob,
+  validateEmail,
+  validateEquipmentModel,
+  validateIntegerInRange,
+  validateMoney,
+  validatePercent,
+  validatePhone,
+  validatePromoCode,
+  validateSerialNumber,
+  validateState,
+  validateStreet,
+  validateYear,
+  validateZip,
+} from "@/lib/validation";
 
 /** First message for a field from a Laravel-style { field: string[] } validation error map. */
 export function fieldError(errors: Record<string, string[]> | undefined, key: string): string | undefined {
@@ -84,27 +101,36 @@ export function firstErrorStep(errors: Record<string, string[]>): StepKey | null
   return null;
 }
 
+/**
+ * Records a message under an API field name. Errors are kept in the Laravel
+ * `{ field: string[] }` shape so client-side rules and the API's own
+ * validation errors can share one map and one renderer.
+ */
+function put(errors: Record<string, string[]>, key: string, message: string | undefined): void {
+  if (message) errors[key] = [message];
+}
+
+/**
+ * Every rule below comes from @/lib/validation — the same functions the
+ * customer and equipment forms use, so a field is checked the same way
+ * wherever it is typed. The wizard previously checked only that fields were
+ * non-empty, which let malformed values through to the API and turned into a
+ * 422 after the whole wizard had been filled in.
+ */
 export function validateEquipmentStep(state: WizardState): Record<string, string[]> {
   const errors: Record<string, string[]> = {};
 
-  if (!state.cashPrice || isNaN(parseFloat(state.cashPrice)) || parseFloat(state.cashPrice) <= 0) {
-    errors.cash_price = ["Cash price is required and must be greater than $0."];
-  }
+  put(errors, "cash_price", validateMoney(state.cashPrice, "Cash price", { aboveZero: true }));
   if (!state.condition) {
     errors.condition = ["Equipment condition is required."];
   }
-  if (!state.year || state.year.trim() === "") {
-    errors.year = ["Year is required."];
-  }
-  if (!state.make || state.make.trim() === "") {
-    errors.make = ["Make is required."];
-  }
-  if (!state.model || state.model.trim() === "") {
-    errors.model = ["Model is required."];
-  }
-  if (!state.serial || state.serial.trim() === "") {
-    errors.serial = ["Serial number is required."];
-  }
+  put(errors, "year", validateYear(state.year));
+  put(errors, "make", validateEquipmentModel(state.make));
+  put(errors, "model", validateEquipmentModel(state.model));
+  // The same serial rule the equipment module enforces — this field creates
+  // the equipment record, so a serial with spaces in it would be unsearchable.
+  put(errors, "serial", validateSerialNumber(state.serial));
+  put(errors, "promo_code", validatePromoCode(state.promoCode ?? ""));
 
   return errors;
 }
@@ -112,18 +138,17 @@ export function validateEquipmentStep(state: WizardState): Record<string, string
 export function validateLeaseStep(state: WizardState): Record<string, string[]> {
   const errors: Record<string, string[]> = {};
 
-  if (!state.termMonths || isNaN(parseInt(state.termMonths, 10)) || parseInt(state.termMonths, 10) <= 0) {
-    errors.term_months = ["Lease term in months is required."];
-  }
-  if (!state.monthlyRental || isNaN(parseFloat(state.monthlyRental)) || parseFloat(state.monthlyRental) <= 0) {
-    errors.monthly_rental = ["Monthly rental payment is required and must be greater than $0."];
-  }
-  if (state.taxRate === "" || state.taxRate === undefined || state.taxRate === null || isNaN(parseFloat(state.taxRate)) || parseFloat(state.taxRate) < 0) {
-    errors.tax_rate = ["Sales tax rate percentage is required."];
-  }
-  if (!state.paymentDueDay || state.paymentDueDay.trim() === "") {
-    errors.payment_due_day = ["Payment due day is required."];
-  }
+  // 1-120 and 0-100 mirror ApplicationController's own rules exactly, so the
+  // form refuses what the API would refuse rather than finding out on submit.
+  put(errors, "term_months", validateIntegerInRange(state.termMonths, "Lease term", 1, 120));
+  put(errors, "monthly_rental", validateMoney(state.monthlyRental, "Monthly rental", { aboveZero: true }));
+  put(errors, "tax_rate", validatePercent(state.taxRate, "Sales tax rate"));
+  put(errors, "payment_due_day", validateIntegerInRange(state.paymentDueDay, "Payment due day", 1, 31));
+  put(
+    errors,
+    "security_deposit",
+    validateMoney(state.securityDeposit ?? "", "Security deposit", { required: false }),
+  );
 
   return errors;
 }
@@ -134,30 +159,23 @@ export function validateCustomerStep(state: WizardState, isCustomerApp = false):
   if (!isCustomerApp && (!state.registeredCustomerId || state.registeredCustomerId.trim() === "")) {
     errors.registered_customer_id = ["Please select a registered customer."];
   }
-  if (!state.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.email.trim())) {
-    errors.email = ["A valid email address is required."];
-  }
-  if (!state.cellPhone || state.cellPhone.trim() === "") {
-    errors.cell_phone = ["Cell phone number is required."];
-  }
-  if (!state.mailingAddress || state.mailingAddress.trim() === "") {
-    errors.mailing_address = ["Mailing address is required."];
-  }
-  if (!state.city || state.city.trim() === "") {
-    errors.city = ["City is required."];
-  }
-  if (!state.state || state.state.trim() === "") {
-    errors.state = ["State is required."];
-  }
-  if (!state.zip || state.zip.trim() === "") {
-    errors.zip = ["Zip code is required."];
-  }
-  if (!state.dob || state.dob.trim() === "") {
-    errors.date_of_birth = ["Date of birth is required."];
-  }
-  if (!state.driversLicense || state.driversLicense.trim() === "") {
+  put(errors, "email", validateEmail(state.email ?? ""));
+  put(errors, "cell_phone", validatePhone(state.cellPhone ?? "", true));
+  put(errors, "mailing_address", validateStreet(state.mailingAddress ?? ""));
+  put(errors, "city", validateCity(state.city ?? ""));
+  // Case-insensitive: the field does not force upper case as you type, and the
+  // API only caps the length.
+  put(errors, "state", validateState((state.state ?? "").toUpperCase()));
+  put(errors, "zip", validateZip(state.zip ?? ""));
+  put(errors, "date_of_birth", validateDob(state.dob ?? ""));
+
+  const licence = (state.driversLicense ?? "").trim();
+  if (!licence) {
     errors.drivers_license = ["Driver's license number is required."];
+  } else if (licence.length > DRIVERS_LICENSE_MAX) {
+    errors.drivers_license = [`Driver's license must be ${DRIVERS_LICENSE_MAX} characters or fewer.`];
   }
+
   if (!state.idDocument) {
     errors.id_document = ["Driver's License or Government ID document upload is required."];
   }
@@ -177,9 +195,11 @@ export function validateRiskStep(state: WizardState): Record<string, string[]> {
   if (!state.incomeSource || state.incomeSource.trim() === "") {
     errors.income_source = ["Income source is required."];
   }
-  if (!state.grossMonthlyIncome || isNaN(parseFloat(state.grossMonthlyIncome)) || parseFloat(state.grossMonthlyIncome) <= 0) {
-    errors.gross_monthly_income = ["Gross monthly income is required and must be greater than $0."];
-  }
+  put(
+    errors,
+    "gross_monthly_income",
+    validateMoney(state.grossMonthlyIncome, "Gross monthly income", { aboveZero: true }),
+  );
   if (!state.moveNotificationAgreed) {
     errors.move_notification_agreed = ["Customer must agree to lease terms notification."];
   }

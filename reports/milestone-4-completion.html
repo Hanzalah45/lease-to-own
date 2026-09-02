@@ -1,0 +1,592 @@
+<title>Milestone 4 Report</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #faf9f7;
+    --surface: #ffffff;
+    --surface-sunken: #f3f1ee;
+    --ink: #1b1714;
+    --ink-muted: #6f675f;
+    --ink-faint: #a39b91;
+    --line: #e7e2db;
+    --accent: #d1281f;
+    --accent-deep: #7a1518;
+    --accent-tint: #fbebe9;
+    --good: #1c6b4a;
+    --good-tint: #e7f3ec;
+    --warn: #a6650a;
+    --warn-tint: #fbf0dd;
+    --font-display: 'Barlow Condensed', Arial Narrow, sans-serif;
+    --font-body: 'Barlow', Arial, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16130f;
+      --surface: #1f1b16;
+      --surface-sunken: #262019;
+      --ink: #f3ede4;
+      --ink-muted: #b3a99b;
+      --ink-faint: #7a7166;
+      --line: #352e26;
+      --accent: #ef4a3f;
+      --accent-deep: #f0847c;
+      --accent-tint: #3a1613;
+      --good: #4fbf8f;
+      --good-tint: #163227;
+      --warn: #e0a237;
+      --warn-tint: #332409;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #16130f;
+    --surface: #1f1b16;
+    --surface-sunken: #262019;
+    --ink: #f3ede4;
+    --ink-muted: #b3a99b;
+    --ink-faint: #7a7166;
+    --line: #352e26;
+    --accent: #ef4a3f;
+    --accent-deep: #f0847c;
+    --accent-tint: #3a1613;
+    --good: #4fbf8f;
+    --good-tint: #163227;
+    --warn: #e0a237;
+    --warn-tint: #332409;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 3.5rem 1.5rem 6rem;
+  }
+
+  h1, h2, h3, .label {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+
+  /* ---------- Header ---------- */
+
+  .masthead {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .brandrow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .wordmark {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.05rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+
+  .wordmark span { color: var(--accent); }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--good);
+    background: var(--good-tint);
+    border-radius: 999px;
+    padding: 0.32rem 0.75rem 0.28rem;
+  }
+
+  .badge::before {
+    content: "";
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: var(--good);
+  }
+
+  h1 {
+    font-weight: 900;
+    font-size: clamp(2.1rem, 5vw, 2.75rem);
+    line-height: 1.02;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+    margin: 0;
+  }
+
+  .subhead {
+    color: var(--ink-muted);
+    font-size: 1.05rem;
+    max-width: 34rem;
+  }
+
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.5rem;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+  }
+
+  .meta-row strong { color: var(--ink-muted); font-weight: 600; }
+
+  /* ---------- Milestone track ---------- */
+
+  .track {
+    padding: 1.75rem 0 2rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .track-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.6rem;
+  }
+
+  .track-label .label {
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+  }
+
+  .track-label .count {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--ink-muted);
+  }
+
+  .segments {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 0.3rem;
+  }
+
+  .segments i {
+    display: block;
+    height: 0.4rem;
+    border-radius: 999px;
+    background: var(--surface-sunken);
+    font-style: normal;
+  }
+
+  .segments i.done { background: var(--accent); }
+
+  .track-names {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 0.3rem;
+    margin-top: 0.5rem;
+    font-size: 0.62rem;
+    color: var(--ink-faint);
+    line-height: 1.3;
+  }
+
+  .track-names span { display: block; }
+  .track-names span.done { color: var(--accent); font-weight: 600; }
+
+  /* ---------- Sections ---------- */
+
+  section { padding: 2.5rem 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: none; }
+
+  .eyebrow {
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+
+  h2 {
+    font-weight: 800;
+    font-size: 1.7rem;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+    margin: 0 0 0.4rem;
+  }
+
+  .section-intro {
+    color: var(--ink-muted);
+    max-width: 38rem;
+    margin-bottom: 1.75rem;
+  }
+
+  h3 {
+    font-weight: 700;
+    font-size: 1.05rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    margin: 0 0 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  h3::before {
+    content: "";
+    width: 3px;
+    height: 1.05em;
+    background: var(--accent);
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .subgrid { display: grid; gap: 2rem; }
+  @media (min-width: 640px) { .subgrid.cols-2 { grid-template-columns: 1fr 1fr; } }
+
+  ul.check { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+
+  ul.check li {
+    position: relative;
+    padding-left: 1.4rem;
+    font-size: 0.95rem;
+    color: var(--ink);
+  }
+
+  ul.check li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.45em;
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 2px;
+    background: var(--good);
+  }
+
+  ul.check li .fine { display: block; color: var(--ink-muted); font-size: 0.85rem; margin-top: 0.1rem; }
+
+  /* verified strip */
+  .verified {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 0.6rem;
+    padding: 1.25rem 1.4rem;
+    margin-top: 1.75rem;
+  }
+
+  .verified h3 { margin-bottom: 0.9rem; }
+
+  .verified ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.5rem;
+    counter-reset: v;
+  }
+
+  .verified li {
+    counter-increment: v;
+    font-size: 0.9rem;
+    color: var(--ink-muted);
+    display: flex;
+    gap: 0.6rem;
+  }
+
+  .verified li::before {
+    content: counter(v);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--accent);
+    background: var(--accent-tint);
+    border-radius: 50%;
+    width: 1.3rem;
+    height: 1.3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 0.05rem;
+  }
+
+  /* credentials */
+  .creds {
+    margin-top: 1.75rem;
+    display: grid;
+    gap: 0.6rem;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  @media (max-width: 480px) { .creds { grid-template-columns: 1fr; } }
+
+  .cred-card {
+    background: var(--surface-sunken);
+    border-radius: 0.5rem;
+    padding: 0.9rem 1rem;
+  }
+
+  .cred-card .role {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin-bottom: 0.4rem;
+  }
+
+  .cred-card code {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.83rem;
+    color: var(--ink);
+  }
+
+  /* deferred list */
+  .deferred { display: grid; gap: 0.6rem; }
+
+  .deferred-row {
+    display: grid;
+    grid-template-columns: 2.75rem 1fr;
+    gap: 0.9rem;
+    align-items: baseline;
+    padding: 0.6rem 0;
+    border-bottom: 1px dashed var(--line);
+  }
+
+  .deferred-row:last-child { border-bottom: none; }
+
+  .deferred-row .num {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+  }
+
+  .deferred-row .name { font-weight: 600; color: var(--ink); font-size: 0.95rem; }
+  .deferred-row .what { color: var(--ink-muted); font-size: 0.88rem; }
+
+  /* open items */
+  .open-item {
+    background: var(--warn-tint);
+    border-radius: 0.5rem;
+    padding: 0.9rem 1.1rem;
+    margin-bottom: 0.6rem;
+    font-size: 0.9rem;
+  }
+
+  .open-item:last-child { margin-bottom: 0; }
+  .open-item strong { color: var(--warn); font-weight: 700; }
+
+  /* footer / next step */
+  .closing {
+    padding-top: 2.5rem;
+  }
+
+  .next-step {
+    background: var(--ink);
+    color: var(--bg);
+    border-radius: 0.75rem;
+    padding: 1.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .next-step .eyebrow { color: var(--accent-deep); }
+  .next-step h3 { color: var(--bg); }
+  .next-step h3::before { background: var(--accent); }
+  .next-step p { color: color-mix(in srgb, var(--bg) 75%, transparent); margin: 0; font-size: 0.92rem; }
+
+  .signoff {
+    margin-top: 2rem;
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+  }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="brandrow">
+      <span class="wordmark">Outdoor<span>Fix</span></span>
+      <span class="badge">Milestone 4 complete</span>
+    </div>
+    <h1>Equipment Tracking</h1>
+    <p class="subhead">Every machine in the fleet is now tracked by its serial number, from the moment it enters inventory to the day a customer owns it — with a full service history and a live view for the customer of the exact unit they hold.</p>
+    <div class="meta-row">
+      <span><strong>Prepared for</strong> Joel Stebbins</span>
+      <span><strong>Prepared by</strong> Hanzalah</span>
+      <span><strong>Date</strong> September 2, 2026</span>
+    </div>
+  </header>
+
+  <div class="track">
+    <div class="track-label">
+      <span class="label">Project timeline</span>
+      <span class="count">4 / 8 milestones</span>
+    </div>
+    <div class="segments">
+      <i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i></i><i></i><i></i><i></i>
+    </div>
+    <div class="track-names">
+      <span class="done">Setup</span>
+      <span class="done">Lease Engine</span>
+      <span class="done">Risk</span>
+      <span class="done">Equipment</span>
+      <span>Contracts</span>
+      <span>Admin UI</span>
+      <span>Accounting</span>
+      <span>QA &amp; Launch</span>
+    </div>
+  </div>
+
+  <section>
+    <p class="eyebrow">What shipped</p>
+    <h2>Serial number in, ownership out</h2>
+    <p class="section-intro">Milestone 4 is Phase 1 of equipment tracking: the simple tracking fields, the serial-number workflow, and a data model laid out so a GPS provider can be added later without rebuilding anything. Live GPS is Phase 2 and is deliberately not built — the client supplies the provider when that phase starts.</p>
+
+    <div class="subgrid cols-2">
+      <div>
+        <h3>Backend — Laravel API</h3>
+        <ul class="check">
+          <li>Serial-number inventory, fully managed
+            <span class="fine">Add, edit, view and remove units. Search matches serial number, model or VIN; the list filters by status and reports live counts across the fleet.</span>
+          </li>
+          <li>Assign and release — the link to a customer
+            <span class="fine">Assigning is the single point where a serial number becomes tied to a lease. It stamps the lease, marks the unit leased, and works out the expected ownership date from the lease term automatically.</span>
+          </li>
+          <li>Four-stage lifecycle
+            <span class="fine">In stock, leased, returned, or owned by the customer once the lease is paid off. A paid-off unit keeps its lease link so the history stays attached; a returned unit is detached and freed for the next customer.</span>
+          </li>
+          <li>Service history per unit
+            <span class="fine">Date, work performed, and the staff member who logged it — taken from the signed-in account rather than the form, so entries cannot be attributed to someone else.</span>
+          </li>
+          <li>Customer-facing view, read-only
+            <span class="fine">Scoped through the customer's own leases, so nobody can see another customer's serial numbers. Internal condition notes and GPS fields never leave the server.</span>
+          </li>
+          <li>Guard rails against bad data
+            <span class="fine">Duplicate serials refused; a unit already on a lease cannot be double-assigned or quietly switched; a unit with lease history cannot be deleted.</span>
+          </li>
+        </ul>
+      </div>
+      <div>
+        <h3>Frontend — Next.js</h3>
+        <ul class="check">
+          <li>Equipment section in the admin dashboard
+            <span class="fine">Fleet counters at the top, search by serial number, and status filters — leased, in stock, returned, owned.</span>
+          </li>
+          <li>Unit detail page
+            <span class="fine">Tracking fields, who currently holds the unit and on which lease, and the full service log with inline add.</span>
+          </li>
+          <li>Assign and release dialogs
+            <span class="fine">Assign offers only leases that have no unit on them; release asks what actually happened to the machine — returned, back in stock, or paid off.</span>
+          </li>
+          <li>My Equipment in the customer portal
+            <span class="fine">The customer sees their own machine: model, serial number, delivery date, expected ownership date, and when it was last serviced.</span>
+          </li>
+          <li>Dashboard panel now shows real data
+            <span class="fine">The equipment panel on the admin home screen held placeholder content; it now reads the live fleet.</span>
+          </li>
+          <li>Validation on every field
+            <span class="fine">Serial numbers, dates and notes are checked as you type and the save button stays disabled until the form is valid — the same behaviour as the customer forms, now applied across the dashboard.</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="verified">
+      <h3>Verified, not just built</h3>
+      <ol>
+        <li>A unit is added to inventory, assigned to a live lease, and the ownership date comes out correct from the lease term — a 24-month lease delivered 2 September 2026 returned 2 September 2028.</li>
+        <li>Search finds a machine by serial number alone; status filters and fleet counts match the database.</li>
+        <li>Every guard was tested and holds: duplicate serial refused, a leased unit cannot be reassigned or have its status edited behind the workflow, and a unit with lease history cannot be deleted.</li>
+        <li>An admin limited to equipment access can do the whole job; an admin without it is refused by the API itself, not merely hidden in the interface.</li>
+        <li>A customer is refused on every admin route, and sees only the machine on their own lease.</li>
+        <li>Service records are logged against the correct unit and attributed to the signed-in staff member.</li>
+      </ol>
+
+      <div class="creds">
+        <div class="cred-card">
+          <p class="role">Admin login</p>
+          <code>admin@outdoorfix.test</code>
+          <code>password</code>
+        </div>
+        <div class="cred-card">
+          <p class="role">Equipment-only admin</p>
+          <code>restricted.admin@outdoorfix.test</code>
+          <code>password</code>
+        </div>
+        <div class="cred-card">
+          <p class="role">Customer login</p>
+          <code>customer@outdoorfix.test</code>
+          <code>password</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Built for later</p>
+    <h2>Phase 2 GPS — the groundwork, not the feature</h2>
+    <p class="section-intro">The brief asked for the data model to be structured for a Phase 2 GPS provider. That structure is in place and costs nothing today.</p>
+
+    <div class="open-item"><strong>A device field on every unit.</strong> Each machine can hold a GPS device ID now, so units can be tagged as hardware is fitted — nothing reads it yet.</div>
+    <div class="open-item"><strong>A location history table, empty by design.</strong> Ready to receive location pings, geofence status and tamper alerts. Nothing writes to it in Phase 1, so it adds no weight to the system.</div>
+    <div class="open-item"><strong>No provider assumed.</strong> Whichever provider is chosen, it connects to the model already built rather than forcing a rebuild of equipment tracking.</div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Worth a decision</p>
+    <h2>One thing to settle before Milestone 6</h2>
+    <p class="section-intro">Found while testing this milestone end to end. It is not a fault in the work delivered — it is a question about how two earlier pieces should meet, and it needs your call rather than a guess.</p>
+
+    <div class="open-item"><strong>The application form creates its own machine.</strong> When an application is submitted, whatever make, model and serial were typed into the form become a brand-new equipment record, instead of picking a machine out of the inventory built in this milestone. Two consequences: the fleet gradually fills with placeholder entries when the serial field is left blank, and the assign step is bypassed because the lease already has a unit attached.</div>
+    <div class="open-item"><strong>Option A — pick from inventory.</strong> The application form offers the machines already in stock instead of typing a serial. Cleanest result: one record per real machine, and inventory always reflects reality. A little more work, as the form and the service behind it both change.</div>
+    <div class="open-item"><strong>Option B — a swap action.</strong> The form stays as it is, and the equipment screen gains a swap action that releases the placeholder and assigns the real machine. Faster to deliver, but it leaves a manual step for staff to remember.</div>
+    <div class="open-item"><strong>Recommendation.</strong> Option A, folded into Milestone 6 when the admin screens are being reworked anyway — no throwaway work, and staff never have to remember a cleanup step.</div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Not in this milestone</p>
+    <h2>Coming next, in order</h2>
+    <p class="section-intro">Scoped to later milestones by design, so each phase stays reviewable on its own.</p>
+
+    <div class="deferred">
+      <div class="deferred-row"><span class="num">05</span><div><div class="name">Contracts &amp; E-Signature</div><div class="what">In-platform signing, signed agreement storage, timestamping, and downloads for both admin and customer.</div></div></div>
+      <div class="deferred-row"><span class="num">06</span><div><div class="name">Admin Dashboard &amp; Roles</div><div class="what">Full review, override, and reporting views across every module.</div></div></div>
+      <div class="deferred-row"><span class="num">07</span><div><div class="name">Accounting Integration</div><div class="what">QuickBooks sync for payments, deposits, and reporting.</div></div></div>
+      <div class="deferred-row"><span class="num">08</span><div><div class="name">Testing, QA &amp; Launch</div><div class="what">End-to-end pass across every module, then handoff.</div></div></div>
+    </div>
+  </section>
+
+  <div class="closing">
+    <div class="next-step">
+      <p class="eyebrow">Next</p>
+      <h3>Milestone 5 — Contracts &amp; E-Signature</h3>
+      <p>Starts once this milestone is reviewed. The customer signs the lease agreement inside the portal instead of by email or on paper: a built-in signing flow, the signed agreement stored against the lease, a timestamp recording exactly when it was signed, and a download available to both the customer and the admin from that point on. It closes the loop that Milestones 2 to 4 opened — the lease is priced, the customer is verified, the machine is assigned, and this is the step that makes it binding.</p>
+    </div>
+    <p class="signoff">Outdoor Fix — Lease to Own Platform · Technical build log</p>
+  </div>
+
+</div>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { money } from "@/components/applications/wizard/types";
 import { CUSTOMER_NAME, getLease, SAMPLE_LEASES } from "@/lib/sample-lease";
+import { validateName } from "@/lib/validation";
 
 export default function SignLeaseAgreementPage() {
   const params = useParams<{ id: string }>();
@@ -14,7 +15,12 @@ export default function SignLeaseAgreementPage() {
   const [typedName, setTypedName] = useState("");
   const [signed, setSigned] = useState(lease.signed);
 
-  const canSign = agreed && typedName.trim().length > 2;
+  const [nameTouched, setNameTouched] = useState(false);
+
+  // Same name rule the customer forms use — this is the signature of record,
+  // so it has to read as a real legal name, not initials or a placeholder.
+  const nameError = validateName(typedName, "Full legal name");
+  const canSign = agreed && !nameError;
 
   return (
     <div className="space-y-6">
@@ -92,9 +98,15 @@ export default function SignLeaseAgreementPage() {
             <input
               value={typedName}
               onChange={(e) => setTypedName(e.target.value)}
+              onBlur={() => setNameTouched(true)}
               placeholder="Type your full legal name"
-              className="w-full border-b border-neutral-900 bg-transparent pb-2 text-center font-serif text-2xl italic text-neutral-700 placeholder:text-neutral-300 focus:outline-none"
+              aria-label="Full legal name"
+              aria-invalid={nameTouched && !!nameError}
+              className={`w-full border-b bg-transparent pb-2 text-center font-serif text-2xl italic text-neutral-700 placeholder:text-neutral-300 focus:outline-none ${
+                nameTouched && nameError ? "border-red-500" : "border-neutral-900"
+              }`}
             />
+            {nameTouched && nameError && <p className="mt-2 text-xs text-red-600">{nameError}</p>}
             <p className="mt-3 text-xs text-neutral-400">
               Typing your name above and clicking Sign constitutes your legal electronic signature.
             </p>

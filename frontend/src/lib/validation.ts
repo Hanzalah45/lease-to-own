@@ -311,17 +311,46 @@ export function validateIntegerInRange(
 export function validateMoney(
   value: string,
   label: string,
-  { required = true, max = 99999999.99 }: { required?: boolean; max?: number } = {},
+  {
+    required = true,
+    max = 99999999.99,
+    aboveZero = false,
+  }: { required?: boolean; max?: number; aboveZero?: boolean } = {},
 ): string | undefined {
   const v = value.trim();
   if (!v) return required ? `${label} is required.` : undefined;
   if (!/^\d+(\.\d{1,2})?$/.test(v)) return `${label} must be an amount like 250 or 250.00.`;
+  if (aboveZero && Number(v) <= 0) return `${label} must be greater than $0.`;
   if (Number(v) > max) return `${label} is too large.`;
   return undefined;
 }
 
-// Mirrors ApplicationController's `lease.promo_code => max:60`.
+/**
+ * A percentage typed as a plain number (8.25, not 0.0825). Four decimal places
+ * because the tax rate column stores decimal(6,4) once the API converts it.
+ */
+export function validatePercent(value: string, label: string, max = 100): string | undefined {
+  const v = value.trim();
+  if (!v) return `${label} is required.`;
+  if (!/^\d+(\.\d{1,4})?$/.test(v)) return `${label} must be a number like 8.25.`;
+  if (Number(v) > max) return `${label} cannot be more than ${max}.`;
+  return undefined;
+}
+
+/** Equipment model years — no machine predates this, and next year's models ship early. */
+export function validateYear(value: string, label = "Year"): string | undefined {
+  const v = value.trim();
+  if (!v) return `${label} is required.`;
+  if (!/^\d{4}$/.test(v)) return `${label} must be a 4-digit year.`;
+  const n = Number(v);
+  const max = new Date().getFullYear() + 1;
+  if (n < 1900 || n > max) return `${label} must be between 1900 and ${max}.`;
+  return undefined;
+}
+
+// Both mirror ApplicationController's own `max:60` rules.
 export const PROMO_CODE_MAX = 60;
+export const DRIVERS_LICENSE_MAX = 60;
 export const PROMO_CODE_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 export function validatePromoCode(value: string): string | undefined {

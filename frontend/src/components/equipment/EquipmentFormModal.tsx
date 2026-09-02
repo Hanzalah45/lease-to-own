@@ -99,11 +99,21 @@ export function EquipmentFormModal({
   if (vinErr) clientErrors.vin = vinErr;
   const notesErr = validateConditionNotes(form.condition_notes);
   if (notesErr) clientErrors.condition_notes = notesErr;
-  const deliveryErr = validateTrackingDate(form.delivery_date, "Delivery date");
+  // A unit still sitting in stock has not gone anywhere, so its dates are
+  // genuinely unknown — demanding them would force the admin to invent a
+  // value. The moment the status says the machine has been out to a customer,
+  // both dates are required and get the same treatment date of birth gets on
+  // the customer form: a red asterisk, an inline error, and a blocked save.
+  const hasLeftTheYard = form.status !== "in_stock";
+
+  const deliveryErr = validateTrackingDate(form.delivery_date, "Delivery date", {
+    required: hasLeftTheYard,
+  });
   if (deliveryErr) clientErrors.delivery_date = deliveryErr;
   const expectedErr = validateTrackingDate(
     form.expected_return_or_ownership_date,
     "Expected return / ownership date",
+    { required: hasLeftTheYard },
   );
   if (expectedErr) clientErrors.expected_return_or_ownership_date = expectedErr;
   const gpsErr = validateGpsDeviceId(form.gps_device_id);
@@ -254,7 +264,12 @@ export function EquipmentFormModal({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor="equipment-delivered" className={labelClass}>
-              Delivery Date
+              Delivery Date{" "}
+              {hasLeftTheYard ? (
+                <span className="text-red-600">*</span>
+              ) : (
+                <span className="font-normal text-neutral-400">(optional while in stock)</span>
+              )}
             </label>
             <input
               id="equipment-delivered"
@@ -271,7 +286,12 @@ export function EquipmentFormModal({
           </div>
           <div>
             <label htmlFor="equipment-expected" className={labelClass}>
-              Expected Return / Ownership
+              Expected Return / Ownership{" "}
+              {hasLeftTheYard ? (
+                <span className="text-red-600">*</span>
+              ) : (
+                <span className="font-normal text-neutral-400">(optional while in stock)</span>
+              )}
             </label>
             <input
               id="equipment-expected"
