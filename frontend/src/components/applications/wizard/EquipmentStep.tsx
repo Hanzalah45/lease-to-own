@@ -79,7 +79,7 @@ export function EquipmentStep({
             <TextInput
               value={state.serial}
               onChange={(v) => set("serial", v)}
-              placeholder="Type NA if not available yet"
+              placeholder="Type N/A if not available yet"
               hasError={!!err("serial")}
             />
           </Field>
