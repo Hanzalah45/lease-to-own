@@ -1,4 +1,13 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+/**
+ * Base URL of the Laravel API. Production builds get the live URL from
+ * .env.production (read by `next build`); the fallback below is only ever used
+ * by `next dev`, so running locally can never hit the live database by accident.
+ *
+ * Exported so every caller shares one definition — a second copy would silently
+ * keep pointing somewhere else the next time this changes.
+ */
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+
 
 export class ApiError extends Error {
   status: number;

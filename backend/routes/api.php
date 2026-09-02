@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\Admin\AdminUserController;
 use App\Http\Controllers\Api\Admin\ApplicationController as AdminApplicationController;
 use App\Http\Controllers\Api\Admin\ContractController as AdminContractController;
 use App\Http\Controllers\Api\Admin\CustomerController as AdminCustomerController;
+use App\Http\Controllers\Api\Admin\EquipmentServiceRecordController;
 use App\Http\Controllers\Api\Admin\EquipmentUnitController as AdminEquipmentUnitController;
 use App\Http\Controllers\Api\Admin\LeaseAgreementController as AdminLeaseAgreementController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
@@ -14,6 +15,7 @@ use App\Http\Controllers\Api\Auth\MeController;
 use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Customer\ApplicationController;
 use App\Http\Controllers\Api\Customer\ContractController;
+use App\Http\Controllers\Api\Customer\EquipmentController as CustomerEquipmentController;
 use App\Http\Controllers\Api\Customer\LeaseAgreementController;
 use App\Http\Controllers\Api\Customer\PaymentController;
 use App\Http\Controllers\Api\Customer\PlaidController;
@@ -51,6 +53,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('contracts', ContractController::class)->only(['index', 'show']);
         Route::apiResource('payments', PaymentController::class)->only(['index', 'show']);
 
+        // Read-only: the equipment on this customer's own leases.
+        Route::get('/equipment', [CustomerEquipmentController::class, 'index']);
+
         Route::post('/plaid/link-token', [PlaidController::class, 'linkToken']);
         Route::post('/plaid/exchange', [PlaidController::class, 'exchange']);
         Route::get('/plaid/status', [PlaidController::class, 'status']);
@@ -84,6 +89,17 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
         Route::middleware('permission:equipment_tracking')->group(function () {
+            // Declared before the resource routes so "assignable-leases" is not
+            // swallowed by the {equipmentUnit} wildcard.
+            Route::get('/equipment-units/assignable-leases', [AdminEquipmentUnitController::class, 'assignableLeases']);
+
+            Route::post('/equipment-units/{equipmentUnit}/assign', [AdminEquipmentUnitController::class, 'assign']);
+            Route::post('/equipment-units/{equipmentUnit}/release', [AdminEquipmentUnitController::class, 'release']);
+
+            Route::get('/equipment-units/{equipmentUnit}/service-records', [EquipmentServiceRecordController::class, 'index']);
+            Route::post('/equipment-units/{equipmentUnit}/service-records', [EquipmentServiceRecordController::class, 'store']);
+            Route::delete('/equipment-units/{equipmentUnit}/service-records/{serviceRecord}', [EquipmentServiceRecordController::class, 'destroy']);
+
             Route::apiResource('equipment-units', AdminEquipmentUnitController::class)
                 ->parameters(['equipment-units' => 'equipmentUnit']);
         });

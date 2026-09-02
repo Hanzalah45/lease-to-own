@@ -1,9 +1,10 @@
-import { apiFetch } from "@/lib/api";
+import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import type { WizardState } from "@/components/applications/wizard/types";
 import type { Application, ApplicationStatus } from "@/types/application";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+
+
 
 export async function listApplications(): Promise<Application[]> {
   const data = await apiFetch<{ data: Application[] }>("/admin/applications", { token: getToken() });

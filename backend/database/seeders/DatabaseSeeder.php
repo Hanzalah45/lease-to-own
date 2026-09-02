@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\AdminPermission;
 use App\Models\CustomerProfile;
+use App\Models\EquipmentUnit;
 use App\Models\User;
 use App\Notifications\AdminAccountCreatedNotification;
 use App\Notifications\NewCustomerRegisteredNotification;
@@ -61,6 +62,19 @@ class DatabaseSeeder extends Seeder
             'status' => 'active',
         ]);
         CustomerProfile::create(['user_id' => $customer->id]);
+
+        // Starter inventory so the equipment module has serial numbers to work
+        // with on a fresh install. All in stock — units become `leased` only by
+        // being assigned to a lease through the equipment endpoints.
+        foreach ([
+            ['model' => 'Worldlawn Diamondback 60"', 'serial_number' => 'AGZ3WA18973', 'condition_notes' => 'New / 2026'],
+            ['model' => 'Worldlawn Gator 34"', 'serial_number' => '202303U13213', 'condition_notes' => 'New / 2026'],
+            ['model' => 'Ferris IS3200Z', 'serial_number' => 'FRS220091', 'vin' => '1FRS220091X0042', 'condition_notes' => 'New / 2026'],
+            ['model' => 'Scag Turf Tiger', 'serial_number' => 'STT550112', 'condition_notes' => 'Used / 2024 — 320 hrs'],
+            ['model' => 'Exmark Lazer Z X-Series', 'serial_number' => 'EXM770233', 'condition_notes' => 'New / 2026'],
+        ] as $unit) {
+            EquipmentUnit::create($unit + ['status' => EquipmentUnit::STATUS_IN_STOCK]);
+        }
 
         // Seed a couple of real notifications (same classes the live triggers use)
         // so the notification feeds aren't empty on first login.

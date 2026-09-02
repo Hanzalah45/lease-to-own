@@ -10,6 +10,7 @@ import { listNotifications } from "@/lib/notifications";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import {
   BellIcon,
+  BriefcaseIcon,
   ChevronDownIcon,
   DollarIcon,
   DocumentIcon,
@@ -22,6 +23,7 @@ import {
 
 const NAV_ITEMS = [
   { label: "My Lease", href: "/customer/dashboard", icon: KeyIcon },
+  { label: "My Equipment", href: "/customer/equipment", icon: BriefcaseIcon },
   { label: "Payment", href: "/customer/payments", icon: DollarIcon },
   { label: "Contract", href: "/customer/contracts", icon: DocumentIcon },
   { label: "Account", href: "/customer/account", icon: UserIcon },

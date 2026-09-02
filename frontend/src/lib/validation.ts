@@ -145,3 +145,189 @@ export function validateDob(value: string): string | undefined {
   if (value < isoDateDaysAgo(365 * 120)) return "Enter a valid date of birth.";
   return undefined;
 }
+
+/* ----------------------------------------------------------------------------
+ * Equipment tracking (Milestone 4)
+ *
+ * Same principle as above: each rule only ever rejects a subset of what the
+ * API already accepts, so the form can never refuse something the backend
+ * would have stored. The backend caps most of these at `max:255` (the Laravel
+ * string default) — that is a storage artifact, so the real-world shape of
+ * the field is used here instead.
+ * ------------------------------------------------------------------------- */
+
+// Serial numbers are machine-stamped identifiers: letters, digits and the
+// separators manufacturers actually use. Spaces are excluded deliberately —
+// the whole module is keyed on this value, and a stray space makes a unit
+// impossible to find by search or match against a delivery note.
+export const SERIAL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+export const SERIAL_MIN = 3;
+// Longest real equipment serials (Deere, Kubota, Scag) run to ~17 characters;
+// 50 is generous headroom without allowing a pasted sentence.
+export const SERIAL_MAX = 50;
+
+// Model names are free text — they legitimately contain digits, quotes and
+// punctuation ('Worldlawn Diamondback 60"'), so only length is constrained.
+export const EQUIPMENT_MODEL_MIN = 2;
+export const EQUIPMENT_MODEL_MAX = 100;
+
+// Mowers and trailers do not all carry a 17-character road VIN, so this is a
+// permissive identifier check rather than an ISO 3779 VIN check: no spaces,
+// no punctuation beyond a hyphen.
+export const VIN_PATTERN = /^[A-Za-z0-9-]+$/;
+export const VIN_MIN = 5;
+export const VIN_MAX = 20;
+
+// Phase 2 placeholder. Provider device IDs are opaque tokens — accept the
+// characters they actually use, reject anything with whitespace in it.
+export const GPS_DEVICE_ID_PATTERN = /^[A-Za-z0-9._:-]+$/;
+export const GPS_DEVICE_ID_MIN = 3;
+export const GPS_DEVICE_ID_MAX = 64;
+
+// Mirrors EquipmentServiceRecordController's `max:2000` exactly.
+export const SERVICE_DESCRIPTION_MIN = 3;
+export const SERVICE_DESCRIPTION_MAX = 2000;
+
+// A tracking date before this is a typo (a mistyped year), not a real record.
+export const EARLIEST_TRACKING_DATE = "2000-01-01";
+// Deliveries can be scheduled ahead, but not by decades — another typo guard.
+export const MAX_FUTURE_TRACKING_DAYS = 365 * 5;
+
+export function isoDateDaysAhead(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+export function validateSerialNumber(value: string): string | undefined {
+  const v = value.trim();
+  if (!v) return "Serial number is required.";
+  if (v.length < SERIAL_MIN) return `Serial number must be at least ${SERIAL_MIN} characters.`;
+  if (v.length > SERIAL_MAX) return `Serial number must be ${SERIAL_MAX} characters or fewer.`;
+  if (!SERIAL_PATTERN.test(v)) {
+    return "Serial number can only contain letters, digits and - . _ / (no spaces).";
+  }
+  return undefined;
+}
+
+export function validateEquipmentModel(value: string): string | undefined {
+  const v = value.trim();
+  if (!v) return "Model is required.";
+  if (v.length < EQUIPMENT_MODEL_MIN) return `Model must be at least ${EQUIPMENT_MODEL_MIN} characters.`;
+  if (v.length > EQUIPMENT_MODEL_MAX) return `Model must be ${EQUIPMENT_MODEL_MAX} characters or fewer.`;
+  return undefined;
+}
+
+export function validateVin(value: string): string | undefined {
+  const v = value.trim();
+  if (!v) return undefined; // optional
+  if (v.length < VIN_MIN) return `VIN must be at least ${VIN_MIN} characters.`;
+  if (v.length > VIN_MAX) return `VIN must be ${VIN_MAX} characters or fewer.`;
+  if (!VIN_PATTERN.test(v)) return "VIN can only contain letters, digits and hyphens (no spaces).";
+  return undefined;
+}
+
+export function validateGpsDeviceId(value: string): string | undefined {
+  const v = value.trim();
+  if (!v) return undefined; // optional — Phase 2 field
+  if (v.length < GPS_DEVICE_ID_MIN) return `Device ID must be at least ${GPS_DEVICE_ID_MIN} characters.`;
+  if (v.length > GPS_DEVICE_ID_MAX) return `Device ID must be ${GPS_DEVICE_ID_MAX} characters or fewer.`;
+  if (!GPS_DEVICE_ID_PATTERN.test(v)) {
+    return "Device ID can only contain letters, digits and - . _ : (no spaces).";
+  }
+  return undefined;
+}
+
+export function validateConditionNotes(value: string): string | undefined {
+  if (value.length > NOTES_MAX) return `Condition notes must be ${NOTES_MAX} characters or fewer.`;
+  return undefined;
+}
+
+export function validateServiceDescription(value: string): string | undefined {
+  const v = value.trim();
+  if (!v) return "Describe what was done.";
+  if (v.length < SERVICE_DESCRIPTION_MIN) {
+    return `Description must be at least ${SERVICE_DESCRIPTION_MIN} characters.`;
+  }
+  if (v.length > SERVICE_DESCRIPTION_MAX) {
+    return `Description must be ${SERVICE_DESCRIPTION_MAX} characters or fewer.`;
+  }
+  return undefined;
+}
+
+/**
+ * Shared sanity check for the equipment date fields. `allowFuture` is off for
+ * dates that record something that already happened (a service visit), and on
+ * for dates that can legitimately be scheduled ahead (delivery, ownership).
+ */
+export function validateTrackingDate(
+  value: string,
+  label: string,
+  { required = false, allowFuture = true }: { required?: boolean; allowFuture?: boolean } = {},
+): string | undefined {
+  if (!value) return required ? `${label} is required.` : undefined;
+  if (Number.isNaN(new Date(value).getTime())) return `Enter a valid ${label.toLowerCase()}.`;
+  if (value < EARLIEST_TRACKING_DATE) return `${label} looks wrong — check the year.`;
+  if (!allowFuture && value > isoDateDaysAgo(0)) return `${label} cannot be in the future.`;
+  if (allowFuture && value > isoDateDaysAhead(MAX_FUTURE_TRACKING_DAYS)) {
+    return `${label} is too far in the future.`;
+  }
+  return undefined;
+}
+
+/* ----------------------------------------------------------------------------
+ * Generic helpers, shared by the inline detail editors
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Wraps a required-by-default rule so a blank value passes. Use for fields the
+ * API stores as nullable — an admin must be able to save a card that has an
+ * address line still empty, but a non-empty one still has to be well formed.
+ */
+export function optional(rule: (value: string) => string | undefined) {
+  return (value: string): string | undefined => (value.trim() ? rule(value) : undefined);
+}
+
+export function validateIntegerInRange(
+  value: string,
+  label: string,
+  min: number,
+  max: number,
+): string | undefined {
+  const v = value.trim();
+  if (!v) return `${label} is required.`;
+  if (!/^\d+$/.test(v)) return `${label} must be a whole number.`;
+  const n = Number(v);
+  if (n < min || n > max) return `${label} must be between ${min} and ${max}.`;
+  return undefined;
+}
+
+/**
+ * Money fields are posted as `numeric, min:0`. Two decimal places is the cap
+ * the DB columns actually store (decimal(10,2)) — more would be silently
+ * rounded server-side, so reject it here instead of saving something the
+ * admin did not type.
+ */
+export function validateMoney(
+  value: string,
+  label: string,
+  { required = true, max = 99999999.99 }: { required?: boolean; max?: number } = {},
+): string | undefined {
+  const v = value.trim();
+  if (!v) return required ? `${label} is required.` : undefined;
+  if (!/^\d+(\.\d{1,2})?$/.test(v)) return `${label} must be an amount like 250 or 250.00.`;
+  if (Number(v) > max) return `${label} is too large.`;
+  return undefined;
+}
+
+// Mirrors ApplicationController's `lease.promo_code => max:60`.
+export const PROMO_CODE_MAX = 60;
+export const PROMO_CODE_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+export function validatePromoCode(value: string): string | undefined {
+  const v = value.trim();
+  if (!v) return undefined; // optional
+  if (v.length > PROMO_CODE_MAX) return `Promo code must be ${PROMO_CODE_MAX} characters or fewer.`;
+  if (!PROMO_CODE_PATTERN.test(v)) return "Promo code can only contain letters, digits, hyphens and underscores.";
+  return undefined;
+}

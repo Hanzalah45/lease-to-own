@@ -20,6 +20,22 @@ import { downloadIdDocument, getApplication, resolveRiskRedFlag, updateApplicati
 import { money } from "@/components/applications/wizard/types";
 import { ApiError } from "@/lib/api";
 import {
+  NOTES_MAX,
+  PROMO_CODE_MAX,
+  optional,
+  validateCity,
+  validateConditionNotes,
+  validateEquipmentModel,
+  validateIntegerInRange,
+  validateMoney,
+  validateNotes,
+  validatePromoCode,
+  validateSerialNumber,
+  validateState,
+  validateStreet,
+  validateZip,
+} from "@/lib/validation";
+import {
   AlertCircleIcon,
   CheckCircleIcon,
   ClockIcon,
@@ -256,11 +272,26 @@ export default function ApplicationDetailPage() {
   const salesTaxPct = lease ? (num(lease.sales_tax_rate) * 100).toFixed(2) : "0";
   const totalDue = lease ? num(lease.total_monthly_payment) + num(lease.security_deposit) : 0;
 
+  // Every rule below comes from @/lib/validation, so a field is checked the
+  // same way here as in the customer and equipment modals. The profile columns
+  // are nullable in the API, so those are wrapped in optional() — a blank stays
+  // saveable, a filled-in value still has to be well formed.
   const CUSTOMER_FIELDS: EditField[] = [
-    { key: "address_line_1", label: "Mailing address", value: profile?.address_line_1 ?? "" },
-    { key: "city", label: "City", value: profile?.city ?? "" },
-    { key: "state", label: "State", value: profile?.state ?? "" },
-    { key: "zip", label: "Zip", value: profile?.zip ?? "" },
+    {
+      key: "address_line_1",
+      label: "Mailing address",
+      value: profile?.address_line_1 ?? "",
+      validate: optional(validateStreet),
+    },
+    { key: "city", label: "City", value: profile?.city ?? "", validate: optional(validateCity) },
+    {
+      key: "state",
+      label: "State",
+      value: profile?.state ?? "",
+      // Case-insensitive: existing rows may hold "tx", and the API only caps length.
+      validate: optional((v) => validateState(v.toUpperCase())),
+    },
+    { key: "zip", label: "Zip", value: profile?.zip ?? "", validate: optional(validateZip) },
     {
       key: "residence_type",
       label: "Residence type",
@@ -272,19 +303,60 @@ export default function ApplicationDetailPage() {
 
   const LEASE_FIELDS: EditField[] = lease
     ? [
-        { key: "term_months", label: "Term (months)", value: String(lease.term_months) },
-        { key: "monthly_rental_payment", label: "Monthly rental", value: lease.monthly_rental_payment },
-        { key: "security_deposit", label: "Security deposit", value: lease.security_deposit },
+        {
+          key: "term_months",
+          label: "Term (months)",
+          value: String(lease.term_months),
+          // Matches ApplicationController's `integer, min:1, max:120`.
+          validate: (v) => validateIntegerInRange(v, "Term", 1, 120),
+        },
+        {
+          key: "monthly_rental_payment",
+          label: "Monthly rental",
+          value: lease.monthly_rental_payment,
+          validate: (v) => validateMoney(v, "Monthly rental"),
+        },
+        {
+          key: "security_deposit",
+          label: "Security deposit",
+          value: lease.security_deposit,
+          validate: (v) => validateMoney(v, "Security deposit"),
+        },
         { key: "autopay_enabled", label: "AutoPay", value: lease.autopay_enabled ? "Yes" : "No", type: "select", options: ["Yes", "No"] },
         { key: "ldw_selected", label: "LDW selected", value: lease.ldw_selected ? "Yes" : "No", type: "select", options: ["Yes", "No"] },
-        { key: "promo_code", label: "Promo code", value: lease.promo_code ?? "" },
+        {
+          key: "promo_code",
+          label: "Promo code",
+          value: lease.promo_code ?? "",
+          validate: validatePromoCode,
+          maxLength: PROMO_CODE_MAX,
+        },
       ]
     : [];
 
+  // Same rules as the equipment module's own Add/Edit modal — this card writes
+  // to the very same columns.
   const EQUIPMENT_FIELDS: EditField[] = [
-    { key: "model", label: "Make / model", value: equipment?.model ?? "" },
-    { key: "serial_number", label: "Serial # / VIN", value: equipment?.serial_number ?? "" },
-    { key: "condition_notes", label: "Condition notes", value: equipment?.condition_notes ?? "" , type: "textarea"},
+    {
+      key: "model",
+      label: "Make / model",
+      value: equipment?.model ?? "",
+      validate: validateEquipmentModel,
+    },
+    {
+      key: "serial_number",
+      label: "Serial # / VIN",
+      value: equipment?.serial_number ?? "",
+      validate: validateSerialNumber,
+    },
+    {
+      key: "condition_notes",
+      label: "Condition notes",
+      value: equipment?.condition_notes ?? "",
+      type: "textarea",
+      validate: validateConditionNotes,
+      maxLength: NOTES_MAX,
+    },
   ];
 
   const RISK_FIELDS: EditField[] = [
@@ -292,7 +364,14 @@ export default function ApplicationDetailPage() {
     { key: "employment_verification_status", label: "Employment verification", value: risk?.employment_verification_status ?? "pending", type: "select", options: ["pending", "verified", "failed"] },
     { key: "bank_verification_status", label: "Bank verification (Plaid)", value: risk?.bank_verification_status ?? "pending", type: "select", options: ["pending", "verified", "failed"] },
     { key: "background_check_status", label: "Background check", value: risk?.background_check_status ?? "pending", type: "select", options: ["pending", "clear", "flagged"] },
-    { key: "background_check_notes", label: "Notes", value: risk?.background_check_notes ?? "", type: "textarea" },
+    {
+      key: "background_check_notes",
+      label: "Notes",
+      value: risk?.background_check_notes ?? "",
+      type: "textarea",
+      validate: validateNotes,
+      maxLength: NOTES_MAX,
+    },
   ];
 
   return (

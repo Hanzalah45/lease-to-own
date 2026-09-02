@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ...except the production API URL, which the Vercel build needs and is not secret.
+!.env.production

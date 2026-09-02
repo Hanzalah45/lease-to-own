@@ -10,6 +10,7 @@ import { listNotifications } from "@/lib/notifications";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import {
   BellIcon,
+  BriefcaseIcon,
   ChevronDownIcon,
   DocumentIcon,
   HomeIcon,
@@ -27,6 +28,9 @@ const BASE_NAV_ITEMS = [
 
 // Requires the application_review permission (or full/super-admin access).
 const CUSTOMERS_ITEM = { label: "Customer Accounts", href: "/admin/customers", icon: UserIcon };
+
+// Requires the equipment_tracking permission (or full/super-admin access).
+const EQUIPMENT_ITEM = { label: "Equipment", href: "/admin/equipment", icon: BriefcaseIcon };
 
 // Managing admin accounts is super_admin only.
 const SUPER_ADMIN_ONLY_ITEM = { label: "Admin Accounts", href: "/admin/admin-users", icon: SettingsIcon };
@@ -56,10 +60,12 @@ export function AdminTopNav() {
   const restrictions = user?.admin_permissions?.map((p) => p.permission) ?? [];
   const hasFullAccess = isSuperAdmin || restrictions.length === 0;
   const canSeeCustomers = hasFullAccess || restrictions.includes("application_review");
+  const canSeeEquipment = hasFullAccess || restrictions.includes("equipment_tracking");
 
   const navItems = [
     ...BASE_NAV_ITEMS,
     ...(canSeeCustomers ? [CUSTOMERS_ITEM] : []),
+    ...(canSeeEquipment ? [EQUIPMENT_ITEM] : []),
     ...(isSuperAdmin ? [SUPER_ADMIN_ONLY_ITEM] : []),
   ];
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);

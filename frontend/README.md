@@ -22,6 +22,11 @@ npm run dev
 Requires the backend running at the URL in `NEXT_PUBLIC_API_URL` (defaults
 to `http://localhost:8000/api`).
 
+Production builds read the live API URL from `.env.production`, which
+`next dev` ignores — so running locally never talks to the live database.
+To point a local run somewhere else, create `.env.local` (gitignored) with
+your own `NEXT_PUBLIC_API_URL`.
+
 ## Structure
 
 ```

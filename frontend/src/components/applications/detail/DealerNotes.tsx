@@ -2,15 +2,24 @@
 
 import { useState } from "react";
 import { SectionHeading } from "@/components/dashboard/SectionHeading";
+import { NOTES_MAX, validateNotes } from "@/lib/validation";
 import type { DealerNote } from "@/components/applications/detail/types";
 
 export function DealerNotes({ notes, onAdd }: { notes: DealerNote[]; onAdd: (text: string) => void }) {
   const [draft, setDraft] = useState("");
+  const [touched, setTouched] = useState(false);
+
+  const draftError = draft.trim() ? validateNotes(draft) : undefined;
+  const canPost = draft.trim().length > 0 && !draftError;
 
   function submit() {
-    if (!draft.trim()) return;
+    if (!canPost) {
+      setTouched(true);
+      return;
+    }
     onAdd(draft.trim());
     setDraft("");
+    setTouched(false);
   }
 
   return (
@@ -38,13 +47,25 @@ export function DealerNotes({ notes, onAdd }: { notes: DealerNote[]; onAdd: (tex
       <textarea
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => setTouched(true)}
         rows={2}
         placeholder="Write a note..."
-        className="mt-4 w-full rounded-md border border-neutral-200 px-3 py-2 text-sm placeholder:text-neutral-400 focus:border-red-300 focus:outline-none"
+        aria-label="Write a note"
+        aria-invalid={touched && !!draftError}
+        className={`mt-4 w-full rounded-md border px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none ${
+          touched && draftError ? "border-red-400 focus:border-red-500" : "border-neutral-200 focus:border-red-300"
+        }`}
       />
+      <div className="mt-1 flex items-start justify-between gap-2">
+        {touched && draftError ? <p className="text-xs text-red-600">{draftError}</p> : <span />}
+        <p className={`shrink-0 text-xs ${draft.length > NOTES_MAX ? "text-red-600" : "text-neutral-400"}`}>
+          {draft.length}/{NOTES_MAX}
+        </p>
+      </div>
       <button
         onClick={submit}
-        className="font-heading mt-2 w-full rounded-md bg-red-600 py-2 text-sm font-bold text-white hover:bg-red-700"
+        disabled={!canPost}
+        className="font-heading mt-2 w-full rounded-md bg-red-600 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
       >
         Post Note
       </button>

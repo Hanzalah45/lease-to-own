@@ -22,3 +22,6 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Deployment archive built for the Hostinger upload — never commit (36 MB).
+backend.zip
