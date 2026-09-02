@@ -12,6 +12,13 @@ export type ApplicationStatus =
   | "declined"
   | "withdrawn";
 
+export interface ApplicationDealerNote {
+  id: number;
+  text: string;
+  created_at: string;
+  author: { id: number; name: string };
+}
+
 export interface Application {
   id: number;
   customer_id: number;
@@ -26,4 +33,5 @@ export interface Application {
   updated_at: string;
   customer?: AuthUser;
   lease_agreement?: LeaseAgreement | null;
+  dealer_notes?: ApplicationDealerNote[];
 }

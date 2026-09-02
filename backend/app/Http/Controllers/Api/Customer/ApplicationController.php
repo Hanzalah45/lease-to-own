@@ -40,7 +40,7 @@ class ApplicationController extends Controller
             'make' => ['nullable', 'string', 'max:255'],
             'model' => ['nullable', 'string', 'max:255'],
             'serial' => ['nullable', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
+            'description' => ['nullable', 'string', 'max:1000'],
             'ldw' => ['nullable', 'in:yes,no'],
             'cash_price' => ['required', 'numeric', 'min:0'],
             'year' => ['nullable', 'string', 'max:10'],

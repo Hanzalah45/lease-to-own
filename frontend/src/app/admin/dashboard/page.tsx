@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { AccessTabs, type DashboardTabKey } from "@/components/dashboard/AccessTabs";
 import { FundedVolumeChart, type WeekPoint } from "@/components/dashboard/FundedVolumeChart";
@@ -13,6 +13,11 @@ import { RiskAssessmentPanel } from "@/components/dashboard/panels/RiskAssessmen
 import { ContractGenerationPanel } from "@/components/dashboard/panels/ContractGenerationPanel";
 import { EquipmentTrackingPanel } from "@/components/dashboard/panels/EquipmentTrackingPanel";
 import { PaymentTrackingPanel } from "@/components/dashboard/panels/PaymentTrackingPanel";
+import { listApplications } from "@/lib/applications";
+import { listPayments } from "@/lib/payments";
+import { money } from "@/components/applications/wizard/types";
+import type { Application, ApplicationStatus } from "@/types/application";
+import type { Payment } from "@/types/lease-agreement";
 import {
   AlertCircleIcon,
   ArrowUpRightIcon,
@@ -24,24 +29,17 @@ import {
   PlusIcon,
 } from "@/components/icons";
 
-const SAMPLE_CHART: WeekPoint[] = [
-  { label: "Wk 1", units: 3 },
-  { label: "Wk 2", units: 5 },
-  { label: "Wk 3", units: 4 },
-  { label: "Wk 4", units: 6 },
-  { label: "Wk 5", units: 6 },
-  { label: "Wk 6", units: 7 },
-  { label: "Wk 7", units: 7 },
-  { label: "Wk 8", units: 0, current: true, target: 8 },
-];
-
-const SAMPLE_ACTIVITY: ActivityRow[] = [
-  { id: 1, status: "funded", customer: "Robert Kirkland", location: "Conroe, TX", price: "$7,399", updated: "8/6/2026" },
-  { id: 2, status: "funded", customer: "Loyd Ellis", location: "Houston, TX", price: "$6,000", updated: "8/5/2026" },
-  { id: 3, status: "funded", customer: "Cindy Robles", location: "Cypress, TX", price: "$7,499", updated: "8/5/2026" },
-  { id: 4, status: "needs_info", customer: "Brandon Palmer", location: "Dayton, TX", price: "$5,763", updated: "8/5/2026" },
-  { id: 5, status: "funded", customer: "Ruben Pena", location: "Willis, TX", price: "$8,990", updated: "8/3/2026" },
-];
+const ACTIVITY_STATUS: Record<ApplicationStatus, ActivityRow["status"]> = {
+  submitted: "submitted",
+  under_review: "under_review",
+  needs_info: "needs_info",
+  approved: "approved",
+  completed: "funded",
+  processed: "funded",
+  funded_paid: "funded",
+  declined: "declined",
+  withdrawn: "withdrawn",
+};
 
 function greeting() {
   const hour = new Date().getHours();
@@ -64,6 +62,65 @@ export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState<DashboardTabKey>("owner");
   const [zip, setZip] = useState("");
   const router = useRouter();
+
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+
+  useEffect(() => {
+    if (activeTab !== "owner") return;
+    listApplications().then(setApplications).catch(() => setApplications([]));
+    listPayments().then(setPayments).catch(() => setPayments([]));
+  }, [activeTab]);
+
+  const needsInfo = applications.filter((a) => a.status === "needs_info");
+  const approved = applications.filter((a) => a.status === "approved");
+  const fundedApplications = applications.filter((a) => a.status === "funded_paid");
+  const fundedVolume = fundedApplications.reduce((sum, a) => sum + Number(a.lease_agreement?.cash_price ?? 0), 0);
+
+  const paidPayments = payments.filter((p) => p.status === "paid" && p.paid_date);
+  const now = new Date();
+  const collectedLast4Weeks = paidPayments
+    .filter((p) => now.getTime() - new Date(p.paid_date!).getTime() < 28 * 24 * 60 * 60 * 1000)
+    .reduce((sum, p) => sum + Number(p.amount), 0);
+  const collectedPrior4Weeks = paidPayments
+    .filter((p) => {
+      const diff = now.getTime() - new Date(p.paid_date!).getTime();
+      return diff >= 28 * 24 * 60 * 60 * 1000 && diff < 56 * 24 * 60 * 60 * 1000;
+    })
+    .reduce((sum, p) => sum + Number(p.amount), 0);
+  const volumeChangeLabel =
+    collectedPrior4Weeks === 0
+      ? collectedLast4Weeks > 0
+        ? "New activity vs prior 4 wks"
+        : "No activity in the last 8 weeks"
+      : `${(((collectedLast4Weeks - collectedPrior4Weeks) / collectedPrior4Weeks) * 100).toFixed(0)}% vs prior 4 wks`;
+
+  const weeklyChart: WeekPoint[] = Array.from({ length: 8 }, (_, i) => {
+    const weeksAgo = 7 - i;
+    const weekStart = new Date(now);
+    weekStart.setDate(weekStart.getDate() - weeksAgo * 7 - now.getDay());
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    const units = paidPayments.filter((p) => {
+      const d = new Date(p.paid_date!);
+      return d >= weekStart && d < weekEnd;
+    }).length;
+    return { label: `Wk ${i + 1}`, units };
+  });
+
+  const recentActivity: ActivityRow[] = [...applications]
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    .slice(0, 8)
+    .map((a) => ({
+      id: a.id,
+      status: ACTIVITY_STATUS[a.status],
+      customer: a.customer?.name ?? "—",
+      location: a.customer?.customer_profile?.city
+        ? `${a.customer.customer_profile.city}, ${a.customer.customer_profile.state ?? ""}`
+        : "—",
+      price: a.lease_agreement ? money(Number(a.lease_agreement.cash_price)) : "—",
+      updated: new Date(a.updated_at).toLocaleDateString(),
+    }));
 
   function startApplication() {
     const query = zip.trim() ? `?zip=${encodeURIComponent(zip.trim())}` : "";
@@ -144,40 +201,44 @@ export default function AdminDashboardPage() {
 
       {activeTab === "owner" && (
         <>
-          <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-            <div>
-              <p className="text-sm text-neutral-800">
-                <span className="font-bold text-amber-700">3 applications</span> have items to complete
-              </p>
-              <p className="text-xs text-neutral-500">
-                Some may already be approved but still need something from you.
-              </p>
+          {needsInfo.length > 0 && (
+            <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <div>
+                <p className="text-sm text-neutral-800">
+                  <span className="font-bold text-amber-700">
+                    {needsInfo.length} application{needsInfo.length === 1 ? "" : "s"}
+                  </span>{" "}
+                  have items to complete
+                </p>
+                <p className="text-xs text-neutral-500">
+                  Some may already be approved but still need something from you.
+                </p>
+              </div>
+              <Link
+                href="/admin/applications"
+                className="font-heading self-start whitespace-nowrap rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
+              >
+                View Pending
+              </Link>
             </div>
-            <Link
-              href="/admin/applications"
-              className="font-heading self-start whitespace-nowrap rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
-            >
-              View Pending
-            </Link>
-          </div>
+          )}
 
           <div className="grid grid-cols-1 divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
             <StatCard
               label="Total applications"
-              value="50"
-              note="+12% this month"
-              noteTone="positive"
+              value={String(applications.length)}
+              note={`${fundedApplications.length} funded to date`}
+              noteTone="neutral"
               icon={BriefcaseIcon}
               iconBg="#FCE7EE"
               iconColor="#E11D48"
-              noteIcon={ArrowUpRightIcon}
               viewHref="/admin/applications"
             />
             <StatCard
               label="Needs info"
-              value="3"
-              note="Requires immediate action"
-              noteTone="warning"
+              value={String(needsInfo.length)}
+              note={needsInfo.length > 0 ? "Requires immediate action" : "Nothing pending"}
+              noteTone={needsInfo.length > 0 ? "warning" : "positive"}
               icon={AlertCircleIcon}
               iconBg="#FEF3C7"
               iconColor="#D97706"
@@ -186,7 +247,7 @@ export default function AdminDashboardPage() {
             />
             <StatCard
               label="Approved"
-              value="6"
+              value={String(approved.length)}
               note="Ready for funding"
               noteTone="positive"
               icon={CheckCircleIcon}
@@ -197,9 +258,9 @@ export default function AdminDashboardPage() {
             />
             <StatCard
               label="Funded volume"
-              value="$44K"
-              note="+44% vs last 4 weeks"
-              noteTone="positive"
+              value={money(fundedVolume)}
+              note={volumeChangeLabel}
+              noteTone={collectedLast4Weeks >= collectedPrior4Weeks ? "positive" : "warning"}
               icon={CreditCardIcon}
               iconBg="#DBEAFE"
               iconColor="#2563EB"
@@ -208,9 +269,16 @@ export default function AdminDashboardPage() {
             />
           </div>
 
-          <FundedVolumeChart data={SAMPLE_CHART} total={44} growthLabel="+44% vs prior 4 wks" />
+          <FundedVolumeChart
+            data={weeklyChart}
+            total={paidPayments.length}
+            growthLabel={volumeChangeLabel}
+            title="Payments collected"
+            unitLabel="payments collected"
+            tooltipVerb="Collected"
+          />
 
-          <RecentActivityTable rows={SAMPLE_ACTIVITY} />
+          <RecentActivityTable rows={recentActivity} />
         </>
       )}
 

@@ -25,3 +25,10 @@ export async function markNotificationRead(id: string): Promise<void> {
 export async function markAllNotificationsRead(): Promise<void> {
   await apiFetch<void>("/notifications/read-all", { method: "POST", token: getToken() });
 }
+
+export async function updateNotificationPreferences(prefs: {
+  payment_reminder_emails: boolean;
+  status_change_emails: boolean;
+}): Promise<void> {
+  await apiFetch<void>("/customer/notification-preferences", { method: "PUT", token: getToken(), body: prefs });
+}

@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\PlaidClient;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 
@@ -32,5 +33,13 @@ class AppServiceProvider extends ServiceProvider
         // columns overflow that on hosts like this. 191 chars keeps every
         // indexed string column under the limit regardless of server config.
         Schema::defaultStringLength(191);
+
+        // The API is a separate origin from the frontend, so the reset link
+        // in the email must point at the Next.js app, not this Laravel app.
+        ResetPassword::createUrlUsing(function ($notifiable, string $token) {
+            $email = urlencode($notifiable->getEmailForPasswordReset());
+
+            return config('app.frontend_url') . "/reset-password?token={$token}&email={$email}";
+        });
     }
 }

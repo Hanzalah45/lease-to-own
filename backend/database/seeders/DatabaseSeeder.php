@@ -22,12 +22,17 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // Every seeded account uses "password123", not "password" — the
+        // self-service password change (validatePassword) requires a letter
+        // + a number, so a plain-letters seed value could never be reached
+        // again through that form once someone changed it away and back.
+
         // Super admin — the client. Unrestricted by definition; not created
         // through the admin-users endpoint, only ever seeded/bootstrapped.
         User::create([
             'name' => 'Joel Stebbins',
             'email' => 'superadmin@outdoorfix.test',
-            'password' => Hash::make('password'),
+            'password' => Hash::make('password123'),
             'role' => User::ROLE_SUPER_ADMIN,
             'status' => 'active',
         ]);
@@ -36,7 +41,7 @@ class DatabaseSeeder extends Seeder
         User::create([
             'name' => 'Outdoor Fix Admin',
             'email' => 'admin@outdoorfix.test',
-            'password' => Hash::make('password'),
+            'password' => Hash::make('password123'),
             'role' => User::ROLE_ADMIN,
             'status' => 'active',
         ]);
@@ -45,7 +50,7 @@ class DatabaseSeeder extends Seeder
         $restrictedAdmin = User::create([
             'name' => 'Equipment & Payments Admin',
             'email' => 'restricted.admin@outdoorfix.test',
-            'password' => Hash::make('password'),
+            'password' => Hash::make('password123'),
             'role' => User::ROLE_ADMIN,
             'status' => 'active',
         ]);
@@ -57,7 +62,7 @@ class DatabaseSeeder extends Seeder
         $customer = User::create([
             'name' => 'Test Customer',
             'email' => 'customer@outdoorfix.test',
-            'password' => Hash::make('password'),
+            'password' => Hash::make('password123'),
             'role' => User::ROLE_CUSTOMER,
             'status' => 'active',
         ]);

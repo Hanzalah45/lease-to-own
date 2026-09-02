@@ -4,7 +4,15 @@ import { SectionHeading } from "@/components/dashboard/SectionHeading";
 import { CheckIcon } from "@/components/icons";
 import type { ChecklistItem } from "@/components/applications/detail/types";
 
-export function ChecklistCard({ items, onToggle }: { items: ChecklistItem[]; onToggle: (index: number) => void }) {
+export function ChecklistCard({
+  items,
+  onToggle,
+  disabled = false,
+}: {
+  items: ChecklistItem[];
+  onToggle: (index: number) => void;
+  disabled?: boolean;
+}) {
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-5">
       <SectionHeading title="Checklist" />
@@ -13,7 +21,8 @@ export function ChecklistCard({ items, onToggle }: { items: ChecklistItem[]; onT
           <button
             key={item.label}
             onClick={() => onToggle(i)}
-            className="flex w-full items-center gap-2.5 text-left text-sm text-neutral-700"
+            disabled={disabled}
+            className="flex w-full items-center gap-2.5 text-left text-sm text-neutral-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <span
               className={`flex h-4 w-4 shrink-0 items-center justify-center rounded ${

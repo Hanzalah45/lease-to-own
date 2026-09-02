@@ -42,7 +42,7 @@ export function DetailCard({
           </div>
         ))}
       </div>
-      {note && <p className="mt-3 text-xs text-neutral-500">{note}</p>}
+      {note && <div className="mt-3 text-xs text-neutral-500">{note}</div>}
     </div>
   );
 }

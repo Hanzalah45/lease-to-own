@@ -5,18 +5,27 @@ import { SectionHeading } from "@/components/dashboard/SectionHeading";
 import { NOTES_MAX, validateNotes } from "@/lib/validation";
 import type { DealerNote } from "@/components/applications/detail/types";
 
-export function DealerNotes({ notes, onAdd }: { notes: DealerNote[]; onAdd: (text: string) => void }) {
+export function DealerNotes({
+  notes,
+  onAdd,
+  posting = false,
+}: {
+  notes: DealerNote[];
+  onAdd: (text: string) => void;
+  posting?: boolean;
+}) {
   const [draft, setDraft] = useState("");
   const [touched, setTouched] = useState(false);
 
   const draftError = draft.trim() ? validateNotes(draft) : undefined;
-  const canPost = draft.trim().length > 0 && !draftError;
+  const canPost = draft.trim().length > 0 && !draftError && !posting;
 
   function submit() {
-    if (!canPost) {
+    if (draft.trim().length === 0 || draftError) {
       setTouched(true);
       return;
     }
+    if (!canPost) return;
     onAdd(draft.trim());
     setDraft("");
     setTouched(false);
@@ -64,10 +73,10 @@ export function DealerNotes({ notes, onAdd }: { notes: DealerNote[]; onAdd: (tex
       </div>
       <button
         onClick={submit}
-        disabled={!canPost}
+        disabled={draft.trim().length === 0 || !!draftError || posting}
         className="font-heading mt-2 w-full rounded-md bg-red-600 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Post Note
+        {posting ? "Posting…" : "Post Note"}
       </button>
     </div>
   );

@@ -2,12 +2,29 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { LeaseAgreementDocument } from "@/components/contracts/LeaseAgreementDocument";
-import { getLease, SAMPLE_LEASES, CUSTOMER_NAME } from "@/lib/sample-lease";
+import { getMyLeaseAgreement } from "@/lib/lease-agreements";
+import { ApiError } from "@/lib/api";
+import type { LeaseAgreement } from "@/types/lease-agreement";
 
 export default function CustomerLeaseDocumentPage() {
   const params = useParams<{ id: string }>();
-  const lease = getLease(Number(params.id)) ?? SAMPLE_LEASES[0];
+  const { user } = useAuth();
+  const [lease, setLease] = useState<LeaseAgreement | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getMyLeaseAgreement(params.id)
+      .then(setLease)
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load this contract."))
+      .finally(() => setLoading(false));
+  }, [params.id]);
+
+  const profile = user?.customer_profile;
+  const address = [profile?.address_line_1, profile?.city, profile?.state, profile?.zip].filter(Boolean).join(", ");
 
   return (
     <div className="space-y-6">
@@ -30,7 +47,7 @@ export default function CustomerLeaseDocumentPage() {
               Lease Purchase Agreement
             </h1>
             <p className="text-sm text-neutral-400">
-              {CUSTOMER_NAME} · {lease.equipment}
+              {user?.name} · {lease?.equipment_unit?.model ?? "…"}
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -51,7 +68,9 @@ export default function CustomerLeaseDocumentPage() {
         </div>
       </div>
 
-      <LeaseAgreementDocument lease={lease} />
+      {loading && <p className="text-sm text-neutral-500">Loading…</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      {lease && user && <LeaseAgreementDocument lease={lease} customerName={user.name} customerAddress={address} />}
     </div>
   );
 }

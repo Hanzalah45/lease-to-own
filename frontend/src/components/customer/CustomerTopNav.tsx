@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { logout } from "@/lib/auth";
 import { listNotifications } from "@/lib/notifications";
 import { useClickOutside } from "@/hooks/useClickOutside";
+import { Avatar } from "@/components/account/Avatar";
 import {
   BellIcon,
   BriefcaseIcon,
@@ -107,9 +108,7 @@ export function CustomerTopNav() {
               onClick={() => setMenuOpen((v) => !v)}
               className="font-heading flex items-center gap-2 rounded-md bg-neutral-900 px-2.5 py-2 text-sm font-semibold text-white hover:bg-neutral-800"
             >
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">
-                {name.slice(0, 2).toUpperCase()}
-              </span>
+              <Avatar name={name} url={user?.avatar_url} size={24} />
               <span className="max-w-[10rem] truncate">{name}</span>
               <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
             </button>
@@ -138,9 +137,7 @@ export function CustomerTopNav() {
 
       {mobileOpen && (
         <div className="space-y-1 border-t border-neutral-800 px-4 py-3 sm:px-8 md:hidden">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">
-            {name.slice(0, 2).toUpperCase()}
-          </span>
+          <Avatar name={name} url={user?.avatar_url} size={24} />
           <p className="font-heading px-1 py-1 text-sm font-semibold text-white">{name}</p>
 
           {NAV_ITEMS.map((item) => {

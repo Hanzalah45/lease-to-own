@@ -1,26 +1,64 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import { money } from "@/components/applications/wizard/types";
-import { CUSTOMER_NAME, getLease, SAMPLE_LEASES } from "@/lib/sample-lease";
+import { getMyLeaseAgreement } from "@/lib/lease-agreements";
+import { signLease } from "@/lib/contracts";
+import { ApiError } from "@/lib/api";
 import { validateName } from "@/lib/validation";
+import type { LeaseAgreement } from "@/types/lease-agreement";
+
+function num(value: string | number | null | undefined): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
 
 export default function SignLeaseAgreementPage() {
   const params = useParams<{ id: string }>();
-  const lease = getLease(Number(params.id)) ?? SAMPLE_LEASES[0];
+  const { user } = useAuth();
+  const [lease, setLease] = useState<LeaseAgreement | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [agreed, setAgreed] = useState(false);
   const [typedName, setTypedName] = useState("");
-  const [signed, setSigned] = useState(lease.signed);
-
   const [nameTouched, setNameTouched] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [signError, setSignError] = useState<string | null>(null);
 
-  // Same name rule the customer forms use — this is the signature of record,
-  // so it has to read as a real legal name, not initials or a placeholder.
+  useEffect(() => {
+    getMyLeaseAgreement(params.id)
+      .then(setLease)
+      .catch((err) => setLoadError(err instanceof ApiError ? err.message : "Could not load this lease."))
+      .finally(() => setLoading(false));
+  }, [params.id]);
+
   const nameError = validateName(typedName, "Full legal name");
-  const canSign = agreed && !nameError;
+  const canSign = agreed && !nameError && !signing;
+
+  async function handleSign() {
+    if (!lease) return;
+    setSigning(true);
+    setSignError(null);
+    try {
+      await signLease(lease.id);
+      setLease(await getMyLeaseAgreement(lease.id));
+    } catch (err) {
+      setSignError(err instanceof ApiError ? err.message : "Could not sign the agreement. Please try again.");
+    } finally {
+      setSigning(false);
+    }
+  }
+
+  if (loading) return <p className="text-sm text-neutral-500">Loading…</p>;
+  if (loadError || !lease) return <p className="text-sm text-red-600">{loadError ?? "Lease not found."}</p>;
+
+  const totalMonthly = num(lease.total_monthly_payment);
+  const totalDueToday = num(lease.security_deposit) + totalMonthly;
+  const signed = !!lease.contract;
 
   return (
     <div className="space-y-6">
@@ -42,23 +80,23 @@ export default function SignLeaseAgreementPage() {
         <div className="space-y-2.5 text-sm">
           <div className="flex items-center justify-between border-b border-neutral-100 py-1">
             <span className="text-neutral-500">Customer</span>
-            <span className="font-semibold text-neutral-900">{CUSTOMER_NAME}</span>
+            <span className="font-semibold text-neutral-900">{user?.name}</span>
           </div>
           <div className="flex items-center justify-between border-b border-neutral-100 py-1">
             <span className="text-neutral-500">Equipment</span>
-            <span className="font-semibold text-neutral-900">{lease.equipment}</span>
+            <span className="font-semibold text-neutral-900">{lease.equipment_unit?.model ?? "—"}</span>
           </div>
           <div className="flex items-center justify-between border-b border-neutral-100 py-1">
             <span className="text-neutral-500">Term</span>
-            <span className="font-semibold text-neutral-900">{lease.term} months</span>
+            <span className="font-semibold text-neutral-900">{lease.term_months} months</span>
           </div>
           <div className="flex items-center justify-between border-b border-neutral-100 py-1">
             <span className="text-neutral-500">Total monthly payment</span>
-            <span className="font-semibold text-neutral-900">{money(lease.totalMonthly)}</span>
+            <span className="font-semibold text-neutral-900">{money(totalMonthly)}</span>
           </div>
           <div className="flex items-center justify-between py-1">
             <span className="text-neutral-500">Total due today</span>
-            <span className="font-semibold text-neutral-900">{money(lease.totalDue)}</span>
+            <span className="font-semibold text-neutral-900">{money(totalDueToday)}</span>
           </div>
         </div>
       </div>
@@ -67,7 +105,7 @@ export default function SignLeaseAgreementPage() {
         <div className="rounded-xl border border-green-200 bg-green-50 p-5">
           <p className="text-sm font-bold text-green-700">Signed &amp; legally valid</p>
           <p className="mt-1 text-sm text-neutral-600">
-            Signed by {CUSTOMER_NAME} on {lease.signedAt || "just now"}.
+            Signed by {user?.name} on {new Date(lease.contract!.signed_at).toLocaleString()}.
           </p>
           <Link
             href={`/customer/contracts/${lease.id}/document`}
@@ -112,12 +150,14 @@ export default function SignLeaseAgreementPage() {
             </p>
           </div>
 
+          {signError && <p className="mt-3 text-sm text-red-600">{signError}</p>}
+
           <button
-            onClick={() => setSigned(true)}
+            onClick={handleSign}
             disabled={!canSign}
             className="font-heading mt-4 w-full rounded-md bg-red-600 py-3 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Sign &amp; Complete →
+            {signing ? "Signing…" : "Sign & Complete →"}
           </button>
         </div>
       )}

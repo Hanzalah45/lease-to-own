@@ -9,6 +9,15 @@ export interface EquipmentUnit {
   delivery_date: string | null;
   expected_return_or_ownership_date: string | null;
   status: "in_stock" | "leased" | "returned" | "owned_by_customer";
+  service_records_count?: number;
+}
+
+export interface Contract {
+  id: number;
+  lease_agreement_id: number;
+  signer_user_id: number;
+  version: number;
+  signed_at: string;
 }
 
 export interface Payment {
@@ -19,6 +28,12 @@ export interface Payment {
   paid_date: string | null;
   method: "ach" | "card" | "cash" | "other" | null;
   status: "pending" | "paid" | "failed" | "refunded";
+  lease_agreement?: {
+    id: number;
+    application_id: number;
+    autopay_enabled: boolean;
+    customer?: { id: number; name: string; email: string };
+  };
 }
 
 export interface LeaseAgreement {
@@ -48,6 +63,7 @@ export interface LeaseAgreement {
   customer?: { id: number; name: string; email: string };
   equipment_unit?: EquipmentUnit | null;
   payments?: Payment[];
+  contract?: Contract | null;
   /** Server-computed — see LeaseEngine on the backend. */
   sales_tax_amount: number;
   total_monthly_payment: number;

@@ -98,6 +98,60 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   }
 }
 
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>("/auth/forgot-password", {
+    method: "POST",
+    body: { email },
+  });
+}
+
+export async function resetPassword(payload: {
+  email: string;
+  token: string;
+  password: string;
+  password_confirmation: string;
+}): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>("/auth/reset-password", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function updateMyProfile(payload: {
+  name?: string;
+  email?: string;
+  phone?: string | null;
+  password?: string;
+  password_confirmation?: string;
+  current_password?: string;
+}): Promise<AuthUser> {
+  const data = await apiFetch<{ user: AuthUser }>("/me", {
+    method: "PUT",
+    token: getToken(),
+    body: payload,
+  });
+  return data.user;
+}
+
+export async function updateMyAvatar(file: File): Promise<AuthUser> {
+  const form = new FormData();
+  form.append("avatar", file);
+  const data = await apiFetch<{ user: AuthUser }>("/me/avatar", {
+    method: "POST",
+    token: getToken(),
+    body: form,
+  });
+  return data.user;
+}
+
+export async function removeMyAvatar(): Promise<AuthUser> {
+  const data = await apiFetch<{ user: AuthUser }>("/me/avatar", {
+    method: "DELETE",
+    token: getToken(),
+  });
+  return data.user;
+}
+
 export function dashboardPathForRole(role: UserRole): string {
   switch (role) {
     case "customer":

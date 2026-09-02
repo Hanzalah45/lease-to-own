@@ -38,6 +38,8 @@ export default function AdminApplicationsPage() {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "super_admin";
   const restrictions = user?.admin_permissions?.map((p) => p.permission) ?? [];
+  // Mirrors User::hasAdminPermission() on the backend — an admin with no
+  // restriction rows has everything; adding rows narrows them to those areas.
   const canReview = isSuperAdmin || restrictions.length === 0 || restrictions.includes("application_review");
 
   const [rows, setRows] = useState<Application[]>([]);
@@ -48,12 +50,16 @@ export default function AdminApplicationsPage() {
   const [actingId, setActingId] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!canReview) return;
     listApplications()
       .then(setRows)
       .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load applications."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [canReview]);
 
+  // Every hook must run above this line, in the same order, on every render —
+  // an early return placed between hook calls throws "Rendered fewer hooks
+  // than expected" the moment canReview flips (Rules of Hooks).
   const filtered = useMemo(() => {
     return rows.filter((row) => {
       const matchesFilter = activeFilter === "all" || row.status === activeFilter;
@@ -64,6 +70,18 @@ export default function AdminApplicationsPage() {
       return matchesFilter && matchesSearch;
     });
   }, [rows, activeFilter, search]);
+
+  if (!canReview) {
+    return (
+      <div className="space-y-3">
+        <h1 className="text-2xl font-bold uppercase tracking-tight">Applications</h1>
+        <p className="max-w-prose text-sm text-neutral-500">
+          Your admin account is restricted and does not include application review. Ask a super admin to add the
+          Application Review permission to your account.
+        </p>
+      </div>
+    );
+  }
 
   async function decide(id: number, next: "approved" | "declined") {
     setActingId(id);

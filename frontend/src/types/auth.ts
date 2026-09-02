@@ -36,6 +36,8 @@ export interface CustomerProfile {
   employer_phone: string | null;
   monthly_income: string | null;
   bank_verified_at: string | null;
+  payment_reminder_emails: boolean;
+  status_change_emails: boolean;
 }
 
 export interface AuthUser {
@@ -43,8 +45,10 @@ export interface AuthUser {
   name: string;
   email: string;
   phone: string | null;
+  avatar_url: string | null;
   role: UserRole;
   status: UserStatus;
+  created_at?: string;
   customer_profile?: CustomerProfile | null;
   admin_permissions?: AdminPermission[];
   // Present when the backend eager-loads it (e.g. application/customer detail endpoints).

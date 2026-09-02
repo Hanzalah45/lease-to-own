@@ -8,10 +8,12 @@ import { useAuth } from "@/context/AuthContext";
 import { logout } from "@/lib/auth";
 import { listNotifications } from "@/lib/notifications";
 import { useClickOutside } from "@/hooks/useClickOutside";
+import { Avatar } from "@/components/account/Avatar";
 import {
   BellIcon,
   BriefcaseIcon,
   ChevronDownIcon,
+  CreditCardIcon,
   DocumentIcon,
   HomeIcon,
   LogOutIcon,
@@ -21,16 +23,18 @@ import {
   XIcon,
 } from "@/components/icons";
 
-const BASE_NAV_ITEMS = [
-  { label: "Dashboard", href: "/admin/dashboard", icon: HomeIcon },
-  { label: "My Applications", href: "/admin/applications", icon: DocumentIcon },
-];
+const BASE_NAV_ITEMS = [{ label: "Dashboard", href: "/admin/dashboard", icon: HomeIcon }];
 
-// Requires the application_review permission (or full/super-admin access).
+// Both require the application_review permission (or full/super-admin access)
+// — same gate the backend puts on the applications and customers resources.
+const APPLICATIONS_ITEM = { label: "My Applications", href: "/admin/applications", icon: DocumentIcon };
 const CUSTOMERS_ITEM = { label: "Customer Accounts", href: "/admin/customers", icon: UserIcon };
 
 // Requires the equipment_tracking permission (or full/super-admin access).
 const EQUIPMENT_ITEM = { label: "Equipment", href: "/admin/equipment", icon: BriefcaseIcon };
+
+// Requires the payment_tracking permission (or full/super-admin access).
+const PAYMENTS_ITEM = { label: "Payments", href: "/admin/payments", icon: CreditCardIcon };
 
 // Managing admin accounts is super_admin only.
 const SUPER_ADMIN_ONLY_ITEM = { label: "Admin Accounts", href: "/admin/admin-users", icon: SettingsIcon };
@@ -61,11 +65,13 @@ export function AdminTopNav() {
   const hasFullAccess = isSuperAdmin || restrictions.length === 0;
   const canSeeCustomers = hasFullAccess || restrictions.includes("application_review");
   const canSeeEquipment = hasFullAccess || restrictions.includes("equipment_tracking");
+  const canSeePayments = hasFullAccess || restrictions.includes("payment_tracking");
 
   const navItems = [
     ...BASE_NAV_ITEMS,
-    ...(canSeeCustomers ? [CUSTOMERS_ITEM] : []),
+    ...(canSeeCustomers ? [APPLICATIONS_ITEM, CUSTOMERS_ITEM] : []),
     ...(canSeeEquipment ? [EQUIPMENT_ITEM] : []),
+    ...(canSeePayments ? [PAYMENTS_ITEM] : []),
     ...(isSuperAdmin ? [SUPER_ADMIN_ONLY_ITEM] : []),
   ];
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
@@ -126,9 +132,7 @@ export function AdminTopNav() {
               onClick={() => setMenuOpen((v) => !v)}
               className="font-heading flex items-center gap-2 rounded-md bg-neutral-900 px-2.5 py-2 text-sm font-semibold text-white hover:bg-neutral-800"
             >
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">
-                {adminName.slice(0, 2).toUpperCase()}
-              </span>
+              <Avatar name={adminName} url={user?.avatar_url} size={24} />
               <span className="flex flex-col items-start leading-tight">
                 <span className="max-w-[10rem] truncate">{adminName}</span>
                 {isSuperAdmin && (
@@ -140,6 +144,14 @@ export function AdminTopNav() {
 
             {menuOpen && (
               <div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-md border border-neutral-200 bg-white py-1 shadow-lg">
+                <Link
+                  href="/admin/account"
+                  onClick={() => setMenuOpen(false)}
+                  className="font-heading flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+                >
+                  <UserIcon className="h-4 w-4 text-neutral-400" />
+                  My Account
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="font-heading flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
@@ -163,9 +175,7 @@ export function AdminTopNav() {
 
       {mobileOpen && (
         <div className="space-y-1 border-t border-neutral-800 px-4 py-3 sm:px-8 md:hidden">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white">
-            {adminName.slice(0, 2).toUpperCase()}
-          </span>
+          <Avatar name={adminName} url={user?.avatar_url} size={24} />
           <p className="font-heading px-1 py-1 text-sm font-semibold text-white">
             {adminName}
             {isSuperAdmin && <span className="ml-2 text-[10px] uppercase tracking-wide text-red-500">Super admin</span>}
@@ -190,6 +200,19 @@ export function AdminTopNav() {
               </Link>
             );
           })}
+
+          <Link
+            href="/admin/account"
+            onClick={() => setMobileOpen(false)}
+            className={`font-heading flex items-center gap-2 rounded-md border-b-[3px] px-3 py-2 text-sm font-semibold ${
+              isActive("/admin/account")
+                ? "border-red-500 bg-red-950/60 text-white"
+                : "border-transparent text-neutral-400 hover:border-red-500/60 hover:bg-red-950/30 hover:text-white"
+            }`}
+          >
+            <UserIcon className={`h-4 w-4 ${isActive("/admin/account") ? "text-red-500" : "text-neutral-500"}`} />
+            My Account
+          </Link>
 
           <button
             onClick={handleLogout}

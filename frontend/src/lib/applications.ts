@@ -1,7 +1,7 @@
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import type { WizardState } from "@/components/applications/wizard/types";
-import type { Application, ApplicationStatus } from "@/types/application";
+import type { Application, ApplicationDealerNote, ApplicationStatus } from "@/types/application";
 
 
 
@@ -21,6 +21,15 @@ export async function resolveRiskRedFlag(riskProfileId: number, redFlagId: numbe
     method: "PATCH",
     token: getToken(),
   });
+}
+
+export async function addDealerNote(applicationId: number, text: string): Promise<ApplicationDealerNote> {
+  const data = await apiFetch<{ data: ApplicationDealerNote }>(`/admin/applications/${applicationId}/dealer-notes`, {
+    method: "POST",
+    token: getToken(),
+    body: { text },
+  });
+  return data.data;
 }
 
 /** Maps the wizard's local field names onto the API's snake_case contract, including the ID document file. */
@@ -100,6 +109,8 @@ export async function createMyApplication(state: WizardState): Promise<Applicati
 export interface ApplicationUpdatePayload {
   status?: ApplicationStatus;
   status_notes?: string | null;
+  signature_received?: boolean;
+  deposit_received?: boolean;
   lease?: Partial<{
     term_months: number;
     monthly_rental_payment: number;

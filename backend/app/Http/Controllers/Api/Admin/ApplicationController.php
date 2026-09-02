@@ -58,7 +58,7 @@ class ApplicationController extends Controller
             'make' => ['nullable', 'string', 'max:255'],
             'model' => ['nullable', 'string', 'max:255'],
             'serial' => ['nullable', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
+            'description' => ['nullable', 'string', 'max:1000'],
             'ldw' => ['nullable', 'in:yes,no'],
             'cash_price' => ['required', 'numeric', 'min:0'],
             'year' => ['nullable', 'string', 'max:10'],
@@ -94,6 +94,8 @@ class ApplicationController extends Controller
         $data = $request->validate([
             'status' => ['sometimes', Rule::in(Application::ALL_STATUSES)],
             'status_notes' => ['sometimes', 'nullable', 'string'],
+            'signature_received' => ['sometimes', 'boolean'],
+            'deposit_received' => ['sometimes', 'boolean'],
             'lease' => ['sometimes', 'array'],
             'lease.term_months' => ['sometimes', 'integer', 'min:1', 'max:120'],
             'lease.monthly_rental_payment' => ['sometimes', 'numeric', 'min:0'],
@@ -138,6 +140,13 @@ class ApplicationController extends Controller
             }
 
             $application->customer->notify(new ApplicationStatusChangedNotification($application->fresh()));
+        }
+
+        if (array_key_exists('signature_received', $data) || array_key_exists('deposit_received', $data)) {
+            $application->update(array_filter([
+                'signature_received' => $data['signature_received'] ?? null,
+                'deposit_received' => $data['deposit_received'] ?? null,
+            ], fn ($v) => $v !== null));
         }
 
         if ($lease = $application->leaseAgreement) {
@@ -195,9 +204,10 @@ class ApplicationController extends Controller
             'customer.customerProfile',
             'customer.riskProfile.redFlags',
             'reviewedBy:id,name',
-            'leaseAgreement.equipmentUnit',
+            'leaseAgreement.equipmentUnit' => fn ($query) => $query->withCount('serviceRecords'),
             'leaseAgreement.payments',
             'leaseAgreement.contract',
+            'dealerNotes.author:id,name',
         ]);
 
         $payload = $application->toArray();

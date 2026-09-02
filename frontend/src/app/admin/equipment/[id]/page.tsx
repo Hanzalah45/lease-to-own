@@ -12,6 +12,7 @@ import {
   getEquipmentUnit,
 } from "@/lib/equipment";
 import { StatusTag } from "@/components/dashboard/StatusTag";
+import { Modal } from "@/components/ui/Modal";
 import { AssignUnitModal } from "@/components/equipment/AssignUnitModal";
 import { EquipmentFormModal } from "@/components/equipment/EquipmentFormModal";
 import { ReleaseUnitModal } from "@/components/equipment/ReleaseUnitModal";
@@ -169,7 +170,7 @@ export default function AdminEquipmentDetailPage() {
               <Row
                 label="Lease"
                 value={
-                  <Link href={`/admin/lease-agreements`} className="font-semibold text-red-600 hover:underline">
+                  <Link href={`/admin/applications/${lease.application_id}`} className="font-semibold text-red-600 hover:underline">
                     #{lease.id}
                   </Link>
                 }
@@ -252,6 +253,8 @@ function ServiceLog({ unit, onChanged }: { unit: EquipmentUnit; onChanged: () =>
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState<{ id: number; description: string } | null>(null);
+  const [deletingBusy, setDeletingBusy] = useState(false);
 
   // A service record documents work already done, so a future date is always
   // a typo — hence allowFuture: false, unlike the delivery/ownership dates.
@@ -291,13 +294,18 @@ function ServiceLog({ unit, onChanged }: { unit: EquipmentUnit; onChanged: () =>
     }
   }
 
-  async function handleDelete(recordId: number) {
+  async function confirmDelete() {
+    if (!deleting) return;
     setError(null);
+    setDeletingBusy(true);
     try {
-      await deleteServiceRecord(unit.id, recordId);
+      await deleteServiceRecord(unit.id, deleting.id);
+      setDeleting(null);
       onChanged();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not delete this record.");
+    } finally {
+      setDeletingBusy(false);
     }
   }
 
@@ -392,7 +400,7 @@ function ServiceLog({ unit, onChanged }: { unit: EquipmentUnit; onChanged: () =>
                 <td className="py-2.5 text-neutral-500">{record.performed_by_name ?? "—"}</td>
                 <td className="py-2.5 text-right">
                   <button
-                    onClick={() => handleDelete(record.id)}
+                    onClick={() => setDeleting({ id: record.id, description: record.description })}
                     title="Delete record"
                     className="rounded p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-600"
                   >
@@ -411,6 +419,34 @@ function ServiceLog({ unit, onChanged }: { unit: EquipmentUnit; onChanged: () =>
           </tbody>
         </table>
       </div>
+
+      {deleting && (
+        <Modal title="Delete service record" onClose={() => setDeleting(null)} maxWidthClassName="max-w-sm">
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-600">
+              Remove &ldquo;<span className="font-medium text-neutral-900">{deleting.description}</span>&rdquo; from
+              this unit&apos;s service log? This can&apos;t be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleting(null)}
+                disabled={deletingBusy}
+                className="font-heading rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deletingBusy}
+                className="font-heading flex items-center gap-1.5 rounded-md bg-red-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                <TrashIcon className="h-4 w-4" />
+                {deletingBusy ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

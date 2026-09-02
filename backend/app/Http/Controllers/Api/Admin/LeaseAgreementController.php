@@ -11,7 +11,7 @@ class LeaseAgreementController extends Controller
 {
     public function index()
     {
-        $leases = LeaseAgreement::with(['customer:id,name,email', 'equipmentUnit'])->latest()->get();
+        $leases = LeaseAgreement::with(['customer:id,name,email', 'equipmentUnit', 'contract'])->latest()->get();
 
         return response()->json(['data' => $leases->map(fn ($lease) => $this->present($lease))]);
     }

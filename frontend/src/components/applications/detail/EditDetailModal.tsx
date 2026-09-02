@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
+import { ApiError } from "@/lib/api";
 
 export interface EditField {
   key: string;
@@ -34,13 +35,15 @@ export function EditDetailModal({
 }: {
   title: string;
   fields: EditField[];
-  onSave: (values: Record<string, string>) => void;
+  onSave: (values: Record<string, string>) => Promise<unknown>;
   onClose: () => void;
 }) {
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(fields.map((f) => [f.key, f.value]))
   );
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function set(key: string, value: string) {
     setValues((v) => ({ ...v, [key]: value }));
@@ -62,14 +65,23 @@ export function EditDetailModal({
     return touched[key] ? errors[key] : undefined;
   }
 
-  function submit() {
+  async function submit() {
     if (!isValid) {
       // Reveal every problem at once rather than one blur at a time.
       setTouched(Object.fromEntries(fields.map((f) => [f.key, true])));
       return;
     }
-    onSave(values);
-    onClose();
+    if (submitting) return;
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSave(values);
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not save changes.");
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -139,19 +151,22 @@ export function EditDetailModal({
           );
         })}
 
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
         <div className="flex gap-3 pt-2">
           <button
             onClick={onClose}
-            className="font-heading flex-1 rounded-md border border-neutral-200 py-2.5 text-sm font-bold text-neutral-700 hover:bg-neutral-50"
+            disabled={submitting}
+            className="font-heading flex-1 rounded-md border border-neutral-200 py-2.5 text-sm font-bold text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={submit}
-            disabled={!isValid}
+            disabled={!isValid || submitting}
             className="font-heading flex-1 rounded-md bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Save Changes
+            {submitting ? "Saving…" : "Save Changes"}
           </button>
         </div>
       </div>

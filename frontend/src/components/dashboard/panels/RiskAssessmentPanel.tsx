@@ -1,60 +1,100 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { DataTable, type DataTableColumn } from "@/components/dashboard/DataTable";
-import { InertLink } from "@/components/dashboard/InertLink";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { StatusTag } from "@/components/dashboard/StatusTag";
+import { listRiskProfiles } from "@/lib/risk-profiles";
+import { ApiError } from "@/lib/api";
+import type { RiskProfile } from "@/types/risk-profile";
 
-interface RiskRow {
-  id: number;
-  risk: "borderline" | "high" | "verifying";
-  customer: string;
-  location: string;
-  reason: string;
-  since: string;
+function pct(value: number, total: number): number {
+  return total === 0 ? 0 : Math.round((value / total) * 100);
 }
 
-const RISK_STYLE: Record<RiskRow["risk"], { color: string; label: string }> = {
-  borderline: { color: "#D97706", label: "Borderline" },
-  high: { color: "#DC2626", label: "High" },
-  verifying: { color: "#2563EB", label: "Verifying" },
-};
-
-const ROWS: RiskRow[] = [
-  { id: 1, risk: "borderline", customer: "Brandon Palmer", location: "Dayton, TX", reason: "Address could not be verified", since: "8/5/2026" },
-  { id: 2, risk: "high", customer: "Brett Deyo", location: "Wylie, TX", reason: "Prior LTO default on background check", since: "7/31/2026" },
-  { id: 3, risk: "verifying", customer: "Kirk Austin", location: "Bayton, TX", reason: "Bank verification (Plaid) in progress", since: "8/3/2026" },
-];
-
-const COLUMNS: DataTableColumn<RiskRow>[] = [
-  {
-    key: "risk",
-    header: "Risk",
-    render: (r) => <StatusTag color={RISK_STYLE[r.risk].color} label={RISK_STYLE[r.risk].label} />,
-  },
-  {
-    key: "customer",
-    header: "Customer",
-    render: (r) => (
-      <>
-        <p className="font-medium text-neutral-900">{r.customer}</p>
-        <p className="text-xs text-neutral-400">{r.location}</p>
-      </>
-    ),
-  },
-  { key: "reason", header: "Flag reason", render: (r) => <span className="text-neutral-700">{r.reason}</span> },
-  { key: "since", header: "Since", render: (r) => <span className="text-neutral-500">{r.since}</span> },
-  { key: "action", header: "", render: () => <InertLink className="text-sm">Review →</InertLink> },
-];
+function flagReason(profile: RiskProfile): string {
+  if (profile.landlord_contact_required) return profile.landlord_contact_reason ?? "Landlord contact required";
+  if (profile.background_check_status === "flagged") return profile.background_check_notes ?? "Background check flagged";
+  if (profile.bank_verification_status !== "verified") return "Bank verification (Plaid) pending";
+  if (profile.identity_verification_status !== "verified") return "Identity verification pending";
+  if (profile.employment_verification_status !== "verified") return "Employment verification pending";
+  return "Under review";
+}
 
 export function RiskAssessmentPanel() {
+  const [profiles, setProfiles] = useState<RiskProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    listRiskProfiles()
+      .then(setProfiles)
+      .catch((err) =>
+        setError(
+          err instanceof ApiError && err.status === 403
+            ? "Your admin account does not include risk assessment."
+            : "Could not load risk profiles.",
+        ),
+      )
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <p className="py-6 text-sm text-neutral-500">Loading risk profiles…</p>;
+  if (error) return <p className="py-6 text-sm text-neutral-500">{error}</p>;
+
+  const openRedFlags = profiles.reduce((sum, p) => sum + (p.red_flags?.filter((f) => !f.resolved).length ?? 0), 0);
+  const bankPending = profiles.filter((p) => p.bank_verification_status === "pending").length;
+  const backgroundPending = profiles.filter((p) => p.background_check_status === "pending").length;
+  const clear = profiles.filter((p) => p.background_check_status === "clear").length;
+  const total = profiles.length;
+
+  const attention = profiles
+    .filter((p) => p.background_check_status === "flagged" || p.landlord_contact_required || (p.red_flags?.some((f) => !f.resolved) ?? false))
+    .slice(0, 6);
+
+  const columns: DataTableColumn<RiskProfile>[] = [
+    {
+      key: "risk",
+      header: "Risk",
+      render: (r) =>
+        r.background_check_status === "flagged" || (r.red_flags?.some((f) => !f.resolved) ?? false) ? (
+          <StatusTag color="#DC2626" label="Flagged" />
+        ) : (
+          <StatusTag color="#D97706" label="Needs attention" />
+        ),
+    },
+    {
+      key: "customer",
+      header: "Customer",
+      render: (r) => (
+        <>
+          <p className="font-medium text-neutral-900">{r.customer?.name ?? "—"}</p>
+          <p className="text-xs text-neutral-400">Risk score: {r.risk_score ?? "—"}/100</p>
+        </>
+      ),
+    },
+    { key: "reason", header: "Flag reason", render: (r) => <span className="text-neutral-700">{flagReason(r)}</span> },
+    {
+      key: "action",
+      header: "",
+      render: (r) => (
+        <Link href={`/admin/customers/${r.customer_id}`} className="text-sm font-semibold text-red-600 hover:underline">
+          Review →
+        </Link>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <MetricCard value={2} label="Open red flags" barColor="#D97706" barPercent={25} />
-        <MetricCard value={4} label="Bank verify pending" barColor="#2563EB" barPercent={45} />
-        <MetricCard value={1} label="Background pending" barColor="#171717" barPercent={12} />
-        <MetricCard value={47} label="Clear / passed" barColor="#16A34A" barPercent={95} />
+        <MetricCard value={openRedFlags} label="Open red flags" barColor="#D97706" barPercent={pct(openRedFlags, total)} />
+        <MetricCard value={bankPending} label="Bank verify pending" barColor="#2563EB" barPercent={pct(bankPending, total)} />
+        <MetricCard value={backgroundPending} label="Background pending" barColor="#171717" barPercent={pct(backgroundPending, total)} />
+        <MetricCard value={clear} label="Clear / passed" barColor="#16A34A" barPercent={pct(clear, total)} />
       </div>
-      <DataTable title="Risk queue" columns={COLUMNS} rows={ROWS} />
+      <DataTable title="Risk queue" columns={columns} rows={attention} emptyLabel="No open risk items." />
     </div>
   );
 }

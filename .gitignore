@@ -27,3 +27,6 @@ dist/
 .idea/
 .vscode/
 reports/~$*.docx
+
+# Claude Code local tooling config (machine-specific paths)
+.claude/

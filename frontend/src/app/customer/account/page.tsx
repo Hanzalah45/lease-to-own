@@ -1,16 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { CUSTOMER_ADDRESS } from "@/lib/sample-lease";
 import { PlaidConnectButton } from "@/components/customer/PlaidConnectButton";
+import { ProfileSettingsCard } from "@/components/account/ProfileSettingsCard";
+import { updateNotificationPreferences } from "@/lib/notifications";
 
 const inputClass =
   "w-full rounded-md border-0 border-b border-neutral-200 bg-transparent px-0 py-2 text-sm text-neutral-500 focus:outline-none";
 
 export default function CustomerAccountPage() {
-  const { user } = useAuth();
-  const [prefs, setPrefs] = useState({ paymentReminders: true, statusChanges: true });
+  const { user, refresh } = useAuth();
+  const profile = user?.customer_profile;
+  const [prefs, setPrefs] = useState({
+    paymentReminders: profile?.payment_reminder_emails ?? true,
+    statusChanges: profile?.status_change_emails ?? true,
+  });
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // The profile loads asynchronously (auth context fetches /auth/me after
+  // mount), so the real saved values arrive after this component's first
+  // render — sync local state once they show up.
+  useEffect(() => {
+    if (!profile) return;
+    setPrefs({
+      paymentReminders: profile.payment_reminder_emails,
+      statusChanges: profile.status_change_emails,
+    });
+  }, [profile?.payment_reminder_emails, profile?.status_change_emails]);
+
+  const address = [profile?.address_line_1, profile?.city, profile?.state, profile?.zip].filter(Boolean).join(", ");
+
+  async function togglePref(key: "paymentReminders" | "statusChanges", checked: boolean) {
+    const next = { ...prefs, [key]: checked };
+    setPrefs(next);
+    setSaveError(null);
+    try {
+      await updateNotificationPreferences({
+        payment_reminder_emails: next.paymentReminders,
+        status_change_emails: next.statusChanges,
+      });
+      await refresh();
+    } catch {
+      setPrefs(prefs); // revert — the save failed, don't show a preference that isn't actually saved
+      setSaveError("Could not save that. Please try again.");
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -25,33 +60,24 @@ export default function CustomerAccountPage() {
         <p className="text-sm text-neutral-400">Your profile and notification preferences.</p>
       </div>
 
+      {user && <ProfileSettingsCard user={user} onUpdated={refresh} />}
+
       <div className="rounded-xl border border-neutral-200 bg-white p-5">
         <div className="mb-4 flex items-center gap-2">
           <span className="h-4 w-1 shrink-0 rounded-full bg-red-600" />
-          <h2 className="font-heading text-base font-bold uppercase tracking-wide text-neutral-900">Profile</h2>
+          <h2 className="font-heading text-base font-bold uppercase tracking-wide text-neutral-900">Address &amp; identity</h2>
         </div>
 
         <div className="space-y-1">
           <div className="flex items-center justify-between border-b border-neutral-100 py-2.5">
-            <span className="text-sm text-neutral-400">Name</span>
-            <input className={inputClass} style={{ maxWidth: 200 }} value={user?.name ?? ""} disabled />
-          </div>
-          <div className="flex items-center justify-between border-b border-neutral-100 py-2.5">
-            <span className="text-sm text-neutral-400">Email</span>
-            <input className={inputClass} style={{ maxWidth: 200 }} value={user?.email ?? ""} disabled />
-          </div>
-          <div className="flex items-center justify-between border-b border-neutral-100 py-2.5">
-            <span className="text-sm text-neutral-400">Cell phone</span>
-            <span className="text-sm font-semibold text-neutral-900">{user?.phone ?? "(281) 555-0192"}</span>
-          </div>
-          <div className="flex items-center justify-between py-2.5">
             <span className="text-sm text-neutral-400">Mailing address</span>
-            <input className={inputClass} style={{ maxWidth: 200 }} value={CUSTOMER_ADDRESS} disabled />
+            <input className={inputClass} style={{ maxWidth: 200 }} value={address || "—"} disabled />
           </div>
         </div>
 
         <p className="mt-4 text-sm text-neutral-600">
-          Profile info was entered by your dealer at signup. Contact Outdoor Fix to update it.
+          Address and identity details were entered by your dealer at signup — they&apos;re tied to your signed lease
+          paperwork, so contact Outdoor Fix to update them.
         </p>
       </div>
 
@@ -73,7 +99,7 @@ export default function CustomerAccountPage() {
             <input
               type="checkbox"
               checked={prefs.paymentReminders}
-              onChange={(e) => setPrefs((p) => ({ ...p, paymentReminders: e.target.checked }))}
+              onChange={(e) => togglePref("paymentReminders", e.target.checked)}
               className="h-4 w-4 accent-red-600"
             />
             Email me about payment reminders
@@ -82,11 +108,12 @@ export default function CustomerAccountPage() {
             <input
               type="checkbox"
               checked={prefs.statusChanges}
-              onChange={(e) => setPrefs((p) => ({ ...p, statusChanges: e.target.checked }))}
+              onChange={(e) => togglePref("statusChanges", e.target.checked)}
               className="h-4 w-4 accent-red-600"
             />
             Email me when my application status changes
           </label>
+          {saveError && <p className="text-xs text-red-600">{saveError}</p>}
         </div>
       </div>
     </div>

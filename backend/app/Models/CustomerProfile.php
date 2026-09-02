@@ -35,6 +35,8 @@ class CustomerProfile extends Model
         'plaid_item_id',
         'plaid_access_token',
         'bank_verified_at',
+        'payment_reminder_emails',
+        'status_change_emails',
     ];
 
     protected function casts(): array
@@ -46,6 +48,8 @@ class CustomerProfile extends Model
             'move_notification_agreed' => 'boolean',
             'plaid_access_token' => 'encrypted',
             'monthly_income' => 'decimal:2',
+            'payment_reminder_emails' => 'boolean',
+            'status_change_emails' => 'boolean',
         ];
     }
 

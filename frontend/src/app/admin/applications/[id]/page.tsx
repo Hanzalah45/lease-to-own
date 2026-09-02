@@ -13,10 +13,11 @@ import { ChecklistCard } from "@/components/applications/detail/ChecklistCard";
 import { AssignmentCard } from "@/components/applications/detail/AssignmentCard";
 import { EditDetailModal, type EditField } from "@/components/applications/detail/EditDetailModal";
 import { EpoChart } from "@/components/applications/wizard/EpoChart";
-import type { AppStatus, DealerNote } from "@/components/applications/detail/types";
+import { Modal } from "@/components/ui/Modal";
+import type { AppStatus } from "@/components/applications/detail/types";
 import type { AdminPermissionKey } from "@/types/auth";
 import type { Application } from "@/types/application";
-import { downloadIdDocument, getApplication, resolveRiskRedFlag, updateApplication } from "@/lib/applications";
+import { addDealerNote, downloadIdDocument, getApplication, resolveRiskRedFlag, updateApplication } from "@/lib/applications";
 import { money } from "@/components/applications/wizard/types";
 import { ApiError } from "@/lib/api";
 import {
@@ -96,12 +97,6 @@ const PRIMARY_LABEL: Partial<Record<AppStatus, string>> = {
   processed: "Mark Funded",
 };
 
-const INITIAL_CHECKLIST = [
-  { label: "Payment collected", done: false },
-  { label: "Invoice received", done: false },
-  { label: "Signed documents", done: false },
-];
-
 function num(value: string | number | null | undefined): number {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
@@ -120,9 +115,9 @@ export default function ApplicationDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
 
-  const [notes, setNotes] = useState<DealerNote[]>([]);
-  const [checklist, setChecklist] = useState(INITIAL_CHECKLIST);
   const [editingCard, setEditingCard] = useState<"customer" | "lease" | "equipment" | "risk" | null>(null);
+  const [postingNote, setPostingNote] = useState(false);
+  const [togglingChecklist, setTogglingChecklist] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -151,13 +146,16 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  async function decline() {
+  const [showDeclineConfirm, setShowDeclineConfirm] = useState(false);
+
+  async function confirmDecline() {
     if (!application) return;
     setActing(true);
     try {
       setApplication(
         await updateApplication(application.id, { status: "declined", status_notes: "Declined during admin review." }),
       );
+      setShowDeclineConfirm(false);
     } finally {
       setActing(false);
     }
@@ -175,12 +173,25 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  function addNote(text: string) {
-    setNotes((n) => [...n, { id: n.length + 1, author: "You", time: "Just now", text }]);
+  async function addNote(text: string) {
+    if (!application) return;
+    setPostingNote(true);
+    try {
+      const note = await addDealerNote(application.id, text);
+      setApplication((prev) => (prev ? { ...prev, dealer_notes: [note, ...(prev.dealer_notes ?? [])] } : prev));
+    } finally {
+      setPostingNote(false);
+    }
   }
 
-  function toggleChecklist(index: number) {
-    setChecklist((c) => c.map((item, i) => (i === index ? { ...item, done: !item.done } : item)));
+  async function toggleChecklistField(field: "signature_received" | "deposit_received") {
+    if (!application) return;
+    setTogglingChecklist(true);
+    try {
+      setApplication(await updateApplication(application.id, { [field]: !application[field] }));
+    } finally {
+      setTogglingChecklist(false);
+    }
   }
 
   async function saveLease(values: Record<string, string>) {
@@ -266,8 +277,7 @@ export default function ApplicationDetailPage() {
   const badge = BADGE_STYLE[status];
   const paidPayment = lease?.payments?.slice().reverse().find((p) => p.status === "paid");
 
-  const signed = status === "completed" || status === "processed" || status === "funded_paid";
-  const checklistDone = signed;
+  const signed = !!lease?.contract;
 
   const salesTaxPct = lease ? (num(lease.sales_tax_rate) * 100).toFixed(2) : "0";
   const totalDue = lease ? num(lease.total_monthly_payment) + num(lease.security_deposit) : 0;
@@ -396,14 +406,14 @@ export default function ApplicationDetailPage() {
 
       {status === "submitted" && (
         <>
-          <TakeActionBanner primaryLabel={PRIMARY_LABEL.submitted!} onPrimary={advance} onDecline={decline} disabled={!can("application_review") || acting} />
+          <TakeActionBanner primaryLabel={PRIMARY_LABEL.submitted!} onPrimary={advance} onDecline={() => setShowDeclineConfirm(true)} disabled={!can("application_review") || acting} />
           <InfoCallout tone="blue" icon={DocumentIcon} title="New submission" description="Just came in — no review or automated checks have started yet." />
         </>
       )}
 
       {status === "under_review" && (
         <>
-          <TakeActionBanner primaryLabel={PRIMARY_LABEL.under_review!} onPrimary={advance} onDecline={decline} disabled={!can("application_review") || acting} />
+          <TakeActionBanner primaryLabel={PRIMARY_LABEL.under_review!} onPrimary={advance} onDecline={() => setShowDeclineConfirm(true)} disabled={!can("application_review") || acting} />
           <InfoCallout
             tone="green"
             icon={ClockIcon}
@@ -425,7 +435,7 @@ export default function ApplicationDetailPage() {
             description="This application is missing or has incorrect information."
             primaryLabel={PRIMARY_LABEL.needs_info!}
             onPrimary={advance}
-            onDecline={decline}
+            onDecline={() => setShowDeclineConfirm(true)}
             disabled={!can("application_review") || acting}
           />
           <InfoCallout tone="amber" icon={AlertCircleIcon} title="Action required" description={application.status_notes ?? "Missing information — see notes."} />
@@ -434,14 +444,14 @@ export default function ApplicationDetailPage() {
 
       {status === "approved" && (
         <>
-          <TakeActionBanner primaryLabel={PRIMARY_LABEL.approved!} onPrimary={advance} onDecline={decline} disabled={!can("application_review") || acting} />
+          <TakeActionBanner primaryLabel={PRIMARY_LABEL.approved!} onPrimary={advance} onDecline={() => setShowDeclineConfirm(true)} disabled={!can("application_review") || acting} />
           <InfoCallout tone="blue" icon={CheckCircleIcon} title="Approved — next step" description="Application passed underwriting. Contract not yet sent." items={["Payment schedule generated", "Contract generation pending — send for signature"]} />
         </>
       )}
 
       {status === "completed" && (
         <>
-          <TakeActionBanner primaryLabel={PRIMARY_LABEL.completed!} onPrimary={advance} onDecline={decline} disabled={!can("application_review") || acting} />
+          <TakeActionBanner primaryLabel={PRIMARY_LABEL.completed!} onPrimary={advance} onDecline={() => setShowDeclineConfirm(true)} disabled={!can("application_review") || acting} />
           <InfoCallout
             tone="teal"
             icon={SettingsIcon}
@@ -454,7 +464,7 @@ export default function ApplicationDetailPage() {
 
       {status === "processed" && (
         <>
-          <TakeActionBanner primaryLabel={PRIMARY_LABEL.processed!} onPrimary={advance} onDecline={decline} disabled={!can("application_review") || acting} />
+          <TakeActionBanner primaryLabel={PRIMARY_LABEL.processed!} onPrimary={advance} onDecline={() => setShowDeclineConfirm(true)} disabled={!can("application_review") || acting} />
           <InfoCallout tone="purple" icon={CreditCardIcon} title="Processing final payment" description="Payment submitted — waiting on bank confirmation." items={["Contract signed", "ACH payment processing (1–2 business days)"]} />
           {paidPayment && (
             <div className="rounded-xl border border-green-200 bg-green-50 px-5 py-3.5">
@@ -563,7 +573,11 @@ export default function ApplicationDetailPage() {
                 { label: "Expected ownership", value: equipment?.expected_return_or_ownership_date?.slice(0, 10) ?? "—" },
                 { label: "Live EPO price", value: <span className="text-red-600">{lease ? money(lease.epo_today) : "—"}</span> },
               ]}
-              note="Service history: no records yet · GPS: not tracked (Phase 2)"
+              note={`Service history: ${
+                equipment?.service_records_count
+                  ? `${equipment.service_records_count} record${equipment.service_records_count === 1 ? "" : "s"}`
+                  : "no records yet"
+              } · GPS: not tracked (Phase 2)`}
             />
             <DetailCard
               title="Risk profile"
@@ -619,7 +633,7 @@ export default function ApplicationDetailPage() {
             <div className="space-y-2.5 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-neutral-500">Document</span>
-                <span className="font-semibold text-neutral-900">Lease Purchase Agreement v1</span>
+                <span className="font-semibold text-neutral-900">Lease Purchase Agreement</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-neutral-500">Signed by</span>
@@ -631,14 +645,31 @@ export default function ApplicationDetailPage() {
               </div>
             </div>
             <Link href={`/admin/applications/${application.id}/contract`} className="font-heading mt-4 inline-block rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">
-              {signed ? "Download signed PDF" : "Send For Signature"}
+              {signed ? "View / download PDF" : "View lease terms"}
             </Link>
           </div>
         </div>
 
         <div className="space-y-6">
-          <DealerNotes notes={notes} onAdd={addNote} />
-          <ChecklistCard items={checklist.map((c) => ({ ...c, done: c.done || checklistDone }))} onToggle={toggleChecklist} />
+          <DealerNotes
+            notes={(application.dealer_notes ?? []).map((n) => ({
+              id: n.id,
+              author: n.author.name,
+              time: new Date(n.created_at).toLocaleString(),
+              text: n.text,
+              isDealer: true,
+            }))}
+            onAdd={addNote}
+            posting={postingNote}
+          />
+          <ChecklistCard
+            items={[
+              { label: "Deposit received", done: application.deposit_received },
+              { label: "Signature received", done: application.signature_received },
+            ]}
+            onToggle={(i) => toggleChecklistField(i === 0 ? "deposit_received" : "signature_received")}
+            disabled={togglingChecklist}
+          />
           <AssignmentCard salesperson={application.internal_notes?.replace("Sales person: ", "") || "Outdoor Fix"} reviewedBy={application.reviewed_by?.name ?? "—"} />
         </div>
       </div>
@@ -658,6 +689,33 @@ export default function ApplicationDetailPage() {
       {editingCard === "lease" && lease && <EditDetailModal title="Lease terms" fields={LEASE_FIELDS} onSave={saveLease} onClose={() => setEditingCard(null)} />}
       {editingCard === "equipment" && <EditDetailModal title="Equipment unit" fields={EQUIPMENT_FIELDS} onSave={saveEquipment} onClose={() => setEditingCard(null)} />}
       {editingCard === "risk" && <EditDetailModal title="Risk profile" fields={RISK_FIELDS} onSave={saveRisk} onClose={() => setEditingCard(null)} />}
+
+      {showDeclineConfirm && (
+        <Modal title="Decline application" onClose={() => setShowDeclineConfirm(false)} maxWidthClassName="max-w-sm">
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-600">
+              Decline this application? The customer will see it marked declined — this can be reversed with Change
+              Status if needed.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowDeclineConfirm(false)}
+                disabled={acting}
+                className="font-heading rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDecline}
+                disabled={acting}
+                className="font-heading rounded-md bg-red-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {acting ? "Declining…" : "Decline"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

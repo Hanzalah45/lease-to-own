@@ -7,21 +7,12 @@ import { ApiError } from "@/lib/api";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeroHeader } from "@/components/layout/PageHeroHeader";
 import { EditCustomerModal } from "@/components/customers/EditCustomerModal";
-import { PencilIcon, PlusIcon, SearchIcon, TrashIcon, UserIcon } from "@/components/icons";
+import { PencilIcon, PlusIcon, SearchIcon, TrashIcon } from "@/components/icons";
 import type { AuthUser } from "@/types/auth";
 
-interface SignupRequest {
-  id: number;
-  name: string;
-  email: string;
-  when: string;
-  decision: "pending" | "accepted" | "declined";
+function pct(value: number, total: number): number {
+  return total === 0 ? 0 : Math.round((value / total) * 100);
 }
-
-const INITIAL_REQUESTS: SignupRequest[] = [
-  { id: 1, name: "Alicia Chen", email: "alicia.chen@email.com", when: "Yesterday", decision: "accepted" },
-  { id: 2, name: "Marcus Doyle", email: "marcus.doyle@email.com", when: "2 hrs ago", decision: "pending" },
-];
 
 export default function AdminCustomersPage() {
   const { user } = useAuth();
@@ -32,8 +23,6 @@ export default function AdminCustomersPage() {
   const [customers, setCustomers] = useState<AuthUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"requests" | "list">("requests");
-  const [requests, setRequests] = useState<SignupRequest[]>(INITIAL_REQUESTS);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "declined">("all");
   const [editing, setEditing] = useState<AuthUser | null>(null);
@@ -41,6 +30,7 @@ export default function AdminCustomersPage() {
   const [deletingCustomer, setDeletingCustomer] = useState<AuthUser | null>(null);
 
   useEffect(() => {
+    if (!canReview) return;
     (async () => {
       try {
         setCustomers(await listCustomers());
@@ -50,10 +40,11 @@ export default function AdminCustomersPage() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [canReview]);
 
-  const pendingCount = requests.filter((r) => r.decision === "pending").length;
-  const allTime = customers.length + requests.filter((r) => r.decision !== "pending").length;
+  const total = customers.length;
+  const active = customers.filter((c) => c.status !== "suspended").length;
+  const declined = customers.filter((c) => c.status === "suspended").length;
 
   const filteredCustomers = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -65,10 +56,6 @@ export default function AdminCustomersPage() {
     });
   }, [customers, search, statusFilter]);
 
-  function decide(id: number, decision: "accepted" | "declined") {
-    setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, decision } : r)));
-  }
-
   function handleSaved(saved: AuthUser) {
     setCustomers((prev) => {
       const exists = prev.some((c) => c.id === saved.id);
@@ -76,11 +63,23 @@ export default function AdminCustomersPage() {
     });
   }
 
+  if (!canReview) {
+    return (
+      <div className="space-y-3">
+        <h1 className="text-2xl font-bold uppercase tracking-tight">Customer List</h1>
+        <p className="max-w-prose text-sm text-neutral-500">
+          Your admin account is restricted and does not include application review. Ask a super admin to add the
+          Application Review permission to your account.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeroHeader
         title="Customer List"
-        subtitle="Outdoor Fix · Willis — 50 total"
+        subtitle={`Outdoor Fix · Willis — ${total} total`}
         action={
           canReview ? (
             <button
@@ -95,205 +94,132 @@ export default function AdminCustomersPage() {
       >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-neutral-200 bg-white px-5 py-4">
-            <p className="font-heading text-3xl font-black text-amber-500">{pendingCount}</p>
-            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">New requests</p>
-            <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
-              <div className="h-full rounded-full bg-amber-500" style={{ width: "25%" }} />
-            </div>
-          </div>
-          <div className="rounded-xl border border-neutral-200 bg-white px-5 py-4">
-            <p className="font-heading text-3xl font-black text-green-600">{customers.length}</p>
+            <p className="font-heading text-3xl font-black text-neutral-900">{total}</p>
             <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Total customers</p>
             <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
-              <div className="h-full rounded-full bg-green-600" style={{ width: "70%" }} />
+              <div className="h-full rounded-full bg-neutral-900" style={{ width: "100%" }} />
             </div>
           </div>
           <div className="rounded-xl border border-neutral-200 bg-white px-5 py-4">
-            <p className="font-heading text-3xl font-black text-neutral-900">{allTime}</p>
-            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">All time</p>
+            <p className="font-heading text-3xl font-black text-green-600">{active}</p>
+            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Active</p>
             <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
-              <div className="h-full rounded-full bg-neutral-900" style={{ width: "90%" }} />
+              <div className="h-full rounded-full bg-green-600" style={{ width: `${pct(active, total)}%` }} />
             </div>
           </div>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={() => setTab("requests")}
-            className={`font-heading rounded-md px-4 py-2 text-sm font-bold transition ${
-              tab === "requests" ? "bg-red-600 text-white" : "bg-white text-neutral-600 hover:bg-neutral-100"
-            }`}
-          >
-            New Requests
-          </button>
-          <button
-            onClick={() => setTab("list")}
-            className={`font-heading rounded-md px-4 py-2 text-sm font-bold transition ${
-              tab === "list" ? "bg-red-600 text-white" : "bg-white text-neutral-600 hover:bg-neutral-100"
-            }`}
-          >
-            Customer List
-          </button>
+          <div className="rounded-xl border border-neutral-200 bg-white px-5 py-4">
+            <p className="font-heading text-3xl font-black text-red-600">{declined}</p>
+            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Declined</p>
+            <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
+              <div className="h-full rounded-full bg-red-600" style={{ width: `${pct(declined, total)}%` }} />
+            </div>
+          </div>
         </div>
       </PageHeroHeader>
 
-      {tab === "requests" ? (
-        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white p-4 sm:p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <span className="h-4 w-1 shrink-0 rounded-full bg-red-600" />
-            <h2 className="text-lg font-bold uppercase tracking-wide text-neutral-900">Sign-up requests</h2>
-          </div>
-          <div className="divide-y divide-neutral-100">
-            {requests.map((r) => (
-              <div key={r.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-500">
-                    <UserIcon className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-neutral-900">
-                      {r.name} signed up for a customer account
-                    </p>
-                    <p className="text-xs text-neutral-400">
-                      {r.email} · {r.when}
-                    </p>
-                  </div>
-                </div>
-                {r.decision === "pending" && canReview ? (
-                  <div className="flex shrink-0 gap-2">
-                    <button
-                      onClick={() => decide(r.id, "accepted")}
-                      className="font-heading flex items-center gap-1 rounded-md bg-green-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-green-700"
-                    >
-                      ✓ Accept
-                    </button>
-                    <button
-                      onClick={() => decide(r.id, "declined")}
-                      className="font-heading flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100"
-                    >
-                      ✕ Decline
-                    </button>
-                  </div>
-                ) : r.decision === "pending" ? (
-                  <span className="text-xs text-neutral-400" title="Requires application review access">
-                    Awaiting review
-                  </span>
-                ) : (
-                  <span
-                    className={`font-heading shrink-0 self-start rounded-full px-3 py-1 text-xs font-bold sm:self-auto ${
-                      r.decision === "accepted" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-                    }`}
-                  >
-                    {r.decision === "accepted" ? "Accepted" : "Declined"}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+      <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white p-4 sm:p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <span className="h-4 w-1 shrink-0 rounded-full bg-red-600" />
+          <h2 className="text-lg font-bold uppercase tracking-wide text-neutral-900">All customers</h2>
         </div>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white p-4 sm:p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <span className="h-4 w-1 shrink-0 rounded-full bg-red-600" />
-            <h2 className="text-lg font-bold uppercase tracking-wide text-neutral-900">All customers</h2>
-          </div>
 
-          <div className="relative mb-4">
-            <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name or email..."
-              className="w-full max-w-sm rounded-md border border-neutral-200 py-2 pl-10 pr-3 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-red-300 focus:outline-none"
-            />
-          </div>
+        <div className="relative mb-4">
+          <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or email..."
+            className="w-full max-w-sm rounded-md border border-neutral-200 py-2 pl-10 pr-3 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-red-300 focus:outline-none"
+          />
+        </div>
 
-          <div className="mb-4 flex gap-2">
-            <button
-              onClick={() => setStatusFilter("all")}
-              className={`font-heading rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
-                statusFilter === "all" ? "bg-red-600 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setStatusFilter("declined")}
-              className={`font-heading flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
-                statusFilter === "declined" ? "bg-red-600 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
-              }`}
-            >
-              <span className={`h-1.5 w-1.5 rounded-full ${statusFilter === "declined" ? "bg-white" : "bg-red-500"}`} />
-              Declined
-            </button>
-          </div>
+        <div className="mb-4 flex gap-2">
+          <button
+            onClick={() => setStatusFilter("all")}
+            className={`font-heading rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
+              statusFilter === "all" ? "bg-red-600 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+            }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setStatusFilter("declined")}
+            className={`font-heading flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
+              statusFilter === "declined" ? "bg-red-600 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"
+            }`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${statusFilter === "declined" ? "bg-white" : "bg-red-500"}`} />
+            Declined
+          </button>
+        </div>
 
-          {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+        {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
-          {loading ? (
-            <p className="py-6 text-sm text-neutral-500">Loading…</p>
-          ) : (
-            <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-              <table className="w-full min-w-[640px] text-left text-sm">
-                <thead>
-                  <tr className="font-heading border-b border-neutral-200 text-xs font-bold uppercase tracking-wide text-neutral-400">
-                    <th className="pb-2 font-medium">Customer</th>
-                    <th className="pb-2 font-medium">Email</th>
-                    <th className="pb-2 font-medium">Joined</th>
-                    <th className="pb-2 font-medium">Status</th>
-                    <th className="pb-2 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredCustomers.map((customer) => {
-                    const declined = customer.status === "suspended";
-                    return (
-                      <tr key={customer.id} className="border-b border-neutral-100 last:border-0">
-                        <td className="py-3 font-medium text-neutral-900">{customer.name}</td>
-                        <td className="py-3 text-neutral-500">{customer.email}</td>
-                        <td className="py-3 text-neutral-500">—</td>
-                        <td className="py-3">
-                          <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-neutral-700">
-                            <span className={`h-1.5 w-1.5 rounded-full ${declined ? "bg-red-500" : "bg-green-500"}`} />
-                            {declined ? "Declined" : "Accepted"}
-                          </span>
-                        </td>
-                        <td className="py-3">
-                          <div className="flex gap-1">
+        {loading ? (
+          <p className="py-6 text-sm text-neutral-500">Loading…</p>
+        ) : (
+          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead>
+                <tr className="font-heading border-b border-neutral-200 text-xs font-bold uppercase tracking-wide text-neutral-400">
+                  <th className="pb-2 font-medium">Customer</th>
+                  <th className="pb-2 font-medium">Email</th>
+                  <th className="pb-2 font-medium">Joined</th>
+                  <th className="pb-2 font-medium">Status</th>
+                  <th className="pb-2 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCustomers.map((customer) => {
+                  const isDeclined = customer.status === "suspended";
+                  return (
+                    <tr key={customer.id} className="border-b border-neutral-100 last:border-0">
+                      <td className="py-3 font-medium text-neutral-900">{customer.name}</td>
+                      <td className="py-3 text-neutral-500">{customer.email}</td>
+                      <td className="py-3 text-neutral-500">
+                        {customer.created_at ? new Date(customer.created_at).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="py-3">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-neutral-700">
+                          <span className={`h-1.5 w-1.5 rounded-full ${isDeclined ? "bg-red-500" : "bg-green-500"}`} />
+                          {isDeclined ? "Declined" : "Accepted"}
+                        </span>
+                      </td>
+                      <td className="py-3">
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => setEditing(customer)}
+                            title="Edit"
+                            className="rounded p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                          >
+                            <PencilIcon className="h-4 w-4" />
+                          </button>
+                          {canReview && (
                             <button
-                              onClick={() => setEditing(customer)}
-                              title="Edit"
-                              className="rounded p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                              onClick={() => setDeletingCustomer(customer)}
+                              title="Delete"
+                              className="rounded p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-600"
                             >
-                              <PencilIcon className="h-4 w-4" />
+                              <TrashIcon className="h-4 w-4" />
                             </button>
-                            {canReview && (
-                              <button
-                                onClick={() => setDeletingCustomer(customer)}
-                                title="Delete"
-                                className="rounded p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-600"
-                              >
-                                <TrashIcon className="h-4 w-4" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {filteredCustomers.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="py-6 text-center text-sm text-neutral-400">
-                        No customers match this search.
+                          )}
+                        </div>
                       </td>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+                  );
+                })}
+                {filteredCustomers.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-sm text-neutral-400">
+                      No customers match this search.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {editing && <EditCustomerModal customer={editing} onClose={() => setEditing(null)} onSaved={handleSaved} />}
       {creating && <EditCustomerModal onClose={() => setCreating(false)} onSaved={handleSaved} />}

@@ -6,7 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { ADMIN_PERMISSIONS, createAdmin, deleteAdmin, listAdmins, updateAdmin } from "@/lib/admin-users";
 import { ApiError } from "@/lib/api";
 import { Modal } from "@/components/ui/Modal";
-import { PencilIcon, PlusIcon, TrashIcon, UserIcon } from "@/components/icons";
+import { EyeIcon, EyeOffIcon, PencilIcon, PlusIcon, TrashIcon, UserIcon } from "@/components/icons";
 import { validateEmail, validateName, validatePassword } from "@/lib/validation";
 import type { AdminPermissionKey, AuthUser, UserStatus } from "@/types/auth";
 
@@ -248,6 +248,7 @@ function AdminForm({
   const [name, setName] = useState(admin?.name ?? "");
   const [email, setEmail] = useState(admin?.email ?? "");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState<UserStatus>(admin?.status ?? "active");
   const [permissions, setPermissions] = useState<AdminPermissionKey[]>(
     admin?.admin_permissions?.map((p) => p.permission) ?? [],
@@ -408,22 +409,33 @@ function AdminForm({
           <label htmlFor="admin-password" className="font-heading text-sm font-semibold">
             Temporary password<span className="ml-0.5 text-red-600">*</span>
           </label>
-          <input
-            id="admin-password"
-            type="password"
-            required
-            minLength={8}
-            placeholder="Letter + number, 8+ chars"
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              clearServerError("password");
-            }}
-            onBlur={() => touch("password")}
-            aria-invalid={!!fieldError("password")}
-            aria-describedby={fieldError("password") ? "admin-password-error" : undefined}
-            className={inputClass(!!fieldError("password"))}
-          />
+          <div className="relative">
+            <input
+              id="admin-password"
+              type={showPassword ? "text" : "password"}
+              required
+              minLength={8}
+              placeholder="Letter + number, 8+ chars"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                clearServerError("password");
+              }}
+              onBlur={() => touch("password")}
+              aria-invalid={!!fieldError("password")}
+              aria-describedby={fieldError("password") ? "admin-password-error" : undefined}
+              className={`${inputClass(!!fieldError("password"))} pr-10`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              tabIndex={-1}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="absolute inset-y-0 right-0 flex items-center px-3 text-neutral-400 hover:text-neutral-600"
+            >
+              {showPassword ? <EyeOffIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+            </button>
+          </div>
           {fieldError("password") && (
             <p id="admin-password-error" className="text-xs font-medium text-red-600">
               {fieldError("password")}

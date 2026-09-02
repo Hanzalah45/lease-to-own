@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useId, type ReactNode } from "react";
 import { XIcon } from "@/components/icons";
 
 export function Modal({
@@ -14,6 +14,8 @@ export function Modal({
   children: ReactNode;
   maxWidthClassName?: string;
 }) {
+  const titleId = useId();
+
   useEffect(() => {
     function handleKey(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
@@ -28,13 +30,16 @@ export function Modal({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className={`flex max-h-[90vh] w-full ${maxWidthClassName} flex-col rounded-xl bg-white shadow-2xl`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-neutral-100 px-5 py-4">
           <div className="flex items-center gap-2">
             <span className="h-4 w-1 shrink-0 rounded-full bg-red-600" />
-            <h2 className="text-lg font-bold uppercase tracking-wide text-neutral-900">{title}</h2>
+            <h2 id={titleId} className="text-lg font-bold uppercase tracking-wide text-neutral-900">{title}</h2>
           </div>
           <button
             onClick={onClose}

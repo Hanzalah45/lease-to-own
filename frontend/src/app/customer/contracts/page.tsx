@@ -1,9 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { SAMPLE_LEASES } from "@/lib/sample-lease";
+import { useEffect, useState } from "react";
+import { listMyLeaseAgreements } from "@/lib/lease-agreements";
+import { ApiError } from "@/lib/api";
+import type { LeaseAgreement } from "@/types/lease-agreement";
 
 export default function CustomerContractsPage() {
+  const [leases, setLeases] = useState<LeaseAgreement[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    listMyLeaseAgreements()
+      .then(setLeases)
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load your contracts."))
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <div className="space-y-6">
       <div
@@ -17,8 +31,16 @@ export default function CustomerContractsPage() {
         <p className="text-sm text-neutral-400">Signed lease agreements, documents, and payoff terms.</p>
       </div>
 
+      {loading && <p className="text-sm text-neutral-500">Loading…</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      {!loading && !error && leases.length === 0 && (
+        <p className="rounded-xl border border-neutral-200 bg-white p-5 text-sm text-neutral-400">
+          You don&apos;t have a lease agreement yet.
+        </p>
+      )}
+
       <div className="space-y-4">
-        {SAMPLE_LEASES.map((lease) => (
+        {leases.map((lease) => (
           <div
             key={lease.id}
             className="flex flex-col gap-4 rounded-xl border border-neutral-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between"
@@ -27,13 +49,14 @@ export default function CustomerContractsPage() {
               <div className="mb-1 flex items-center gap-2">
                 <span className="h-4 w-1 shrink-0 rounded-full bg-red-600" />
                 <h2 className="font-heading text-base font-bold uppercase tracking-wide text-neutral-900">
-                  Lease Purchase Agreement V1 — {lease.equipment}
+                  Lease Purchase Agreement — {lease.equipment_unit?.model ?? "Equipment"}
                 </h2>
               </div>
               <p className="text-sm text-neutral-500">
-                {lease.signed ? (
+                {lease.contract ? (
                   <>
-                    Signed {lease.signedAt} · <span className="font-semibold text-green-600">Signed &amp; legally valid</span>
+                    Signed {new Date(lease.contract.signed_at).toLocaleString()} ·{" "}
+                    <span className="font-semibold text-green-600">Signed &amp; legally valid</span>
                   </>
                 ) : (
                   <span className="font-semibold text-amber-600">Awaiting your signature</span>
@@ -41,21 +64,13 @@ export default function CustomerContractsPage() {
               </p>
             </div>
             <div className="flex shrink-0 gap-2">
-              {lease.signed ? (
-                <>
-                  <Link
-                    href={`/customer/contracts/${lease.id}/sign`}
-                    className="font-heading rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
-                  >
-                    Preview e-sign flow
-                  </Link>
-                  <Link
-                    href={`/customer/contracts/${lease.id}/document`}
-                    className="font-heading rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
-                  >
-                    View / Download PDF →
-                  </Link>
-                </>
+              {lease.contract ? (
+                <Link
+                  href={`/customer/contracts/${lease.id}/document`}
+                  className="font-heading rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
+                >
+                  View / Download PDF →
+                </Link>
               ) : (
                 <Link
                   href={`/customer/contracts/${lease.id}/sign`}

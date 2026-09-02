@@ -11,7 +11,7 @@ class LeaseAgreementController extends Controller
 {
     public function index(Request $request)
     {
-        $leases = $request->user()->leaseAgreements()->with('equipmentUnit')->latest()->get();
+        $leases = $request->user()->leaseAgreements()->with(['equipmentUnit', 'contract'])->latest()->get();
 
         return response()->json(['data' => $leases->map(fn ($lease) => $this->present($lease))]);
     }
@@ -20,7 +20,7 @@ class LeaseAgreementController extends Controller
     {
         abort_unless($leaseAgreement->customer_id === $request->user()->id, 404);
 
-        $leaseAgreement->load('equipmentUnit');
+        $leaseAgreement->load(['equipmentUnit', 'contract']);
 
         return response()->json(['data' => $this->present($leaseAgreement, includeSchedule: true)]);
     }

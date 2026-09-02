@@ -5,7 +5,7 @@ import { SectionHeading } from "@/components/dashboard/SectionHeading";
 
 export interface ActivityRow {
   id: number;
-  status: "funded" | "needs_info" | "approved" | "declined" | "withdrawn";
+  status: "submitted" | "under_review" | "funded" | "needs_info" | "approved" | "declined" | "withdrawn";
   customer: string;
   location: string;
   price: string;
@@ -13,6 +13,8 @@ export interface ActivityRow {
 }
 
 const STATUS_STYLE: Record<ActivityRow["status"], { dot: string; label: string }> = {
+  submitted: { dot: "bg-neutral-500", label: "Submitted" },
+  under_review: { dot: "bg-purple-500", label: "Under review" },
   funded: { dot: "bg-green-500", label: "Funded" },
   needs_info: { dot: "bg-amber-500", label: "Needs info" },
   approved: { dot: "bg-blue-500", label: "Approved" },
@@ -20,7 +22,7 @@ const STATUS_STYLE: Record<ActivityRow["status"], { dot: string; label: string }
   withdrawn: { dot: "bg-neutral-300", label: "Withdrawn" },
 };
 
-const FILTERS = ["All", "Needs info", "Approved", "Funded", "Declined", "Withdrawn"] as const;
+const FILTERS = ["All", "Submitted", "Under review", "Needs info", "Approved", "Funded", "Declined", "Withdrawn"] as const;
 
 export function RecentActivityTable({ rows }: { rows: ActivityRow[] }) {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
@@ -34,7 +36,6 @@ export function RecentActivityTable({ rows }: { rows: ActivityRow[] }) {
     <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white p-4 sm:p-5">
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <SectionHeading title="Recent activity" />
-        <span className="text-xs text-neutral-400">Sample data — live once Milestone 5 is wired up</span>
       </div>
 
       <div className="mb-4 flex flex-wrap gap-1.5">

@@ -57,7 +57,12 @@ export default function NotificationsPage() {
         subtitle="Real events from account signups and account activity, as they happen."
       >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <MetricCard value={unreadCount} label="Unread" barColor="#DC2626" barPercent={unreadCount ? 70 : 0} />
+          <MetricCard
+            value={unreadCount}
+            label="Unread"
+            barColor="#DC2626"
+            barPercent={items.length ? Math.round((unreadCount / items.length) * 100) : 0}
+          />
           <MetricCard value={items.length} label="Total" barColor="#171717" barPercent={items.length ? 100 : 0} />
         </div>
 

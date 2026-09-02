@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { money } from "@/components/applications/wizard/types";
-import { computeEpoSchedule, CUSTOMER_ADDRESS, CUSTOMER_COUNTY, CUSTOMER_NAME, CUSTOMER_OWN_RENT, type SampleLease } from "@/lib/sample-lease";
+import type { LeaseAgreement } from "@/types/lease-agreement";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -21,7 +21,30 @@ function SubHeader({ children }: { children: string }) {
   );
 }
 
-export function LeaseAgreementDocument({ lease }: { lease: SampleLease }) {
+function num(value: string | number | null | undefined): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+export function LeaseAgreementDocument({
+  lease,
+  customerName,
+  customerAddress,
+}: {
+  lease: LeaseAgreement;
+  customerName: string;
+  customerAddress: string;
+}) {
+  const equipment = lease.equipment_unit;
+  const cashPrice = num(lease.cash_price);
+  const monthlyRental = num(lease.monthly_rental_payment);
+  const salesTax = num(lease.sales_tax_amount);
+  const totalMonthly = num(lease.total_monthly_payment);
+  const securityDeposit = num(lease.security_deposit);
+  const totalDueToday = securityDeposit + totalMonthly;
+  const taxRatePct = (num(lease.sales_tax_rate) * 100).toFixed(2);
+  const signed = !!lease.contract;
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-neutral-200 bg-white p-6 print:break-inside-avoid">
@@ -40,10 +63,8 @@ export function LeaseAgreementDocument({ lease }: { lease: SampleLease }) {
         <div className="border-t-2 border-neutral-900 pt-4">
           <SubHeader>Contact information</SubHeader>
           <div className="mt-2 grid grid-cols-1 gap-x-8 sm:grid-cols-2">
-            <Row label="Renter Name" value={CUSTOMER_NAME} />
-            <Row label="Mailing Address" value={CUSTOMER_ADDRESS} />
-            <Row label="Own / Rent" value={CUSTOMER_OWN_RENT} />
-            <Row label="County" value={CUSTOMER_COUNTY} />
+            <Row label="Renter Name" value={customerName} />
+            <Row label="Mailing Address" value={customerAddress || "—"} />
           </div>
         </div>
       </div>
@@ -56,26 +77,25 @@ export function LeaseAgreementDocument({ lease }: { lease: SampleLease }) {
         <div className="mt-4">
           <SubHeader>Description of leased property</SubHeader>
           <div className="mt-2 grid grid-cols-1 gap-x-8 sm:grid-cols-2">
-            <Row label="Cash Price / Retail" value={money(lease.cashPrice)} />
-            <Row label="Make" value={lease.equipment} />
-            <Row label="Condition" value={lease.condition} />
-            <Row label="Serial # / VIN" value={lease.serial} />
-            <Row label="Description or Damage to Property" value="None noted" />
+            <Row label="Cash Price / Retail" value={money(cashPrice)} />
+            <Row label="Make" value={equipment?.model ?? "—"} />
+            <Row label="Serial # / VIN" value={equipment?.serial_number ?? "—"} />
+            <Row label="Description or Damage to Property" value={equipment?.condition_notes || "None noted"} />
           </div>
         </div>
 
         <div className="mt-5">
           <SubHeader>Lease details</SubHeader>
           <div className="mt-2 grid grid-cols-1 gap-x-8 sm:grid-cols-2">
-            <Row label="Months to Ownership" value={String(lease.term)} />
-            <Row label="Payment Due Day" value="15th" />
-            <Row label="Rental Payment" value={money(lease.monthlyRental)} />
-            <Row label="Sales Tax" value={money(lease.salesTax)} />
-            <Row label="Total Monthly Payment" value={money(lease.totalMonthly)} />
-            <Row label="Security Deposit" value={money(lease.securityDeposit)} />
-            <Row label="TOTAL DUE" value={money(lease.totalDue)} />
-            <Row label="AutoPay" value={lease.autopay ? "Yes · Checking" : "No"} />
-            <Row label="Total Rental-Purchase Price" value={money(lease.monthlyRental * lease.term)} />
+            <Row label="Months to Ownership" value={String(lease.term_months)} />
+            <Row label="Payment Due Day" value={lease.payment_due_day ?? "—"} />
+            <Row label="Rental Payment" value={money(monthlyRental)} />
+            <Row label="Sales Tax" value={money(salesTax)} />
+            <Row label="Total Monthly Payment" value={money(totalMonthly)} />
+            <Row label="Security Deposit" value={money(securityDeposit)} />
+            <Row label="TOTAL DUE TODAY" value={money(totalDueToday)} />
+            <Row label="AutoPay" value={lease.autopay_enabled ? "Yes" : "No"} />
+            <Row label="Total Rental-Purchase Price" value={money(num(lease.total_rental_purchase_price))} />
           </div>
         </div>
 
@@ -87,9 +107,9 @@ export function LeaseAgreementDocument({ lease }: { lease: SampleLease }) {
           want to end the rental and make the Property available for pickup.
         </p>
         <p className="mt-3 text-xs italic leading-relaxed text-neutral-400">
-          <strong>3. Rental-Purchase Ownership.</strong> If you renew this Agreement for {lease.term} months in a
-          row, you will have paid the Total Rental-Purchase Price of {money(lease.monthlyRental * lease.term)}, not
-          including taxes or fees, and you will obtain ownership of the Property after the final payment. Or, you
+          <strong>3. Rental-Purchase Ownership.</strong> If you renew this Agreement for {lease.term_months} months
+          in a row, you will have paid the Total Rental-Purchase Price of {money(num(lease.total_rental_purchase_price))},
+          not including taxes or fees, and you will obtain ownership of the Property after the final payment. Or, you
           can exercise an early purchase option (&quot;EPO&quot;). Any time within 90 days of the effective date of
           this Agreement, your EPO price will be the Cash Price less all Rental Payments paid to date (excludes
           taxes and fees). After that time, your EPO price will be the Cash Price less 50% of Rental Payments
@@ -106,49 +126,53 @@ export function LeaseAgreementDocument({ lease }: { lease: SampleLease }) {
         </h2>
 
         <div className="mt-4 grid grid-cols-1 gap-x-8 sm:grid-cols-2">
-          <Row label="State" value="TX" />
           <Row label="Dealer" value="Outdoor Fix" />
-          <Row label="Cash Price" value={money(lease.cashPrice)} />
-          <Row label="Product Type" value="Mower" />
-          <Row label="Tax Rate" value="8.25%" />
-          <Row label="LDW" value={lease.ldw ? "Yes" : "No"} />
-          <Row label="Total Paying Today" value="$0.00" />
-          <Row label="Promo" value={lease.promo} />
+          <Row label="Cash Price" value={money(cashPrice)} />
+          <Row label="Tax Rate" value={`${taxRatePct}%`} />
+          <Row label="LDW" value={lease.ldw_selected ? "Yes" : "No"} />
+          <Row label="Total Paying Today" value={money(totalDueToday)} />
+          <Row label="Promo" value={lease.promo_code ?? "—"} />
         </div>
         <p className="mt-3 text-xs italic text-neutral-400">
           *Additional funds paid over required deposit, first payment and other fees will reduce monthly payment.
         </p>
       </div>
 
-      <div className="rounded-xl border border-neutral-200 bg-white p-6 print:break-inside-avoid">
-        <SubHeader>Early purchase option chart</SubHeader>
-        <p className="mt-2 text-xs text-neutral-400">
-          EPO price after each rental renewal payment, assuming on-time payments. Excludes tax.
-        </p>
-        <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3 lg:grid-cols-6 print:grid-cols-6">
-          {computeEpoSchedule(lease).map((row) => (
-            <div key={row.month} className="flex items-center justify-between border-b border-neutral-100 py-1.5">
-              <span className="text-neutral-400">{row.month}</span>
-              <span className="font-semibold text-neutral-800">{row.value.toFixed(2)}</span>
-            </div>
-          ))}
+      {lease.epo_schedule && (
+        <div className="rounded-xl border border-neutral-200 bg-white p-6 print:break-inside-avoid">
+          <SubHeader>Early purchase option chart</SubHeader>
+          <p className="mt-2 text-xs text-neutral-400">
+            EPO price after each rental renewal payment, assuming on-time payments. Excludes tax.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3 lg:grid-cols-6 print:grid-cols-6">
+            {lease.epo_schedule
+              .filter((row) => row.month === 1 || row.month % 3 === 0)
+              .map((row) => (
+                <div key={row.month} className="flex items-center justify-between border-b border-neutral-100 py-1.5">
+                  <span className="text-neutral-400">{row.month}</span>
+                  <span className="font-semibold text-neutral-800">{row.value.toFixed(2)}</span>
+                </div>
+              ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="rounded-xl border border-neutral-200 bg-white p-6 print:break-inside-avoid">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-neutral-400">Signed by</p>
-            <p className="mt-1 text-sm font-semibold text-neutral-900">{lease.signed ? CUSTOMER_NAME : "—"}</p>
+            <p className="mt-1 text-sm font-semibold text-neutral-900">{signed ? customerName : "—"}</p>
           </div>
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-neutral-400">Timestamp</p>
-            <p className="mt-1 text-sm font-semibold text-neutral-900">{lease.signed ? lease.signedAt : "—"}</p>
+            <p className="mt-1 text-sm font-semibold text-neutral-900">
+              {lease.contract ? new Date(lease.contract.signed_at).toLocaleString() : "—"}
+            </p>
           </div>
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-neutral-400">Status</p>
-            <p className={`mt-1 text-sm font-semibold ${lease.signed ? "text-green-600" : "text-amber-600"}`}>
-              {lease.signed ? "Signed & legally valid" : "Awaiting signature"}
+            <p className={`mt-1 text-sm font-semibold ${signed ? "text-green-600" : "text-amber-600"}`}>
+              {signed ? "Signed & legally valid" : "Awaiting signature"}
             </p>
           </div>
         </div>

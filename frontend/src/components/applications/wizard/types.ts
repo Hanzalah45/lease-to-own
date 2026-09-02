@@ -2,11 +2,13 @@ import type { StepKey } from "@/components/applications/wizard/WizardSteps";
 import {
   DRIVERS_LICENSE_MAX,
   validateCity,
+  validateConditionNotes,
   validateDob,
   validateEmail,
   validateEquipmentModel,
   validateIntegerInRange,
   validateMoney,
+  validateName,
   validatePercent,
   validatePhone,
   validatePromoCode,
@@ -15,6 +17,7 @@ import {
   validateStreet,
   validateYear,
   validateZip,
+  optional,
 } from "@/lib/validation";
 
 /** First message for a field from a Laravel-style { field: string[] } validation error map. */
@@ -120,6 +123,7 @@ function put(errors: Record<string, string[]>, key: string, message: string | un
 export function validateEquipmentStep(state: WizardState): Record<string, string[]> {
   const errors: Record<string, string[]> = {};
 
+  put(errors, "sales_person", optional((v) => validateName(v, "Sales person name"))(state.salesPerson));
   put(errors, "cash_price", validateMoney(state.cashPrice, "Cash price", { aboveZero: true }));
   if (!state.condition) {
     errors.condition = ["Equipment condition is required."];
@@ -130,6 +134,7 @@ export function validateEquipmentStep(state: WizardState): Record<string, string
   // The same serial rule the equipment module enforces — this field creates
   // the equipment record, so a serial with spaces in it would be unsearchable.
   put(errors, "serial", validateSerialNumber(state.serial));
+  put(errors, "description", validateConditionNotes(state.description ?? ""));
   put(errors, "promo_code", validatePromoCode(state.promoCode ?? ""));
 
   return errors;
@@ -284,7 +289,7 @@ export const INITIAL_WIZARD_STATE: WizardState = {
   monthlyRental: "",
   taxRate: "8.25",
   securityDeposit: "",
-  paymentDueDay: "15th",
+  paymentDueDay: "15",
   autopay: "no",
   registeredCustomerId: "",
   email: "",

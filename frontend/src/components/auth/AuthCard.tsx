@@ -1,5 +1,6 @@
 import Image from "next/image";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { EyeIcon, EyeOffIcon } from "@/components/icons";
 
 export function AuthCard({
   eyebrow,
@@ -51,7 +52,6 @@ export function AuthField({
   onBlur,
   required,
   minLength,
-  maxLength,
   placeholder,
   error,
 }: {
@@ -63,34 +63,50 @@ export function AuthField({
   onBlur?: () => void;
   required?: boolean;
   minLength?: number;
-  maxLength?: number;
   placeholder?: string;
   error?: string | null;
 }) {
+  const [revealed, setRevealed] = useState(false);
+  const isPassword = type === "password";
+
   return (
     <div className="space-y-1">
       <label htmlFor={id} className="font-heading text-sm font-semibold text-neutral-700">
         {label}
         {required && <span className="ml-0.5 text-red-600">*</span>}
       </label>
-      <input
-        id={id}
-        type={type}
-        required={required}
-        minLength={minLength}
-        maxLength={maxLength}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onBlur}
-        aria-invalid={!!error}
-        aria-describedby={error ? `${id}-error` : undefined}
-        className={`w-full rounded-md border px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-1 ${
-          error
-            ? "border-red-400 focus:border-red-600 focus:ring-red-600"
-            : "border-neutral-300 focus:border-red-600 focus:ring-red-600"
-        }`}
-      />
+      <div className="relative">
+        <input
+          id={id}
+          type={isPassword && revealed ? "text" : type}
+          required={required}
+          minLength={minLength}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+          aria-invalid={!!error}
+          aria-describedby={error ? `${id}-error` : undefined}
+          className={`w-full rounded-md border px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-1 ${
+            isPassword ? "pr-10" : ""
+          } ${
+            error
+              ? "border-red-400 focus:border-red-600 focus:ring-red-600"
+              : "border-neutral-300 focus:border-red-600 focus:ring-red-600"
+          }`}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setRevealed((v) => !v)}
+            tabIndex={-1}
+            aria-label={revealed ? "Hide password" : "Show password"}
+            className="absolute inset-y-0 right-0 flex items-center px-3 text-neutral-400 hover:text-neutral-600"
+          >
+            {revealed ? <EyeOffIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+          </button>
+        )}
+      </div>
       {error && (
         <p id={`${id}-error`} className="text-xs font-medium text-red-600">
           {error}

@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { Modal } from "@/components/ui/Modal";
+import { EyeIcon, EyeOffIcon } from "@/components/icons";
 import { ApiError } from "@/lib/api";
 import { createCustomer, updateCustomer } from "@/lib/customers";
 import {
@@ -39,6 +40,7 @@ export function EditCustomerModal({
 }) {
   const isEdit = !!customer;
   const profile = customer?.customer_profile;
+  const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({
     name: customer?.name ?? "",
     email: customer?.email ?? "",
@@ -260,18 +262,29 @@ export function EditCustomerModal({
           <label htmlFor="customer-password" className={labelClass}>
             Password {isEdit ? <span className="font-normal text-neutral-400">(leave blank to keep current)</span> : <span className="text-red-600">*</span>}
           </label>
-          <input
-            id="customer-password"
-            type="password"
-            className={inputClass(!!fieldError("password"))}
-            autoComplete="new-password"
-            placeholder={isEdit ? "••••••••" : "At least 8 characters, incl. a letter and a number"}
-            value={form.password}
-            onChange={(e) => set("password", e.target.value)}
-            onBlur={() => touch("password")}
-            aria-invalid={!!fieldError("password")}
-            aria-describedby={fieldError("password") ? "customer-password-error" : undefined}
-          />
+          <div className="relative">
+            <input
+              id="customer-password"
+              type={showPassword ? "text" : "password"}
+              className={`${inputClass(!!fieldError("password"))} pr-10`}
+              autoComplete="new-password"
+              placeholder={isEdit ? "••••••••" : "At least 8 characters, incl. a letter and a number"}
+              value={form.password}
+              onChange={(e) => set("password", e.target.value)}
+              onBlur={() => touch("password")}
+              aria-invalid={!!fieldError("password")}
+              aria-describedby={fieldError("password") ? "customer-password-error" : undefined}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              tabIndex={-1}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              className="absolute inset-y-0 right-0 flex items-center px-3 text-neutral-400 hover:text-neutral-600"
+            >
+              {showPassword ? <EyeOffIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
+            </button>
+          </div>
           {fieldError("password") && (
             <p id="customer-password-error" className={errorClass}>
               {fieldError("password")}

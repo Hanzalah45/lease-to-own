@@ -7,6 +7,7 @@ import { AuthCard, AuthField, AuthSubmitButton } from "@/components/auth/AuthCar
 import { useAuth } from "@/context/AuthContext";
 import { ApiError } from "@/lib/api";
 import { dashboardPathForRole, login } from "@/lib/auth";
+import { validateEmail } from "@/lib/validation";
 
 export default function LoginPage() {
   return (
@@ -42,7 +43,8 @@ function LoginForm() {
   }
 
   const clientErrors: Record<string, string> = {};
-  if (!email.trim()) clientErrors.email = "Email is required.";
+  const emailError = validateEmail(email);
+  if (emailError) clientErrors.email = emailError;
   if (!password) clientErrors.password = "Password is required.";
 
   const isValid = Object.keys(clientErrors).length === 0;
@@ -125,6 +127,12 @@ function LoginForm() {
           onBlur={() => touch("password")}
           error={fieldError("password")}
         />
+
+        <div className="-mt-2 text-right">
+          <Link href="/forgot-password" className="text-xs font-semibold text-neutral-500 hover:text-neutral-900 hover:underline">
+            Forgot password?
+          </Link>
+        </div>
 
         <AuthSubmitButton disabled={submitting || !isValid}>
           {submitting ? "Signing in…" : "Sign in →"}

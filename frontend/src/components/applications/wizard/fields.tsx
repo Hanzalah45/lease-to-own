@@ -1,4 +1,14 @@
-import { useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  useId,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { CheckCircleIcon, UploadIcon, XIcon } from "@/components/icons";
 
 const inputBaseClass =
@@ -8,6 +18,12 @@ const inputNormalClass =
 const inputErrorClass =
   "border-red-500 bg-red-50/20 text-neutral-900 placeholder:text-red-300 focus:border-red-600 focus:ring-1 focus:ring-red-600";
 const labelClass = "mb-1.5 block text-sm font-semibold text-neutral-800";
+
+interface A11yProps {
+  id?: string;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
+}
 
 export function Field({
   label,
@@ -22,14 +38,25 @@ export function Field({
   error?: string;
   children: ReactNode;
 }) {
+  const id = useId();
+  const errorId = `${id}-error`;
+
+  const child = isValidElement(children)
+    ? cloneElement(children as ReactElement<A11yProps>, {
+        id,
+        "aria-invalid": !!error,
+        "aria-describedby": error ? errorId : undefined,
+      })
+    : children;
+
   return (
     <div>
-      <label className={labelClass}>
+      <label htmlFor={id} className={labelClass}>
         {label} {required && <span className="font-bold text-red-600">*</span>}
       </label>
-      {children}
+      {child}
       {error ? (
-        <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-red-600">
+        <p id={errorId} className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-red-600">
           <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-600" />
           {error}
         </p>
@@ -46,20 +73,24 @@ export function TextInput({
   placeholder,
   type = "text",
   hasError,
+  id,
+  ...a11y
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   type?: string;
   hasError?: boolean;
-}) {
+} & A11yProps) {
   return (
     <input
+      id={id}
       type={type}
       className={`${inputBaseClass} ${hasError ? inputErrorClass : inputNormalClass}`}
       placeholder={placeholder}
       value={value}
       onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
+      {...a11y}
     />
   );
 }
@@ -70,18 +101,22 @@ export function SelectInput({
   options,
   placeholder,
   hasError,
+  id,
+  ...a11y
 }: {
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
   placeholder?: string;
   hasError?: boolean;
-}) {
+} & A11yProps) {
   return (
     <select
+      id={id}
       className={`${inputBaseClass} ${hasError ? inputErrorClass : inputNormalClass}`}
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      {...a11y}
     >
       <option value="" disabled>
         {placeholder ?? "Select…"}
@@ -100,12 +135,14 @@ export function FileInput({
   onChange,
   accept = "image/*,.pdf",
   hasError,
+  id,
+  ...a11y
 }: {
   value: File | null;
   onChange: (file: File | null) => void;
   accept?: string;
   hasError?: boolean;
-}) {
+} & A11yProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -116,7 +153,11 @@ export function FileInput({
 
   if (value) {
     return (
-      <div className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3">
+      <div
+        id={id}
+        {...a11y}
+        className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3"
+      >
         <div className="flex min-w-0 items-center gap-2">
           <CheckCircleIcon className="h-4 w-4 shrink-0 text-green-600" />
           <span className="truncate text-sm font-medium text-neutral-700">{value.name}</span>
@@ -136,6 +177,8 @@ export function FileInput({
 
   return (
     <div
+      id={id}
+      {...a11y}
       onClick={() => inputRef.current?.click()}
       onDragOver={(e: DragEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -173,14 +216,21 @@ export function RadioGroup({
   onChange,
   options,
   hasError,
+  id,
+  ...a11y
 }: {
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
   hasError?: boolean;
-}) {
+} & A11yProps) {
   return (
-    <div className={`flex items-center gap-5 pt-1 rounded-md px-2 py-1 ${hasError ? "bg-red-50/40 border border-red-300" : ""}`}>
+    <div
+      id={id}
+      role="radiogroup"
+      {...a11y}
+      className={`flex items-center gap-5 pt-1 rounded-md px-2 py-1 ${hasError ? "bg-red-50/40 border border-red-300" : ""}`}
+    >
       {options.map((o) => (
         <label key={o.value} className="flex cursor-pointer items-center gap-2 text-sm text-neutral-800">
           <input
@@ -201,19 +251,23 @@ export function TextArea({
   onChange,
   placeholder,
   hasError,
+  id,
+  ...a11y
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   hasError?: boolean;
-}) {
+} & A11yProps) {
   return (
     <textarea
+      id={id}
       rows={3}
       className={`${inputBaseClass} ${hasError ? inputErrorClass : inputNormalClass}`}
       placeholder={placeholder}
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      {...a11y}
     />
   );
 }

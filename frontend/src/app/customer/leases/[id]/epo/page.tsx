@@ -58,7 +58,10 @@ export default function CustomerEpoSchedulePage() {
           <p className="font-heading text-3xl font-black text-red-600">{money(lease.epo_today)}</p>
           <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Buyout price today</p>
           <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-neutral-100">
-            <div className="h-full rounded-full bg-red-600" style={{ width: "70%" }} />
+            <div
+              className="h-full rounded-full bg-red-600"
+              style={{ width: `${Number(lease.cash_price) > 0 ? Math.round((lease.epo_today / Number(lease.cash_price)) * 100) : 0}%` }}
+            />
           </div>
         </div>
         <div className="rounded-xl border border-neutral-200 bg-white px-5 py-4">

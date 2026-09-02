@@ -4,12 +4,14 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
@@ -30,6 +32,7 @@ class User extends Authenticatable
         'name',
         'email',
         'phone',
+        'avatar_path',
         'password',
         'role',
         'status',
@@ -43,7 +46,17 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        // Raw storage path isn't useful to the frontend and shouldn't be
+        // assumed stable — avatar_url (below) is the public contract.
+        'avatar_path',
     ];
+
+    /**
+     * The accessors to append to the model's array/JSON form.
+     *
+     * @var list<string>
+     */
+    protected $appends = ['avatar_url'];
 
     /**
      * Get the attributes that should be cast.
@@ -56,6 +69,13 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    protected function avatarUrl(): Attribute
+    {
+        return Attribute::make(
+            get: fn () => $this->avatar_path ? Storage::disk('public')->url($this->avatar_path) : null,
+        );
     }
 
     public function isCustomer(): bool
