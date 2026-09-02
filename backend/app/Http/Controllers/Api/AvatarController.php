@@ -18,10 +18,10 @@ class AvatarController extends Controller
         $user = $request->user();
 
         if ($user->avatar_path) {
-            Storage::disk('public')->delete($user->avatar_path);
+            Storage::disk('avatars')->delete($user->avatar_path);
         }
 
-        $path = $request->file('avatar')->store('avatars', 'public');
+        $path = $request->file('avatar')->store('', 'avatars');
         $user->update(['avatar_path' => $path]);
 
         return response()->json(['user' => $user->fresh()->load(['customerProfile', 'adminPermissions'])]);
@@ -32,7 +32,7 @@ class AvatarController extends Controller
         $user = $request->user();
 
         if ($user->avatar_path) {
-            Storage::disk('public')->delete($user->avatar_path);
+            Storage::disk('avatars')->delete($user->avatar_path);
             $user->update(['avatar_path' => null]);
         }
 

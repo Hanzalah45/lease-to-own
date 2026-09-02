@@ -47,6 +47,19 @@ return [
             'report' => false,
         ],
 
+        // Serves straight from public/avatars — deliberately not under the
+        // "public" disk above, since that relies on the storage:link symlink
+        // and some shared hosts (this app's production host included) run
+        // with both symlink() and exec() disabled, breaking `storage:link`.
+        'avatars' => [
+            'driver' => 'local',
+            'root' => public_path('avatars'),
+            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/avatars',
+            'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

@@ -74,7 +74,7 @@ class User extends Authenticatable
     protected function avatarUrl(): Attribute
     {
         return Attribute::make(
-            get: fn () => $this->avatar_path ? Storage::disk('public')->url($this->avatar_path) : null,
+            get: fn () => $this->avatar_path ? Storage::disk('avatars')->url($this->avatar_path) : null,
         );
     }
 
