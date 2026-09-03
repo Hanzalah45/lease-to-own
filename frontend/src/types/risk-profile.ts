@@ -18,6 +18,8 @@ export interface RiskRedFlag {
   description: string | null;
   flagged_at: string;
   resolved: boolean;
+  resolved_by?: { id: number; name: string } | null;
+  resolved_at?: string | null;
 }
 
 export interface RiskProfile {
@@ -31,6 +33,7 @@ export interface RiskProfile {
   risk_score: number | null;
   landlord_contact_required: boolean;
   landlord_contact_reason: string | null;
+  updated_by?: { id: number; name: string } | null;
   red_flags?: RiskRedFlag[];
   customer?: { id: number; name: string; email: string };
 }

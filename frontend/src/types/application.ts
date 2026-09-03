@@ -19,6 +19,20 @@ export interface ApplicationDealerNote {
   author: { id: number; name: string };
 }
 
+/**
+ * One "needs info" round-trip — the ask, and (once answered) the reply.
+ * `requested_by` is only present in the admin's view of the application.
+ */
+export interface ApplicationInfoRequest {
+  id: number;
+  requested_by?: string;
+  request_text: string;
+  requested_at: string;
+  reply_text: string | null;
+  reply_has_document: boolean;
+  replied_at: string | null;
+}
+
 export interface Application {
   id: number;
   customer_id: number;
@@ -28,10 +42,13 @@ export interface Application {
   deposit_received: boolean;
   /** Eager-loaded as the reviewing admin's {id, name} — Eloquent serializes the `reviewedBy` relation under this same key as the raw FK column. */
   reviewed_by: { id: number; name: string } | null;
+  /** Who submitted this application — an admin (New Application wizard) or the customer themselves (self-service). Null on rows created before this tracking existed. */
+  created_by: { id: number; name: string } | null;
   internal_notes: string | null;
   created_at: string;
   updated_at: string;
   customer?: AuthUser;
   lease_agreement?: LeaseAgreement | null;
   dealer_notes?: ApplicationDealerNote[];
+  info_requests?: ApplicationInfoRequest[];
 }

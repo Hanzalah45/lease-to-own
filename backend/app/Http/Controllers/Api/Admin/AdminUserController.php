@@ -7,7 +7,9 @@ use App\Mail\AdminAccountCreatedMail;
 use App\Models\AdminPermission;
 use App\Models\User;
 use App\Notifications\AdminAccountCreatedNotification;
+use App\Notifications\AdminAccountUpdatedNotification;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
@@ -26,7 +28,7 @@ class AdminUserController extends Controller
      */
     public function index()
     {
-        $admins = User::where('role', User::ROLE_ADMIN)->with('adminPermissions')->get();
+        $admins = User::where('role', User::ROLE_ADMIN)->with('adminPermissions.grantedBy:id,name')->get();
 
         return response()->json(['data' => $admins]);
     }
@@ -37,7 +39,7 @@ class AdminUserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'phone' => ['nullable', 'string', 'max:30'],
-            'password' => ['required', 'string', 'min:8'],
+            'password' => ['required', 'string', 'min:8', 'max:72'],
             // Restriction list — leave empty/omitted for full access.
             'permissions' => ['nullable', 'array'],
             'permissions.*' => ['in:'.implode(',', [
@@ -59,20 +61,20 @@ class AdminUserController extends Controller
         ]);
 
         foreach ($data['permissions'] ?? [] as $permission) {
-            AdminPermission::create(['user_id' => $admin->id, 'permission' => $permission]);
+            AdminPermission::create(['user_id' => $admin->id, 'permission' => $permission, 'granted_by' => Auth::id()]);
         }
 
         Mail::to($admin->email)->send(new AdminAccountCreatedMail($admin, $data['password']));
         $admin->notify(new AdminAccountCreatedNotification());
 
-        return response()->json(['data' => $admin->load('adminPermissions')], 201);
+        return response()->json(['data' => $admin->load('adminPermissions.grantedBy:id,name')], 201);
     }
 
     public function show(User $adminUser)
     {
         $this->assertIsAdmin($adminUser);
 
-        return response()->json(['data' => $adminUser->load('adminPermissions')]);
+        return response()->json(['data' => $adminUser->load('adminPermissions.grantedBy:id,name')]);
     }
 
     /**
@@ -96,16 +98,34 @@ class AdminUserController extends Controller
             ])],
         ])->validate();
 
+        $statusChanged = isset($data['status']) && $data['status'] !== $adminUser->status;
+
         $adminUser->update(collect($data)->only(['name', 'phone', 'status'])->toArray());
 
-        if (array_key_exists('permissions', $data)) {
+        // Sanctum tokens never expire and nothing re-checks status on later
+        // requests — without this, a suspended admin keeps full API access
+        // until they happen to log out on their own.
+        if ($statusChanged && $data['status'] !== 'active') {
+            $adminUser->tokens()->delete();
+        }
+
+        $permissionsChanged = array_key_exists('permissions', $data);
+        if ($permissionsChanged) {
             $adminUser->adminPermissions()->delete();
             foreach ($data['permissions'] as $permission) {
-                AdminPermission::create(['user_id' => $adminUser->id, 'permission' => $permission]);
+                AdminPermission::create(['user_id' => $adminUser->id, 'permission' => $permission, 'granted_by' => Auth::id()]);
             }
         }
 
-        return response()->json(['data' => $adminUser->load('adminPermissions')]);
+        $changes = array_filter([
+            $statusChanged ? "status changed to {$data['status']}" : null,
+            $permissionsChanged ? 'permissions were updated' : null,
+        ]);
+        if ($changes) {
+            $adminUser->notify(new AdminAccountUpdatedNotification(ucfirst(implode(' and ', $changes)).'.'));
+        }
+
+        return response()->json(['data' => $adminUser->load('adminPermissions.grantedBy:id,name')]);
     }
 
     public function destroy(User $adminUser)

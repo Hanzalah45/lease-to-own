@@ -54,6 +54,7 @@ export interface EquipmentUnit {
   gps_device_id: string | null;
   created_at: string;
   updated_at: string;
+  updated_by?: { id: number; name: string } | null;
   /** Server-computed. */
   is_assignable: boolean;
   current_lease: EquipmentCurrentLease | null;

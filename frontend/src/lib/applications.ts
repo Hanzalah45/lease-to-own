@@ -96,6 +96,46 @@ export async function getMyApplication(id: number | string): Promise<Application
   return data.data;
 }
 
+/**
+ * Responds to a "needs info" request — a text reply, a replacement ID
+ * document, or both (at least one required) — and moves the application
+ * back to under_review.
+ */
+export async function respondToInfoRequest(
+  applicationId: number | string,
+  { replyText, file }: { replyText?: string; file?: File | null },
+): Promise<Application> {
+  const form = new FormData();
+  if (replyText) form.set("reply_text", replyText);
+  if (file) form.set("id_document", file);
+  const data = await apiFetch<{ data: Application }>(`/customer/applications/${applicationId}/respond`, {
+    method: "POST",
+    token: getToken(),
+    body: form,
+  });
+  return data.data;
+}
+
+/** Lets the customer download exactly what they themselves attached to one of their own info-request replies. */
+export async function downloadMyInfoRequestDocument(
+  applicationId: number | string,
+  infoRequestId: number | string,
+  filename = "id-document",
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/customer/applications/${applicationId}/info-requests/${infoRequestId}/document`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!response.ok) throw new Error("Could not download this document.");
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 /** Customer self-service submission — same wizard payload, minus the admin-only registered_customer_id/sales_person fields. */
 export async function createMyApplication(state: WizardState): Promise<Application> {
   const data = await apiFetch<{ data: Application }>("/customer/applications", {
@@ -146,12 +186,32 @@ export async function updateApplication(id: number | string, payload: Applicatio
   return data.data;
 }
 
-/** Streams the applicant's uploaded ID document through an authenticated request and triggers a browser download. */
+/** Streams the applicant's current ID document on file through an authenticated request and triggers a browser download. */
 export async function downloadIdDocument(applicationId: number | string, filename = "id-document"): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/admin/applications/${applicationId}/id-document`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!response.ok) throw new Error("Could not download the ID document.");
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Streams the specific document attached to one historical info-request reply — not just whatever's current on the profile. */
+export async function downloadInfoRequestDocument(
+  applicationId: number | string,
+  infoRequestId: number | string,
+  filename = "id-document",
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/admin/applications/${applicationId}/info-requests/${infoRequestId}/document`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!response.ok) throw new Error("Could not download this document.");
 
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);

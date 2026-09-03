@@ -33,10 +33,13 @@ use Illuminate\Support\Facades\Route;
 | Public auth routes
 |--------------------------------------------------------------------------
 */
-Route::post('/auth/register', RegisterController::class);
-Route::post('/auth/login', LoginController::class);
-Route::post('/auth/forgot-password', ForgotPasswordController::class);
-Route::post('/auth/reset-password', ResetPasswordController::class);
+// throttle:10,1 = 10 attempts/minute per IP — these had no rate limiting at
+// all before (the api group never calls throttleApi()), leaving login/register
+// open to brute-force and spam.
+Route::post('/auth/register', RegisterController::class)->middleware('throttle:10,1');
+Route::post('/auth/login', LoginController::class)->middleware('throttle:10,1');
+Route::post('/auth/forgot-password', ForgotPasswordController::class)->middleware('throttle:10,1');
+Route::post('/auth/reset-password', ResetPasswordController::class)->middleware('throttle:10,1');
 
 /*
 |--------------------------------------------------------------------------
@@ -58,10 +61,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // Customer portal
     Route::middleware('role:customer')->prefix('customer')->name('customer.')->group(function () {
         Route::apiResource('applications', ApplicationController::class)->only(['index', 'store', 'show']);
+        Route::post('/applications/{application}/respond', [ApplicationController::class, 'respondToInfoRequest']);
+        Route::get('/applications/{application}/info-requests/{infoRequest}/document', [ApplicationController::class, 'infoRequestDocument']);
         Route::apiResource('lease-agreements', LeaseAgreementController::class)
             ->only(['index', 'show'])
             ->parameters(['lease-agreements' => 'leaseAgreement']);
         Route::apiResource('contracts', ContractController::class)->only(['index', 'show', 'store']);
+        Route::get('/contracts/{contract}/download', [ContractController::class, 'download']);
         Route::apiResource('payments', PaymentController::class)->only(['index', 'show']);
 
         // Read-only: the equipment on this customer's own leases.
@@ -86,6 +92,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware('permission:application_review')->group(function () {
             Route::apiResource('applications', AdminApplicationController::class);
             Route::get('/applications/{application}/id-document', [AdminApplicationController::class, 'idDocument']);
+            Route::get('/applications/{application}/info-requests/{infoRequest}/document', [AdminApplicationController::class, 'infoRequestDocument']);
             Route::post('/applications/{application}/dealer-notes', [DealerNoteController::class, 'store']);
             Route::apiResource('customers', AdminCustomerController::class);
         });
@@ -97,7 +104,8 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
         Route::middleware('permission:contract_generation')->group(function () {
-            Route::apiResource('contracts', AdminContractController::class);
+            Route::get('/contracts/{contract}/download', [AdminContractController::class, 'download']);
+            Route::post('/contracts/{contract}/void', [AdminContractController::class, 'void']);
             Route::apiResource('lease-agreements', AdminLeaseAgreementController::class)
                 ->parameters(['lease-agreements' => 'leaseAgreement']);
         });

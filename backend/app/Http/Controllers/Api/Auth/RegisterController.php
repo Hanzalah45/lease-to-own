@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminPermission;
 use App\Models\CustomerProfile;
 use App\Models\User;
 use App\Notifications\NewCustomerRegisteredNotification;
@@ -24,7 +25,7 @@ class RegisterController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'phone' => ['nullable', 'string', 'max:30'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => ['required', 'string', 'min:8', 'max:72', 'confirmed'],
         ])->validate();
 
         $user = User::create([
@@ -38,7 +39,16 @@ class RegisterController extends Controller
 
         CustomerProfile::create(['user_id' => $user->id]);
 
-        $staff = User::whereIn('role', [User::ROLE_ADMIN, User::ROLE_SUPER_ADMIN])->get();
+        // Its action_url points at /admin/customers/{id}, which is gated by
+        // application_review — so only admins who can actually open it get notified.
+        $staff = User::where('role', User::ROLE_SUPER_ADMIN)
+            ->orWhere(function ($query) {
+                $query->where('role', User::ROLE_ADMIN)
+                    ->where(function ($inner) {
+                        $inner->whereDoesntHave('adminPermissions')
+                            ->orWhereHas('adminPermissions', fn ($p) => $p->where('permission', AdminPermission::APPLICATION_REVIEW));
+                    });
+            })->get();
         Notification::send($staff, new NewCustomerRegisteredNotification($user));
 
         $token = $user->createToken('auth_token')->plainTextToken;

@@ -36,6 +36,7 @@ class LeaseAgreement extends Model
         'ldw_amount',
         'promo_code',
         'promo_discount',
+        'updated_by',
     ];
 
     protected function casts(): array
@@ -72,9 +73,21 @@ class LeaseAgreement extends Model
         return $this->belongsTo(EquipmentUnit::class);
     }
 
+    public function updatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    /** The currently active signature, if any — a voided one never counts, which is what clears the way to sign again. */
     public function contract(): HasOne
     {
-        return $this->hasOne(Contract::class);
+        return $this->hasOne(Contract::class)->whereNull('voided_at');
+    }
+
+    /** Full signature history, voided or not, newest first — for admin audit views. */
+    public function contracts(): HasMany
+    {
+        return $this->hasMany(Contract::class)->latest();
     }
 
     public function payments(): HasMany
@@ -82,8 +95,18 @@ class LeaseAgreement extends Model
         return $this->hasMany(Payment::class);
     }
 
+    /**
+     * Uses the already-loaded `payments` collection when available instead of
+     * a fresh COUNT query — callers that list many leases eager-load payments
+     * once up front, and this is called (often twice, via epoToday()) per
+     * lease in that list, so re-querying here turns one query into hundreds.
+     */
     public function paymentsMadeCount(): int
     {
+        if ($this->relationLoaded('payments')) {
+            return $this->payments->where('status', Payment::STATUS_PAID)->count();
+        }
+
         return $this->payments()->where('status', Payment::STATUS_PAID)->count();
     }
 

@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { StatusPipeline } from "@/components/applications/detail/StatusPipeline";
 import { TakeActionBanner } from "@/components/applications/detail/TakeActionBanner";
 import { InfoCallout } from "@/components/applications/detail/InfoCallout";
+import { InfoRequestTimeline } from "@/components/applications/detail/InfoRequestTimeline";
 import { DetailCard } from "@/components/applications/detail/DetailCard";
 import { DealerNotes } from "@/components/applications/detail/DealerNotes";
 import { ChecklistCard } from "@/components/applications/detail/ChecklistCard";
@@ -17,7 +18,7 @@ import { Modal } from "@/components/ui/Modal";
 import type { AppStatus } from "@/components/applications/detail/types";
 import type { AdminPermissionKey } from "@/types/auth";
 import type { Application } from "@/types/application";
-import { addDealerNote, downloadIdDocument, getApplication, resolveRiskRedFlag, updateApplication } from "@/lib/applications";
+import { addDealerNote, downloadIdDocument, downloadInfoRequestDocument, getApplication, resolveRiskRedFlag, updateApplication } from "@/lib/applications";
 import { money } from "@/components/applications/wizard/types";
 import { ApiError } from "@/lib/api";
 import {
@@ -79,10 +80,13 @@ const BADGE_STYLE: Record<AppStatus, { label: string; color: string }> = {
   withdrawn: { label: "Withdrawn", color: "bg-neutral-200 text-neutral-700" },
 };
 
+// needs_info deliberately has no forward edge — an admin can't approve past
+// an info request they themselves opened until the customer answers it (that
+// reply auto-advances the application to under_review; see
+// Customer\ApplicationController::respondToInfoRequest on the backend).
 const FLOW: Partial<Record<AppStatus, AppStatus>> = {
   submitted: "under_review",
   under_review: "approved",
-  needs_info: "approved",
   approved: "completed",
   completed: "processed",
   processed: "funded_paid",
@@ -91,7 +95,6 @@ const FLOW: Partial<Record<AppStatus, AppStatus>> = {
 const PRIMARY_LABEL: Partial<Record<AppStatus, string>> = {
   submitted: "Mark Under Review",
   under_review: "Approved",
-  needs_info: "Approved",
   approved: "Mark Completed",
   completed: "Mark Processed",
   processed: "Mark Funded",
@@ -114,6 +117,7 @@ export default function ApplicationDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [acting, setActing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const [editingCard, setEditingCard] = useState<"customer" | "lease" | "equipment" | "risk" | null>(null);
   const [postingNote, setPostingNote] = useState(false);
@@ -134,28 +138,93 @@ export default function ApplicationDetailPage() {
     load();
   }, [load]);
 
+  async function reverseDecline() {
+    if (!application) return;
+    setActing(true);
+    setActionError(null);
+    try {
+      setApplication(await updateApplication(application.id, { status: "submitted", status_notes: null }));
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not change this application's status.");
+    } finally {
+      setActing(false);
+    }
+  }
+
   async function advance() {
     if (!application) return;
     const next = FLOW[application.status];
     if (!next) return;
     setActing(true);
+    setActionError(null);
     try {
       setApplication(await updateApplication(application.id, { status: next }));
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not update this application.");
     } finally {
       setActing(false);
     }
   }
 
   const [showDeclineConfirm, setShowDeclineConfirm] = useState(false);
+  const [declineNote, setDeclineNote] = useState("");
+  const [declineNoteTouched, setDeclineNoteTouched] = useState(false);
+
+  const declineNoteError = declineNote.trim() ? validateNotes(declineNote) : "A reason is required.";
+  const canConfirmDecline = !declineNoteError && !acting;
+
+  function closeDeclineConfirm() {
+    setShowDeclineConfirm(false);
+    setDeclineNote("");
+    setDeclineNoteTouched(false);
+  }
 
   async function confirmDecline() {
     if (!application) return;
+    if (declineNoteError) {
+      setDeclineNoteTouched(true);
+      return;
+    }
     setActing(true);
+    setActionError(null);
+    try {
+      setApplication(await updateApplication(application.id, { status: "declined", status_notes: declineNote.trim() }));
+      closeDeclineConfirm();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not decline this application.");
+    } finally {
+      setActing(false);
+    }
+  }
+
+  const [showRequestInfoConfirm, setShowRequestInfoConfirm] = useState(false);
+  const [requestInfoNote, setRequestInfoNote] = useState("");
+  const [requestInfoNoteTouched, setRequestInfoNoteTouched] = useState(false);
+
+  const requestInfoNoteError = requestInfoNote.trim() ? validateNotes(requestInfoNote) : "Say what's needed from the customer.";
+  const canConfirmRequestInfo = !requestInfoNoteError && !acting;
+
+  function closeRequestInfoConfirm() {
+    setShowRequestInfoConfirm(false);
+    setRequestInfoNote("");
+    setRequestInfoNoteTouched(false);
+  }
+
+  async function confirmRequestInfo() {
+    if (!application) return;
+    if (requestInfoNoteError) {
+      setRequestInfoNoteTouched(true);
+      return;
+    }
+    setActing(true);
+    setActionError(null);
     try {
       setApplication(
-        await updateApplication(application.id, { status: "declined", status_notes: "Declined during admin review." }),
+        await updateApplication(application.id, { status: "needs_info", status_notes: requestInfoNote.trim() }),
       );
-      setShowDeclineConfirm(false);
+      closeRequestInfoConfirm();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not send this request.");
     } finally {
       setActing(false);
     }
@@ -165,9 +234,12 @@ export default function ApplicationDetailPage() {
 
   async function resolveFlag(riskProfileId: number, redFlagId: number) {
     setResolvingFlagId(redFlagId);
+    setActionError(null);
     try {
       await resolveRiskRedFlag(riskProfileId, redFlagId);
       await load();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not resolve this flag.");
     } finally {
       setResolvingFlagId(null);
     }
@@ -176,9 +248,12 @@ export default function ApplicationDetailPage() {
   async function addNote(text: string) {
     if (!application) return;
     setPostingNote(true);
+    setActionError(null);
     try {
       const note = await addDealerNote(application.id, text);
       setApplication((prev) => (prev ? { ...prev, dealer_notes: [note, ...(prev.dealer_notes ?? [])] } : prev));
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not post this note.");
     } finally {
       setPostingNote(false);
     }
@@ -187,8 +262,11 @@ export default function ApplicationDetailPage() {
   async function toggleChecklistField(field: "signature_received" | "deposit_received") {
     if (!application) return;
     setTogglingChecklist(true);
+    setActionError(null);
     try {
       setApplication(await updateApplication(application.id, { [field]: !application[field] }));
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not update the checklist.");
     } finally {
       setTogglingChecklist(false);
     }
@@ -253,6 +331,18 @@ export default function ApplicationDetailPage() {
     );
   }
 
+  if (!can("application_review")) {
+    return (
+      <div className="space-y-3">
+        <h1 className="text-2xl font-bold uppercase tracking-tight">Applications</h1>
+        <p className="max-w-prose text-sm text-neutral-500">
+          Your admin account is restricted and does not include application review. Ask a super admin to add the
+          Application Review permission to your account.
+        </p>
+      </div>
+    );
+  }
+
   if (loading) {
     return <p className="py-12 text-center text-sm text-neutral-400">Loading…</p>;
   }
@@ -272,6 +362,7 @@ export default function ApplicationDetailPage() {
   const customer = application.customer;
   const profile = customer?.customer_profile;
   const risk = customer?.risk_profile;
+  const openInfoRequest = application.info_requests?.find((r) => !r.replied_at);
   const lease = application.lease_agreement;
   const equipment = lease?.equipment_unit;
   const badge = BADGE_STYLE[status];
@@ -402,18 +493,48 @@ export default function ApplicationDetailPage() {
         </p>
       </div>
 
+      {actionError && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+          <p className="text-sm text-red-700">{actionError}</p>
+          <button
+            onClick={() => setActionError(null)}
+            aria-label="Dismiss"
+            className="shrink-0 text-xs font-bold text-red-500 hover:text-red-700"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {status !== "declined" && status !== "withdrawn" && <StatusPipeline status={status} />}
+
+      <InfoRequestTimeline
+        requests={application.info_requests ?? []}
+        onDownloadDocument={(infoRequestId) => downloadInfoRequestDocument(application.id, infoRequestId, `application-${application.id}-id-r${infoRequestId}`)}
+      />
 
       {status === "submitted" && (
         <>
-          <TakeActionBanner primaryLabel={PRIMARY_LABEL.submitted!} onPrimary={advance} onDecline={() => setShowDeclineConfirm(true)} disabled={!can("application_review") || acting} />
+          <TakeActionBanner
+            primaryLabel={PRIMARY_LABEL.submitted!}
+            onPrimary={advance}
+            onDecline={() => setShowDeclineConfirm(true)}
+            onRequestInfo={() => setShowRequestInfoConfirm(true)}
+            disabled={!can("application_review") || acting}
+          />
           <InfoCallout tone="blue" icon={DocumentIcon} title="New submission" description="Just came in — no review or automated checks have started yet." />
         </>
       )}
 
       {status === "under_review" && (
         <>
-          <TakeActionBanner primaryLabel={PRIMARY_LABEL.under_review!} onPrimary={advance} onDecline={() => setShowDeclineConfirm(true)} disabled={!can("application_review") || acting} />
+          <TakeActionBanner
+            primaryLabel={PRIMARY_LABEL.under_review!}
+            onPrimary={advance}
+            onDecline={() => setShowDeclineConfirm(true)}
+            onRequestInfo={() => setShowRequestInfoConfirm(true)}
+            disabled={!can("application_review") || acting}
+          />
           <InfoCallout
             tone="green"
             icon={ClockIcon}
@@ -431,14 +552,17 @@ export default function ApplicationDetailPage() {
       {status === "needs_info" && (
         <>
           <TakeActionBanner
-            title="Action required"
-            description="This application is missing or has incorrect information."
-            primaryLabel={PRIMARY_LABEL.needs_info!}
-            onPrimary={advance}
+            title="Waiting on the customer"
+            description="Approval is unavailable until they reply — this moves to Under Review on its own once they respond. You can still decline."
             onDecline={() => setShowDeclineConfirm(true)}
             disabled={!can("application_review") || acting}
           />
-          <InfoCallout tone="amber" icon={AlertCircleIcon} title="Action required" description={application.status_notes ?? "Missing information — see notes."} />
+          <InfoCallout
+            tone="amber"
+            icon={AlertCircleIcon}
+            title="Action required"
+            description={openInfoRequest?.request_text ?? "Missing information — see the info requests below."}
+          />
         </>
       )}
 
@@ -492,8 +616,9 @@ export default function ApplicationDetailPage() {
           </div>
           {can("application_review") && (
             <button
-              onClick={async () => setApplication(await updateApplication(application.id, { status: "submitted", status_notes: null }))}
-              className="font-heading shrink-0 self-start rounded-md border border-neutral-300 bg-white px-4 py-2 text-xs font-bold text-neutral-700 hover:bg-neutral-50 sm:self-auto"
+              onClick={reverseDecline}
+              disabled={acting}
+              className="font-heading shrink-0 self-start rounded-md border border-neutral-300 bg-white px-4 py-2 text-xs font-bold text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
             >
               Change Status
             </button>
@@ -536,6 +661,7 @@ export default function ApplicationDetailPage() {
                       ),
                     }]
                   : []),
+                ...(profile?.updated_by ? [{ label: "Last edited by", value: profile.updated_by.name }] : []),
               ]}
             />
             <DetailCard
@@ -555,6 +681,7 @@ export default function ApplicationDetailPage() {
                       { label: "AutoPay", value: lease.autopay_enabled ? "Yes" : "No" },
                       { label: "LDW selected", value: lease.ldw_selected ? "Yes" : "No" },
                       { label: "Promo applied", value: lease.promo_code ?? "—" },
+                      ...(lease.updated_by ? [{ label: "Last edited by", value: lease.updated_by.name }] : []),
                     ]
                   : [{ label: "Lease", value: "Not yet created" }]
               }
@@ -572,6 +699,7 @@ export default function ApplicationDetailPage() {
                 { label: "Delivery date", value: equipment?.delivery_date ?? "—" },
                 { label: "Expected ownership", value: equipment?.expected_return_or_ownership_date?.slice(0, 10) ?? "—" },
                 { label: "Live EPO price", value: <span className="text-red-600">{lease ? money(lease.epo_today) : "—"}</span> },
+                ...(equipment?.updated_by ? [{ label: "Last edited by", value: equipment.updated_by.name }] : []),
               ]}
               note={`Service history: ${
                 equipment?.service_records_count
@@ -591,6 +719,7 @@ export default function ApplicationDetailPage() {
                 { label: "Background check", value: <span className={RISK_COLOR[risk?.background_check_status ?? "pending"]}>{BACKGROUND_LABEL[risk?.background_check_status ?? "pending"]}</span> },
                 { label: "Risk score", value: risk?.risk_score != null ? `${risk.risk_score} / 100` : "—" },
                 { label: "Residence type", value: RESIDENCE_LABEL[profile?.residence_type ?? ""] ?? "—" },
+                ...(risk?.updated_by ? [{ label: "Last edited by", value: risk.updated_by.name }] : []),
               ]}
               note={
                 <>
@@ -602,6 +731,9 @@ export default function ApplicationDetailPage() {
                           <span className={flag.resolved ? "text-neutral-400 line-through" : "text-red-700"}>
                             <span className="font-semibold">{RED_FLAG_LABEL[flag.type] ?? flag.type}</span>
                             {flag.description && <span> — {flag.description}</span>}
+                            {flag.resolved && flag.resolved_by && (
+                              <span className="ml-1 text-xs no-underline">(resolved by {flag.resolved_by.name})</span>
+                            )}
                           </span>
                           {!flag.resolved && can("risk_assessment") && (
                             <button
@@ -670,7 +802,11 @@ export default function ApplicationDetailPage() {
             onToggle={(i) => toggleChecklistField(i === 0 ? "deposit_received" : "signature_received")}
             disabled={togglingChecklist}
           />
-          <AssignmentCard salesperson={application.internal_notes?.replace("Sales person: ", "") || "Outdoor Fix"} reviewedBy={application.reviewed_by?.name ?? "—"} />
+          <AssignmentCard
+            salesperson={application.internal_notes?.replace("Sales person: ", "") || "Outdoor Fix"}
+            reviewedBy={application.reviewed_by?.name ?? "—"}
+            createdBy={application.created_by?.name}
+          />
         </div>
       </div>
 
@@ -691,15 +827,40 @@ export default function ApplicationDetailPage() {
       {editingCard === "risk" && <EditDetailModal title="Risk profile" fields={RISK_FIELDS} onSave={saveRisk} onClose={() => setEditingCard(null)} />}
 
       {showDeclineConfirm && (
-        <Modal title="Decline application" onClose={() => setShowDeclineConfirm(false)} maxWidthClassName="max-w-sm">
+        <Modal title="Decline application" onClose={closeDeclineConfirm} maxWidthClassName="max-w-sm">
           <div className="space-y-4">
             <p className="text-sm text-neutral-600">
-              Decline this application? The customer will see it marked declined — this can be reversed with Change
-              Status if needed.
+              Decline this application? The customer will see this reason — this can be reversed with Change Status
+              if needed.
             </p>
+            <div>
+              <textarea
+                value={declineNote}
+                onChange={(e) => setDeclineNote(e.target.value)}
+                onBlur={() => setDeclineNoteTouched(true)}
+                rows={3}
+                placeholder="Reason for declining (shown to the customer)..."
+                aria-label="Reason for declining"
+                aria-invalid={declineNoteTouched && !!declineNoteError}
+                autoFocus
+                className={`w-full rounded-md border px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none ${
+                  declineNoteTouched && declineNoteError ? "border-red-400 focus:border-red-500" : "border-neutral-200 focus:border-red-300"
+                }`}
+              />
+              <div className="mt-1 flex items-start justify-between gap-2">
+                {declineNoteTouched && declineNoteError ? (
+                  <p className="text-xs text-red-600">{declineNoteError}</p>
+                ) : (
+                  <span />
+                )}
+                <p className={`shrink-0 text-xs ${declineNote.length > NOTES_MAX ? "text-red-600" : "text-neutral-400"}`}>
+                  {declineNote.length}/{NOTES_MAX}
+                </p>
+              </div>
+            </div>
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => setShowDeclineConfirm(false)}
+                onClick={closeDeclineConfirm}
                 disabled={acting}
                 className="font-heading rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
               >
@@ -707,10 +868,61 @@ export default function ApplicationDetailPage() {
               </button>
               <button
                 onClick={confirmDecline}
-                disabled={acting}
-                className="font-heading rounded-md bg-red-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                disabled={!canConfirmDecline}
+                className="font-heading rounded-md bg-red-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {acting ? "Declining…" : "Decline"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showRequestInfoConfirm && (
+        <Modal title="Request info from customer" onClose={closeRequestInfoConfirm} maxWidthClassName="max-w-sm">
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-600">
+              What's missing or needs correcting? The customer will see this note.
+            </p>
+            <div>
+              <textarea
+                value={requestInfoNote}
+                onChange={(e) => setRequestInfoNote(e.target.value)}
+                onBlur={() => setRequestInfoNoteTouched(true)}
+                rows={3}
+                placeholder="What the customer needs to provide or fix..."
+                aria-label="What's needed from the customer"
+                aria-invalid={requestInfoNoteTouched && !!requestInfoNoteError}
+                autoFocus
+                className={`w-full rounded-md border px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none ${
+                  requestInfoNoteTouched && requestInfoNoteError ? "border-red-400 focus:border-red-500" : "border-neutral-200 focus:border-amber-300"
+                }`}
+              />
+              <div className="mt-1 flex items-start justify-between gap-2">
+                {requestInfoNoteTouched && requestInfoNoteError ? (
+                  <p className="text-xs text-red-600">{requestInfoNoteError}</p>
+                ) : (
+                  <span />
+                )}
+                <p className={`shrink-0 text-xs ${requestInfoNote.length > NOTES_MAX ? "text-red-600" : "text-neutral-400"}`}>
+                  {requestInfoNote.length}/{NOTES_MAX}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={closeRequestInfoConfirm}
+                disabled={acting}
+                className="font-heading rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRequestInfo}
+                disabled={!canConfirmRequestInfo}
+                className="font-heading rounded-md bg-amber-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {acting ? "Sending…" : "Request Info"}
               </button>
             </div>
           </div>

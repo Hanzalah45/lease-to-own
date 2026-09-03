@@ -21,7 +21,12 @@ use Illuminate\Support\Str;
  */
 class ApplicationCreationService
 {
-    public static function create(User $customer, array $data, ?UploadedFile $idDocument, ?string $salesPerson = null): Application
+    /**
+     * @param  int  $actorUserId  Who submitted this application — an admin (New
+     *   Application wizard) or the customer themselves (self-service). Always
+     *   provided by the caller since both entry points have an authenticated user.
+     */
+    public static function create(User $customer, array $data, ?UploadedFile $idDocument, ?string $salesPerson = null, ?int $actorUserId = null): Application
     {
         abort_unless($customer->isCustomer(), 422, 'Selected account is not a customer.');
 
@@ -46,6 +51,7 @@ class ApplicationCreationService
 
         $application = Application::create([
             'customer_id' => $customer->id,
+            'created_by' => $actorUserId,
             'status' => Application::STATUS_SUBMITTED,
             'internal_notes' => ! empty($salesPerson) ? "Sales person: {$salesPerson}" : null,
         ]);
@@ -84,7 +90,7 @@ class ApplicationCreationService
 
         $idDocumentPath = $idDocument ? $idDocument->store('id-documents', 'local') : null;
 
-        $customer->customerProfile()->updateOrCreate(['user_id' => $customer->id], array_filter([
+        $customer->customerProfile()->updateOrCreate(['user_id' => $customer->id], array_merge(array_filter([
             'government_id_type' => ! empty($data['drivers_license']) ? 'drivers_license' : null,
             'government_id_number' => $data['drivers_license'] ?? null,
             'government_id_document_path' => $idDocumentPath,
@@ -98,7 +104,7 @@ class ApplicationCreationService
             'move_notification_agreed' => $data['move_notification_agreed'] ?? false,
             'employment_status' => $data['income_source'] ?? null,
             'monthly_income' => $data['gross_monthly_income'] ?? null,
-        ], fn ($value) => $value !== null));
+        ], fn ($value) => $value !== null), ['updated_by' => $actorUserId]));
 
         if (! empty($data['cell_phone'])) {
             $customer->update(['phone' => $data['cell_phone']]);

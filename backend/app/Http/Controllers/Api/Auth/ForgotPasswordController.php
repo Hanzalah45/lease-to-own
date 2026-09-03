@@ -15,7 +15,7 @@ class ForgotPasswordController extends Controller
      */
     public function __invoke(Request $request)
     {
-        $request->validate(['email' => ['required', 'string', 'email']]);
+        $request->validate(['email' => ['required', 'string', 'email', 'max:255']]);
 
         Password::sendResetLink($request->only('email'));
 

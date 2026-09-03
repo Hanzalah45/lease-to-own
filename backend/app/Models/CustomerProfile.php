@@ -37,6 +37,7 @@ class CustomerProfile extends Model
         'bank_verified_at',
         'payment_reminder_emails',
         'status_change_emails',
+        'updated_by',
     ];
 
     protected function casts(): array
@@ -56,6 +57,11 @@ class CustomerProfile extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function updatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'updated_by');
     }
 
     public function isApartment(): bool

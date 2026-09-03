@@ -1,16 +1,18 @@
 export function TakeActionBanner({
   title = "Take Action",
-  description = "Approve to continue, or decline with a reason for the record.",
+  description = "Approve to continue, decline with a reason, or request more info from the customer.",
   primaryLabel,
   onPrimary,
   onDecline,
+  onRequestInfo,
   disabled,
 }: {
   title?: string;
   description?: string;
-  primaryLabel: string;
-  onPrimary: () => void;
+  primaryLabel?: string;
+  onPrimary?: () => void;
   onDecline: () => void;
+  onRequestInfo?: () => void;
   disabled?: boolean;
 }) {
   return (
@@ -21,14 +23,25 @@ export function TakeActionBanner({
           {disabled ? "You don't have permission to act on applications." : description}
         </p>
       </div>
-      <div className="flex shrink-0 gap-2">
-        <button
-          onClick={onPrimary}
-          disabled={disabled}
-          className="font-heading flex items-center gap-1 rounded-md bg-green-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          ✓ {primaryLabel}
-        </button>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        {primaryLabel && onPrimary && (
+          <button
+            onClick={onPrimary}
+            disabled={disabled}
+            className="font-heading flex items-center gap-1 rounded-md bg-green-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            ✓ {primaryLabel}
+          </button>
+        )}
+        {onRequestInfo && (
+          <button
+            onClick={onRequestInfo}
+            disabled={disabled}
+            className="font-heading flex items-center gap-1 rounded-md border border-amber-300 bg-white px-3.5 py-2 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            ? Request Info
+          </button>
+        )}
         <button
           onClick={onDecline}
           disabled={disabled}

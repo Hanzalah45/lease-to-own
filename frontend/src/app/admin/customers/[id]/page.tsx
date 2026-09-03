@@ -65,6 +65,7 @@ export default function AdminCustomerDetailPage() {
           <Field label="Employer" value={profile?.employer_name} />
           <Field label="Employment status" value={profile?.employment_status} />
           <Field label="Government ID type" value={profile?.government_id_type} />
+          <Field label="Profile last edited by" value={profile?.updated_by?.name} />
         </div>
       </div>
 

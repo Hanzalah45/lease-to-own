@@ -13,6 +13,7 @@ export type AdminPermissionKey =
 export interface AdminPermission {
   id: number;
   permission: AdminPermissionKey;
+  granted_by?: { id: number; name: string } | null;
 }
 
 export interface CustomerProfile {
@@ -38,6 +39,7 @@ export interface CustomerProfile {
   bank_verified_at: string | null;
   payment_reminder_emails: boolean;
   status_change_emails: boolean;
+  updated_by?: { id: number; name: string } | null;
 }
 
 export interface AuthUser {

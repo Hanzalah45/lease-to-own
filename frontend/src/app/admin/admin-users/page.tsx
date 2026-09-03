@@ -111,9 +111,14 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="py-3">
                     {admin.admin_permissions && admin.admin_permissions.length > 0 ? (
-                      <span className="text-neutral-700">
-                        Restricted: {admin.admin_permissions.map((p) => p.permission.replace(/_/g, " ")).join(", ")}
-                      </span>
+                      <>
+                        <span className="text-neutral-700">
+                          Restricted: {admin.admin_permissions.map((p) => p.permission.replace(/_/g, " ")).join(", ")}
+                        </span>
+                        {admin.admin_permissions[0]?.granted_by && (
+                          <p className="text-xs text-neutral-400">Set by {admin.admin_permissions[0].granted_by.name}</p>
+                        )}
+                      </>
                     ) : (
                       <span className="font-medium text-green-700">Full access</span>
                     )}
@@ -383,7 +388,7 @@ function AdminForm({
         )}
         {!isEdit && (
           <p className="text-xs text-neutral-400">
-            Credentials go to this address once notifications are wired up. For now, share the password directly.
+            The temporary password below is also emailed to this address automatically.
           </p>
         )}
       </div>

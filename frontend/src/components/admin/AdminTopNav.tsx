@@ -12,6 +12,7 @@ import { Avatar } from "@/components/account/Avatar";
 import {
   BellIcon,
   BriefcaseIcon,
+  CheckCircleIcon,
   ChevronDownIcon,
   CreditCardIcon,
   DocumentIcon,
@@ -35,6 +36,9 @@ const EQUIPMENT_ITEM = { label: "Equipment", href: "/admin/equipment", icon: Bri
 
 // Requires the payment_tracking permission (or full/super-admin access).
 const PAYMENTS_ITEM = { label: "Payments", href: "/admin/payments", icon: CreditCardIcon };
+
+// Requires the contract_generation permission (or full/super-admin access).
+const CONTRACTS_ITEM = { label: "Contracts", href: "/admin/contracts", icon: CheckCircleIcon };
 
 // Managing admin accounts is super_admin only.
 const SUPER_ADMIN_ONLY_ITEM = { label: "Admin Accounts", href: "/admin/admin-users", icon: SettingsIcon };
@@ -66,10 +70,12 @@ export function AdminTopNav() {
   const canSeeCustomers = hasFullAccess || restrictions.includes("application_review");
   const canSeeEquipment = hasFullAccess || restrictions.includes("equipment_tracking");
   const canSeePayments = hasFullAccess || restrictions.includes("payment_tracking");
+  const canSeeContracts = hasFullAccess || restrictions.includes("contract_generation");
 
   const navItems = [
     ...BASE_NAV_ITEMS,
     ...(canSeeCustomers ? [APPLICATIONS_ITEM, CUSTOMERS_ITEM] : []),
+    ...(canSeeContracts ? [CONTRACTS_ITEM] : []),
     ...(canSeeEquipment ? [EQUIPMENT_ITEM] : []),
     ...(canSeePayments ? [PAYMENTS_ITEM] : []),
     ...(isSuperAdmin ? [SUPER_ADMIN_ONLY_ITEM] : []),

@@ -3,19 +3,23 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminPermission;
 use App\Models\Payment;
 use App\Models\RiskRedFlag;
+use App\Models\User;
+use App\Notifications\PaymentStatusChangedNotification;
 use App\Services\LeaseEngine;
 use App\Services\RiskRedFlagger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\Rule;
 
 class PaymentController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Payment::with('leaseAgreement.customer:id,name,email')->latest('due_date');
+        $query = Payment::with(['leaseAgreement.customer:id,name,email', 'recordedBy:id,name'])->latest('due_date');
 
         if ($request->filled('lease_agreement_id')) {
             $query->where('lease_agreement_id', $request->integer('lease_agreement_id'));
@@ -26,7 +30,7 @@ class PaymentController extends Controller
 
     public function show(Payment $payment)
     {
-        return response()->json(['data' => $payment->load('leaseAgreement.customer:id,name,email')]);
+        return response()->json(['data' => $payment->load(['leaseAgreement.customer:id,name,email', 'recordedBy:id,name'])]);
     }
 
     /** Admins record manual payments here (cash/check/ACH confirmation) — no live processor is wired up yet. */
@@ -58,10 +62,30 @@ class PaymentController extends Controller
                 ),
                 $payment,
             );
+
+            $recipients = User::where('role', User::ROLE_SUPER_ADMIN)
+                ->orWhere(function ($query) {
+                    $query->where('role', User::ROLE_ADMIN)
+                        ->where(function ($inner) {
+                            $inner->whereDoesntHave('adminPermissions')
+                                ->orWhereHas('adminPermissions', fn ($p) => $p->where('permission', AdminPermission::PAYMENT_TRACKING));
+                        });
+                })->get();
+            Notification::send($recipients, new PaymentStatusChangedNotification($payment));
         }
 
         LeaseEngine::syncPaymentsPaidToDate($payment->leaseAgreement);
 
-        return response()->json(['data' => $payment->fresh()]);
+        // "...emails" is the field name from the customer's own preferences UI, but this
+        // app has no email channel wired up yet (see .env's MAIL_MAILER=log comment) — the
+        // toggle controls the in-app notification instead, since that's the only one that exists.
+        if (in_array($data['status'], [Payment::STATUS_PAID, Payment::STATUS_FAILED, Payment::STATUS_REFUNDED], true)) {
+            $customer = $payment->leaseAgreement->customer;
+            if ($customer->customerProfile?->payment_reminder_emails ?? true) {
+                $customer->notify(new PaymentStatusChangedNotification($payment));
+            }
+        }
+
+        return response()->json(['data' => $payment->fresh()->load('recordedBy:id,name')]);
     }
 }

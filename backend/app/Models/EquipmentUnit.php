@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -44,6 +45,7 @@ class EquipmentUnit extends Model
         'expected_return_or_ownership_date',
         'status',
         'gps_device_id',
+        'updated_by',
     ];
 
     protected function casts(): array
@@ -72,6 +74,11 @@ class EquipmentUnit extends Model
     public function serviceRecords(): HasMany
     {
         return $this->hasMany(EquipmentServiceRecord::class);
+    }
+
+    public function updatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'updated_by');
     }
 
     /** Reserved for Phase 2 GPS provider integration. */

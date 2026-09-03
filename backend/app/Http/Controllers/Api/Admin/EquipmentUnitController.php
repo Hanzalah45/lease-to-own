@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\EquipmentUnit;
 use App\Models\LeaseAgreement;
+use App\Notifications\EquipmentStatusChangedNotification;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
@@ -31,7 +33,7 @@ class EquipmentUnitController extends Controller
         ]);
 
         $units = EquipmentUnit::query()
-            ->with(['currentLease.customer:id,name,email'])
+            ->with(['currentLease.customer:id,name,email', 'updatedBy:id,name'])
             ->withCount('serviceRecords')
             ->when($filters['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($filters['search'] ?? null, fn ($q, $search) => $q->search($search))
@@ -59,6 +61,7 @@ class EquipmentUnitController extends Controller
         $equipmentUnit->load([
             'currentLease.customer:id,name,email',
             'serviceRecords.performedBy:id,name',
+            'updatedBy:id,name',
         ]);
 
         return response()->json(['data' => $this->present($equipmentUnit, includeHistory: true)]);
@@ -77,9 +80,9 @@ class EquipmentUnitController extends Controller
             abort(422, 'This unit is attached to a lease. Use assign or release to change its status.');
         }
 
-        $equipmentUnit->update($data);
+        $equipmentUnit->update(array_merge($data, ['updated_by' => Auth::id()]));
 
-        $equipmentUnit->load(['currentLease.customer:id,name,email', 'serviceRecords.performedBy:id,name']);
+        $equipmentUnit->load(['currentLease.customer:id,name,email', 'serviceRecords.performedBy:id,name', 'updatedBy:id,name']);
 
         return response()->json(['data' => $this->present($equipmentUnit, includeHistory: true)]);
     }
@@ -132,10 +135,21 @@ class EquipmentUnitController extends Controller
                 'delivery_date' => $deliveryDate,
                 'expected_return_or_ownership_date' => $expectedDate,
                 'condition_notes' => $data['condition_notes'] ?? $equipmentUnit->condition_notes,
+                'updated_by' => Auth::id(),
             ]);
         });
 
-        $equipmentUnit->refresh()->load(['currentLease.customer:id,name,email', 'serviceRecords.performedBy:id,name']);
+        $equipmentUnit->refresh()->load(['currentLease.customer:id,name,email', 'serviceRecords.performedBy:id,name', 'updatedBy:id,name']);
+
+        // "...emails" is the field name from the customer's own preferences UI, but this
+        // app has no email channel wired up yet — the toggle controls the in-app
+        // notification instead, since that's the only one that exists.
+        if ($lease->customer && ($lease->customer->customerProfile?->status_change_emails ?? true)) {
+            $lease->customer->notify(new EquipmentStatusChangedNotification(
+                $equipmentUnit,
+                "Your {$equipmentUnit->model} is scheduled for delivery on {$deliveryDate}.",
+            ));
+        }
 
         return response()->json(['data' => $this->present($equipmentUnit, includeHistory: true)]);
     }
@@ -156,6 +170,10 @@ class EquipmentUnitController extends Controller
             'condition_notes' => ['nullable', 'string'],
         ]);
 
+        // Captured before the transaction detaches the lease link (for
+        // returned/in_stock) so there's still someone to notify afterward.
+        $customer = $equipmentUnit->currentLease?->customer;
+
         DB::transaction(function () use ($equipmentUnit, $data) {
             if ($data['status'] !== EquipmentUnit::STATUS_OWNED_BY_CUSTOMER) {
                 LeaseAgreement::where('equipment_unit_id', $equipmentUnit->id)
@@ -165,10 +183,20 @@ class EquipmentUnitController extends Controller
             $equipmentUnit->update([
                 'status' => $data['status'],
                 'condition_notes' => $data['condition_notes'] ?? $equipmentUnit->condition_notes,
+                'updated_by' => Auth::id(),
             ]);
         });
 
-        $equipmentUnit->refresh()->load(['currentLease.customer:id,name,email', 'serviceRecords.performedBy:id,name']);
+        $equipmentUnit->refresh()->load(['currentLease.customer:id,name,email', 'serviceRecords.performedBy:id,name', 'updatedBy:id,name']);
+
+        $message = match ($data['status']) {
+            EquipmentUnit::STATUS_OWNED_BY_CUSTOMER => "Congratulations — you now own your {$equipmentUnit->model}!",
+            EquipmentUnit::STATUS_RETURNED => "Your {$equipmentUnit->model} has been marked returned.",
+            default => "Your {$equipmentUnit->model} is no longer on your lease.",
+        };
+        if ($customer && ($customer->customerProfile?->status_change_emails ?? true)) {
+            $customer->notify(new EquipmentStatusChangedNotification($equipmentUnit, $message));
+        }
 
         return response()->json(['data' => $this->present($equipmentUnit, includeHistory: true)]);
     }

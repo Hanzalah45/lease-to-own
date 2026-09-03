@@ -34,8 +34,32 @@ class Application extends Model
         self::STATUS_WITHDRAWN,
     ];
 
+    /**
+     * Which status a given status is allowed to move to next, mirroring what
+     * the admin UI's own buttons already only ever do (see FLOW/PRIMARY_LABEL
+     * in the application detail page). Without this, update() accepted any
+     * status value regardless of the application's current one — a direct
+     * API call could jump straight to funded_paid or resurrect a declined
+     * application without going through decline's reversible "Change Status"
+     * path.
+     */
+    public const LEGAL_STATUS_TRANSITIONS = [
+        // includes APPROVED directly — the admin applications list page has a
+        // one-click "Accept" on submitted rows that skips under_review entirely.
+        self::STATUS_SUBMITTED => [self::STATUS_UNDER_REVIEW, self::STATUS_APPROVED, self::STATUS_NEEDS_INFO, self::STATUS_DECLINED],
+        self::STATUS_UNDER_REVIEW => [self::STATUS_APPROVED, self::STATUS_NEEDS_INFO, self::STATUS_DECLINED],
+        self::STATUS_NEEDS_INFO => [self::STATUS_UNDER_REVIEW, self::STATUS_DECLINED],
+        self::STATUS_APPROVED => [self::STATUS_COMPLETED, self::STATUS_DECLINED],
+        self::STATUS_COMPLETED => [self::STATUS_PROCESSED, self::STATUS_DECLINED],
+        self::STATUS_PROCESSED => [self::STATUS_FUNDED_PAID, self::STATUS_DECLINED],
+        self::STATUS_FUNDED_PAID => [],
+        self::STATUS_DECLINED => [self::STATUS_SUBMITTED],
+        self::STATUS_WITHDRAWN => [],
+    ];
+
     protected $fillable = [
         'customer_id',
+        'created_by',
         'status',
         'status_notes',
         'signature_received',
@@ -62,6 +86,11 @@ class Application extends Model
         return $this->belongsTo(User::class, 'reviewed_by');
     }
 
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
     public function leaseAgreement(): HasOne
     {
         return $this->hasOne(LeaseAgreement::class);
@@ -70,6 +99,11 @@ class Application extends Model
     public function dealerNotes(): HasMany
     {
         return $this->hasMany(DealerNote::class)->latest();
+    }
+
+    public function infoRequests(): HasMany
+    {
+        return $this->hasMany(ApplicationInfoRequest::class)->latest();
     }
 
     public function isReadyToAdvance(): bool

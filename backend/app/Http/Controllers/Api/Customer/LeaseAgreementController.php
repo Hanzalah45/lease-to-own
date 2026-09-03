@@ -11,7 +11,9 @@ class LeaseAgreementController extends Controller
 {
     public function index(Request $request)
     {
-        $leases = $request->user()->leaseAgreements()->with(['equipmentUnit', 'contract'])->latest()->get();
+        // Eager-loading payments lets paymentsMadeCount()/epoToday() below use
+        // the loaded collection instead of a fresh COUNT query per lease.
+        $leases = $request->user()->leaseAgreements()->with(['equipmentUnit', 'contract', 'payments'])->latest()->get();
 
         return response()->json(['data' => $leases->map(fn ($lease) => $this->present($lease))]);
     }
@@ -20,7 +22,7 @@ class LeaseAgreementController extends Controller
     {
         abort_unless($leaseAgreement->customer_id === $request->user()->id, 404);
 
-        $leaseAgreement->load(['equipmentUnit', 'contract']);
+        $leaseAgreement->load(['equipmentUnit', 'contract', 'payments']);
 
         return response()->json(['data' => $this->present($leaseAgreement, includeSchedule: true)]);
     }

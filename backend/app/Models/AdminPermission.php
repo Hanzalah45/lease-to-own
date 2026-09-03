@@ -21,10 +21,16 @@ class AdminPermission extends Model
     protected $fillable = [
         'user_id',
         'permission',
+        'granted_by',
     ];
 
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function grantedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'granted_by');
     }
 }

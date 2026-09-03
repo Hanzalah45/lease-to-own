@@ -159,6 +159,7 @@ export default function AdminEquipmentDetailPage() {
               hint="Phase 2 — stored now, no live tracking yet."
               mono={!!unit.gps_device_id}
             />
+            {unit.updated_by && <Row label="Last edited by" value={unit.updated_by.name} />}
           </dl>
         </Card>
 

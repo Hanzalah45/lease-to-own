@@ -7,6 +7,7 @@ use App\Models\RiskRedFlag;
 use App\Notifications\BankVerifiedNotification;
 use App\Services\PlaidClient;
 use App\Services\RiskRedFlagger;
+use App\Services\RiskScoringService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -67,6 +68,12 @@ class PlaidController extends Controller
                 'Customer reconnected Plaid to a different bank account than the one previously verified.',
             );
         }
+
+        // Bank verification happens standalone from the application wizard,
+        // so risk_score/bank_verification_status would otherwise stay stale
+        // (last computed at submission time) even after the connection succeeds.
+        $latestMonthlyRental = $request->user()->leaseAgreements()->latest()->value('monthly_rental_payment');
+        RiskScoringService::evaluate($request->user(), $latestMonthlyRental ? (float) $latestMonthlyRental : null);
 
         $request->user()->notify(new BankVerifiedNotification());
 

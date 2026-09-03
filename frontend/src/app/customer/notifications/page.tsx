@@ -1,24 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { ApiError } from "@/lib/api";
 import { listNotifications, markNotificationRead, type AppNotification } from "@/lib/notifications";
-import {
-  AlertCircleIcon,
-  BellIcon,
-  CheckCircleIcon,
-  DocumentIcon,
-  RefreshCwIcon,
-  ShieldIcon,
-} from "@/components/icons";
+import { AlertCircleIcon, BellIcon, BriefcaseIcon, CheckCircleIcon, CreditCardIcon, DocumentIcon, ShieldIcon, UserIcon } from "@/components/icons";
 import type { ComponentType, SVGProps } from "react";
 
 const TYPE_STYLE: Record<string, { icon: ComponentType<SVGProps<SVGSVGElement>>; tone: string }> = {
-  account: { icon: DocumentIcon, tone: "bg-blue-50 text-blue-600" },
+  application: { icon: DocumentIcon, tone: "bg-blue-50 text-blue-600" },
+  contract_signed: { icon: CheckCircleIcon, tone: "bg-green-50 text-green-600" },
+  contract_voided: { icon: AlertCircleIcon, tone: "bg-amber-50 text-amber-600" },
   bank_verified: { icon: ShieldIcon, tone: "bg-green-50 text-green-600" },
-  autopay: { icon: RefreshCwIcon, tone: "bg-blue-50 text-blue-600" },
-  payment: { icon: CheckCircleIcon, tone: "bg-green-50 text-green-600" },
-  alert: { icon: AlertCircleIcon, tone: "bg-amber-50 text-amber-600" },
+  payment: { icon: CreditCardIcon, tone: "bg-red-50 text-red-600" },
+  equipment: { icon: BriefcaseIcon, tone: "bg-blue-50 text-blue-500" },
+  account: { icon: UserIcon, tone: "bg-neutral-100 text-neutral-600" },
 };
 
 export default function CustomerNotificationsPage() {
@@ -83,27 +79,34 @@ export default function CustomerNotificationsPage() {
               const ItemIcon = style.icon;
               const isNew = !n.read_at;
               return (
-                <button
-                  key={n.id}
-                  onClick={() => handleOpen(n)}
-                  className={`flex w-full items-start gap-3 px-5 py-4 text-left hover:bg-neutral-50 ${isNew ? "bg-red-50/40" : ""}`}
-                >
-                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${style.tone}`}>
-                    <ItemIcon className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <p className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
-                      {n.data.title}
-                      {isNew && (
-                        <span className="font-heading rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold uppercase text-white">
-                          New
-                        </span>
-                      )}
-                    </p>
-                    <p className="mt-0.5 text-sm text-neutral-500">{n.data.body}</p>
-                    <p className="mt-1 text-xs text-neutral-400">{new Date(n.created_at).toLocaleString()}</p>
-                  </div>
-                </button>
+                <div key={n.id} className={`flex items-center justify-between gap-4 px-5 py-4 ${isNew ? "bg-red-50/40" : ""}`}>
+                  <button onClick={() => handleOpen(n)} className="flex flex-1 items-start gap-3 text-left">
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${style.tone}`}>
+                      <ItemIcon className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+                        {n.data.title}
+                        {isNew && (
+                          <span className="font-heading rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold uppercase text-white">
+                            New
+                          </span>
+                        )}
+                      </p>
+                      <p className="mt-0.5 text-sm text-neutral-500">{n.data.body}</p>
+                      <p className="mt-1 text-xs text-neutral-400">{new Date(n.created_at).toLocaleString()}</p>
+                    </div>
+                  </button>
+                  {n.data.action_url && (
+                    <Link
+                      href={n.data.action_url}
+                      onClick={() => handleOpen(n)}
+                      className="font-heading shrink-0 text-xs font-bold text-red-600 hover:underline"
+                    >
+                      View →
+                    </Link>
+                  )}
+                </div>
               );
             })}
           </div>

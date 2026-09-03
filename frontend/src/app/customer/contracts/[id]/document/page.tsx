@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { LeaseAgreementDocument } from "@/components/contracts/LeaseAgreementDocument";
 import { getMyLeaseAgreement } from "@/lib/lease-agreements";
+import { downloadMyContract } from "@/lib/contracts";
 import { ApiError } from "@/lib/api";
 import type { LeaseAgreement } from "@/types/lease-agreement";
 
@@ -15,6 +16,8 @@ export default function CustomerLeaseDocumentPage() {
   const [lease, setLease] = useState<LeaseAgreement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
     getMyLeaseAgreement(params.id)
@@ -22,6 +25,19 @@ export default function CustomerLeaseDocumentPage() {
       .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load this contract."))
       .finally(() => setLoading(false));
   }, [params.id]);
+
+  async function handleDownload() {
+    if (!lease?.contract) return;
+    setDownloading(true);
+    setDownloadError(null);
+    try {
+      await downloadMyContract(lease.contract.id);
+    } catch (err) {
+      setDownloadError(err instanceof ApiError ? err.message : "Could not download the PDF.");
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   const profile = user?.customer_profile;
   const address = [profile?.address_line_1, profile?.city, profile?.state, profile?.zip].filter(Boolean).join(", ");
@@ -57,19 +73,22 @@ export default function CustomerLeaseDocumentPage() {
             >
               Print
             </button>
-            <button
-              onClick={() => window.print()}
-              title="Opens the print dialog — choose “Save as PDF” as the destination"
-              className="font-heading rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
-            >
-              Download PDF
-            </button>
+            {lease?.contract && (
+              <button
+                onClick={handleDownload}
+                disabled={downloading}
+                className="font-heading rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {downloading ? "Preparing…" : "Download PDF"}
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {loading && <p className="text-sm text-neutral-500">Loading…</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {downloadError && <p className="text-sm text-red-600 print:hidden">{downloadError}</p>}
       {lease && user && <LeaseAgreementDocument lease={lease} customerName={user.name} customerAddress={address} />}
     </div>
   );

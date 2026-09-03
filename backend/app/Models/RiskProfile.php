@@ -29,6 +29,7 @@ class RiskProfile extends Model
         'risk_score',
         'landlord_contact_required',
         'landlord_contact_reason',
+        'updated_by',
     ];
 
     protected function casts(): array
@@ -46,5 +47,10 @@ class RiskProfile extends Model
     public function redFlags(): HasMany
     {
         return $this->hasMany(RiskRedFlag::class);
+    }
+
+    public function updatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'updated_by');
     }
 }

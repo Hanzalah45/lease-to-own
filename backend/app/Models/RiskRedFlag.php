@@ -23,6 +23,8 @@ class RiskRedFlag extends Model
         'description',
         'flagged_at',
         'resolved',
+        'resolved_by',
+        'resolved_at',
     ];
 
     protected function casts(): array
@@ -30,6 +32,7 @@ class RiskRedFlag extends Model
         return [
             'flagged_at' => 'datetime',
             'resolved' => 'boolean',
+            'resolved_at' => 'datetime',
         ];
     }
 
@@ -41,5 +44,10 @@ class RiskRedFlag extends Model
     public function payment(): BelongsTo
     {
         return $this->belongsTo(Payment::class);
+    }
+
+    public function resolvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'resolved_by');
     }
 }

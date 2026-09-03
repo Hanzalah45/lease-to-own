@@ -22,6 +22,12 @@ class AvatarController extends Controller
         }
 
         $path = $request->file('avatar')->store('', 'avatars');
+        // The "avatars" disk has 'throw' => false (production has symlink()/
+        // exec() disabled), so a write failure returns false instead of
+        // throwing — without this check it would silently save avatar_path
+        // as false and report success with no photo actually stored.
+        abort_if($path === false, 500, 'Could not save your photo. Please try again.');
+
         $user->update(['avatar_path' => $path]);
 
         return response()->json(['user' => $user->fresh()->load(['customerProfile', 'adminPermissions'])]);

@@ -44,7 +44,7 @@ export default function SignLeaseAgreementPage() {
     setSigning(true);
     setSignError(null);
     try {
-      await signLease(lease.id);
+      await signLease(lease.id, typedName.trim());
       setLease(await getMyLeaseAgreement(lease.id));
     } catch (err) {
       setSignError(err instanceof ApiError ? err.message : "Could not sign the agreement. Please try again.");

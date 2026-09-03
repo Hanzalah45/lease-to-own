@@ -13,9 +13,9 @@ class ResetPasswordController extends Controller
     public function __invoke(Request $request)
     {
         $data = $request->validate([
-            'email' => ['required', 'string', 'email'],
-            'token' => ['required', 'string'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'email' => ['required', 'string', 'email', 'max:255'],
+            'token' => ['required', 'string', 'max:255'],
+            'password' => ['required', 'string', 'min:8', 'max:72', 'confirmed'],
         ]);
 
         $status = Password::reset($data, function ($user, $password) {

@@ -65,11 +65,23 @@ export default function AdminDashboardPage() {
 
   const [applications, setApplications] = useState<Application[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [ownerDataLoading, setOwnerDataLoading] = useState(false);
+  const [ownerDataError, setOwnerDataError] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeTab !== "owner") return;
-    listApplications().then(setApplications).catch(() => setApplications([]));
-    listPayments().then(setPayments).catch(() => setPayments([]));
+    setOwnerDataLoading(true);
+    setOwnerDataError(null);
+    // A failure here previously reset both lists to [], which rendered
+    // identically to a tenant with genuinely zero activity — no way to tell
+    // "nothing to review" from "the dashboard couldn't load."
+    Promise.all([listApplications(), listPayments()])
+      .then(([apps, pmts]) => {
+        setApplications(apps);
+        setPayments(pmts);
+      })
+      .catch(() => setOwnerDataError("Could not load dashboard data. Try refreshing the page."))
+      .finally(() => setOwnerDataLoading(false));
   }, [activeTab]);
 
   const needsInfo = applications.filter((a) => a.status === "needs_info");
@@ -201,6 +213,8 @@ export default function AdminDashboardPage() {
 
       {activeTab === "owner" && (
         <>
+          {ownerDataLoading && <p className="text-sm text-neutral-400">Loading dashboard…</p>}
+          {ownerDataError && <p className="text-sm text-red-600">{ownerDataError}</p>}
           {needsInfo.length > 0 && (
             <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div>

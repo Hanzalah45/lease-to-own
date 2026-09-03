@@ -24,17 +24,13 @@ class LoginController extends Controller
 
         $credentials = $validator->validated();
 
-        $user = User::where('email', $credentials['email'])->first();
-
-        if (! $user) {
-            throw ValidationException::withMessages([
-                'email' => ['No account found with this email address.'],
-            ]);
-        }
-
+        // Deliberately the same message/field whether the email doesn't
+        // exist or the password is wrong — matches ForgotPasswordController's
+        // anti-enumeration design, so a wrong-email attempt can't be told
+        // apart from a wrong-password one.
         if (! Auth::attempt($credentials)) {
             throw ValidationException::withMessages([
-                'password' => ['Incorrect password.'],
+                'email' => ['These credentials do not match our records.'],
             ]);
         }
 

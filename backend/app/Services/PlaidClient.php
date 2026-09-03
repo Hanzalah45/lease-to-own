@@ -41,7 +41,7 @@ class PlaidClient
             'language' => 'en',
         ]);
 
-        return $response['link_token'];
+        return $this->requireString($response, 'link_token');
     }
 
     /**
@@ -56,8 +56,8 @@ class PlaidClient
         ]);
 
         return [
-            'access_token' => $response['access_token'],
-            'item_id' => $response['item_id'],
+            'access_token' => $this->requireString($response, 'access_token'),
+            'item_id' => $this->requireString($response, 'item_id'),
         ];
     }
 
@@ -71,6 +71,10 @@ class PlaidClient
         $response = $this->post('/accounts/get', [
             'access_token' => $accessToken,
         ]);
+
+        if (! is_array($response['accounts'] ?? null)) {
+            throw new RuntimeException('Unexpected Plaid response: missing accounts.');
+        }
 
         return $response['accounts'];
     }
@@ -87,6 +91,20 @@ class PlaidClient
             throw new RuntimeException($message);
         }
 
-        return $response->json();
+        return $response->json() ?? [];
+    }
+
+    /**
+     * A 200 response with a missing/malformed field would otherwise violate
+     * a non-nullable string return type and throw an uncaught TypeError
+     * instead of the RuntimeException callers already handle.
+     */
+    private function requireString(array $response, string $key): string
+    {
+        if (! is_string($response[$key] ?? null) || $response[$key] === '') {
+            throw new RuntimeException("Unexpected Plaid response: missing {$key}.");
+        }
+
+        return $response[$key];
     }
 }

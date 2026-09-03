@@ -43,14 +43,6 @@ export function CustomerInfoStep({
           )}
         </div>
 
-        <Field label="Email" required error={err("email")}>
-          <TextInput
-            value={state.email}
-            onChange={(v) => set("email", v)}
-            type="email"
-            hasError={!!err("email")}
-          />
-        </Field>
         <Field label="Cell Phone" required error={err("cell_phone")}>
           <TextInput
             value={state.cellPhone}

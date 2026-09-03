@@ -4,7 +4,6 @@ import {
   validateCity,
   validateConditionNotes,
   validateDob,
-  validateEmail,
   validateEquipmentModel,
   validateIntegerInRange,
   validateMoney,
@@ -46,7 +45,6 @@ export const FIELD_TO_STEP: Record<string, StepKey> = {
   autopay: "lease",
 
   registered_customer_id: "customer",
-  email: "customer",
   cell_phone: "customer",
   mailing_address: "customer",
   city: "customer",
@@ -81,7 +79,6 @@ export const STATE_TO_FIELD: Record<keyof WizardState, string> = {
   paymentDueDay: "payment_due_day",
   autopay: "autopay",
   registeredCustomerId: "registered_customer_id",
-  email: "email",
   cellPhone: "cell_phone",
   mailingAddress: "mailing_address",
   city: "city",
@@ -164,7 +161,6 @@ export function validateCustomerStep(state: WizardState, isCustomerApp = false):
   if (!isCustomerApp && (!state.registeredCustomerId || state.registeredCustomerId.trim() === "")) {
     errors.registered_customer_id = ["Please select a registered customer."];
   }
-  put(errors, "email", validateEmail(state.email ?? ""));
   put(errors, "cell_phone", validatePhone(state.cellPhone ?? "", true));
   put(errors, "mailing_address", validateStreet(state.mailingAddress ?? ""));
   put(errors, "city", validateCity(state.city ?? ""));
@@ -257,7 +253,6 @@ export interface WizardState {
   autopay: "yes" | "no";
   // Step 3 — Customer info
   registeredCustomerId: string;
-  email: string;
   cellPhone: string;
   mailingAddress: string;
   city: string;
@@ -292,7 +287,6 @@ export const INITIAL_WIZARD_STATE: WizardState = {
   paymentDueDay: "15",
   autopay: "no",
   registeredCustomerId: "",
-  email: "",
   cellPhone: "",
   mailingAddress: "",
   city: "",

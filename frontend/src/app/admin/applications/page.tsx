@@ -5,10 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { PageHeroHeader } from "@/components/layout/PageHeroHeader";
 import { StatusTag } from "@/components/dashboard/StatusTag";
+import { Modal } from "@/components/ui/Modal";
 import { PlusIcon, SearchIcon } from "@/components/icons";
 import { listApplications, updateApplication } from "@/lib/applications";
 import { money } from "@/components/applications/wizard/types";
 import { ApiError } from "@/lib/api";
+import { NOTES_MAX, validateNotes } from "@/lib/validation";
 import type { Application, ApplicationStatus } from "@/types/application";
 
 const STATUS_STYLE: Record<ApplicationStatus, { color: string; label: string }> = {
@@ -48,6 +50,13 @@ export default function AdminApplicationsPage() {
   const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]["key"]>("all");
   const [search, setSearch] = useState("");
   const [actingId, setActingId] = useState<number | null>(null);
+  // Declared here (not next to confirmDecline() below), alongside every other
+  // hook — placing a useState call after the `if (!canReview) return` guard
+  // below would violate Rules of Hooks: this component would call fewer
+  // hooks on a restricted-admin render, then more once canReview resolves.
+  const [decliningId, setDecliningId] = useState<number | null>(null);
+  const [declineNote, setDeclineNote] = useState("");
+  const [declineNoteTouched, setDeclineNoteTouched] = useState(false);
 
   useEffect(() => {
     if (!canReview) return;
@@ -83,16 +92,36 @@ export default function AdminApplicationsPage() {
     );
   }
 
-  async function decide(id: number, next: "approved" | "declined") {
+  async function decide(id: number, next: "approved" | "declined", statusNotes?: string) {
     setActingId(id);
+    setError(null);
     try {
-      const updated = await updateApplication(id, { status: next });
+      const updated = await updateApplication(id, { status: next, ...(statusNotes ? { status_notes: statusNotes } : {}) });
       setRows((prev) => prev.map((row) => (row.id === id ? updated : row)));
-    } catch {
-      // leave the row as-is — the admin can retry
+    } catch (err) {
+      // leave the row as-is — the admin can retry — but say why it didn't take
+      setError(err instanceof ApiError ? err.message : `Could not ${next === "approved" ? "accept" : "decline"} this application.`);
     } finally {
       setActingId(null);
     }
+  }
+
+  const declineNoteError = declineNote.trim() ? validateNotes(declineNote) : "A reason is required.";
+
+  function closeDeclineModal() {
+    setDecliningId(null);
+    setDeclineNote("");
+    setDeclineNoteTouched(false);
+  }
+
+  async function confirmDecline() {
+    if (decliningId === null) return;
+    if (declineNoteError) {
+      setDeclineNoteTouched(true);
+      return;
+    }
+    await decide(decliningId, "declined", declineNote.trim());
+    closeDeclineModal();
   }
 
   return (
@@ -173,7 +202,7 @@ export default function AdminApplicationsPage() {
                     <td className="py-3 text-neutral-700">
                       {row.lease_agreement ? money(Number(row.lease_agreement.cash_price)) : "—"}
                     </td>
-                    <td className="py-3 text-neutral-600">{row.reviewed_by?.name ?? "Outdoor Fix"}</td>
+                    <td className="py-3 text-neutral-600">{row.created_by?.name ?? "—"}</td>
                     <td className="py-3 text-neutral-500">{new Date(row.updated_at).toLocaleDateString()}</td>
                     <td className="py-3 text-right">
                       {row.status === "submitted" && canReview ? (
@@ -186,7 +215,7 @@ export default function AdminApplicationsPage() {
                             ✓ Accept
                           </button>
                           <button
-                            onClick={() => decide(row.id, "declined")}
+                            onClick={() => setDecliningId(row.id)}
                             disabled={actingId === row.id}
                             className="font-heading flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 disabled:opacity-60"
                           >
@@ -217,6 +246,58 @@ export default function AdminApplicationsPage() {
           </table>
         </div>
       </div>
+
+      {decliningId !== null && (
+        <Modal title="Decline application" onClose={closeDeclineModal} maxWidthClassName="max-w-sm">
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-600">
+              Decline this application? The customer will see this reason — this can be reversed with Change Status
+              if needed.
+            </p>
+            <div>
+              <textarea
+                value={declineNote}
+                onChange={(e) => setDeclineNote(e.target.value)}
+                onBlur={() => setDeclineNoteTouched(true)}
+                rows={3}
+                placeholder="Reason for declining (shown to the customer)..."
+                aria-label="Reason for declining"
+                aria-invalid={declineNoteTouched && !!declineNoteError}
+                autoFocus
+                className={`w-full rounded-md border px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none ${
+                  declineNoteTouched && declineNoteError ? "border-red-400 focus:border-red-500" : "border-neutral-200 focus:border-red-300"
+                }`}
+              />
+              <div className="mt-1 flex items-start justify-between gap-2">
+                {declineNoteTouched && declineNoteError ? (
+                  <p className="text-xs text-red-600">{declineNoteError}</p>
+                ) : (
+                  <span />
+                )}
+                <p className={`shrink-0 text-xs ${declineNote.length > NOTES_MAX ? "text-red-600" : "text-neutral-400"}`}>
+                  {declineNote.length}/{NOTES_MAX}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={closeDeclineModal}
+                disabled={actingId === decliningId}
+                className="font-heading rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDecline}
+                disabled={!!declineNoteError || actingId === decliningId}
+                className="font-heading rounded-md bg-red-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {actingId === decliningId ? "Declining…" : "Decline"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

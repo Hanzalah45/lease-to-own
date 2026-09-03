@@ -75,6 +75,7 @@ export function ProfileSettingsCard({ user, onUpdated }: { user: AuthUser; onUpd
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
   const [phone, setPhone] = useState(user.phone ?? "");
+  const [currentPasswordForEmail, setCurrentPasswordForEmail] = useState("");
   const [profileTouched, setProfileTouched] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -83,8 +84,9 @@ export function ProfileSettingsCard({ user, onUpdated }: { user: AuthUser; onUpd
   const nameErr = validateName(name, "Full name");
   const emailErr = validateEmail(email);
   const phoneErr = validatePhone(phone, false);
-  const profileValid = !nameErr && !emailErr && !phoneErr;
-  const profileDirty = name !== user.name || email !== user.email || phone !== (user.phone ?? "");
+  const emailChanged = email !== user.email;
+  const profileValid = !nameErr && !emailErr && !phoneErr && (!emailChanged || currentPasswordForEmail.length > 0);
+  const profileDirty = name !== user.name || emailChanged || phone !== (user.phone ?? "");
 
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
@@ -95,12 +97,20 @@ export function ProfileSettingsCard({ user, onUpdated }: { user: AuthUser; onUpd
     setProfileError(null);
     setProfileSuccess(false);
     try {
-      await updateMyProfile({ name, email, phone: phone || null });
+      await updateMyProfile({
+        name,
+        email,
+        phone: phone || null,
+        ...(emailChanged ? { current_password: currentPasswordForEmail } : {}),
+      });
+      setCurrentPasswordForEmail("");
       await onUpdated();
       setProfileSuccess(true);
     } catch (err) {
       setProfileError(
-        err instanceof ApiError ? Object.values(err.errors ?? {})[0]?.[0] ?? err.message : "Could not save changes.",
+        err instanceof ApiError
+          ? (err.errors?.current_password?.[0] ?? Object.values(err.errors ?? {})[0]?.[0] ?? err.message)
+          : "Could not save changes.",
       );
     } finally {
       setSavingProfile(false);
@@ -212,6 +222,23 @@ export function ProfileSettingsCard({ user, onUpdated }: { user: AuthUser; onUpd
             <input id={emailId} className={inputClass} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             {profileTouched && emailErr && <p className={errorClass}>{emailErr}</p>}
           </div>
+          {emailChanged && (
+            <div>
+              <label htmlFor={`${emailId}-current-password`} className={labelClass}>
+                Current password (required to change email)
+              </label>
+              <input
+                id={`${emailId}-current-password`}
+                className={inputClass}
+                type="password"
+                value={currentPasswordForEmail}
+                onChange={(e) => setCurrentPasswordForEmail(e.target.value)}
+              />
+              {profileTouched && !currentPasswordForEmail && (
+                <p className={errorClass}>Enter your current password to confirm this email change.</p>
+              )}
+            </div>
+          )}
           <div>
             <label htmlFor={phoneId} className={labelClass}>Phone</label>
             <input id={phoneId} className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(000) 000-0000" />

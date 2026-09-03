@@ -101,6 +101,23 @@ class LeaseEngine
     }
 
     /**
+     * Rebuilds the payment schedule from the lease's current terms — used
+     * when term/rental terms are edited after the schedule was already
+     * generated (post-approval, pre-signature). Refuses once a payment has
+     * actually been marked paid, since at that point money has moved against
+     * the old numbers and the schedule can no longer be silently replaced.
+     */
+    public static function regeneratePaymentSchedule(LeaseAgreement $lease): void
+    {
+        if ($lease->payments()->where('status', Payment::STATUS_PAID)->exists()) {
+            throw new \RuntimeException('Cannot regenerate the payment schedule once a payment has been made.');
+        }
+
+        $lease->payments()->delete();
+        self::generatePaymentSchedule($lease);
+    }
+
+    /**
      * Keeps `rental_payments_paid_to_date` (a persisted, human-readable
      * dollar figure on the lease) in sync with the count of payments
      * actually marked paid. Call after any payment status change.
@@ -112,8 +129,15 @@ class LeaseEngine
             'rental_payments_paid_to_date' => round($paidCount * (float) $lease->monthly_rental_payment, 2),
         ]);
 
-        if ($lease->term_months > 0 && $paidCount >= $lease->term_months) {
-            $lease->update(['ownership_status' => LeaseAgreement::OWNERSHIP_OWNED]);
+        // Reversible both ways: an admin correcting a mistaken final "paid" mark
+        // back to failed/pending after the lease reached OWNED must not leave it
+        // permanently marked as owned with too few payments on record.
+        $ownershipStatus = ($lease->term_months > 0 && $paidCount >= $lease->term_months)
+            ? LeaseAgreement::OWNERSHIP_OWNED
+            : LeaseAgreement::OWNERSHIP_LEASING;
+
+        if ($lease->ownership_status !== $ownershipStatus) {
+            $lease->update(['ownership_status' => $ownershipStatus]);
         }
     }
 }

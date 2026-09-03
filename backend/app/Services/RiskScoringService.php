@@ -81,6 +81,25 @@ class RiskScoringService
         return $riskProfile;
     }
 
+    /**
+     * Recomputes and persists just the aggregate risk_score from whatever
+     * verification statuses are currently on the profile — used after an
+     * admin hand-edits one of those statuses directly (evaluate() would
+     * overwrite the manual override itself; this only keeps the score
+     * consistent with it).
+     */
+    public static function recomputeScore(RiskProfile $profile): void
+    {
+        $profile->update([
+            'risk_score' => self::score(
+                $profile->identity_verification_status,
+                $profile->employment_verification_status,
+                $profile->bank_verification_status,
+                $profile->background_check_status,
+            ),
+        ]);
+    }
+
     private static function assessAffordability(?string $monthlyIncome, ?float $monthlyRentalPayment): array
     {
         if (! $monthlyIncome || ! $monthlyRentalPayment) {

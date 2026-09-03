@@ -6,12 +6,16 @@ import { PageHeroHeader } from "@/components/layout/PageHeroHeader";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ApiError } from "@/lib/api";
 import { listNotifications, markNotificationRead, type AppNotification } from "@/lib/notifications";
-import { BellIcon, DocumentIcon, ShieldIcon, UserIcon } from "@/components/icons";
+import { AlertCircleIcon, BellIcon, BriefcaseIcon, CheckCircleIcon, CreditCardIcon, DocumentIcon, UserIcon } from "@/components/icons";
 import type { ComponentType, SVGProps } from "react";
 
 const TYPE_STYLE: Record<string, { icon: ComponentType<SVGProps<SVGSVGElement>>; tone: string; label: string }> = {
   account: { icon: UserIcon, tone: "bg-blue-50 text-blue-500", label: "Account" },
-  bank_verified: { icon: ShieldIcon, tone: "bg-green-50 text-green-600", label: "Bank verification" },
+  application: { icon: DocumentIcon, tone: "bg-amber-50 text-amber-600", label: "Application" },
+  contract_signed: { icon: CheckCircleIcon, tone: "bg-green-50 text-green-600", label: "Contract" },
+  payment: { icon: CreditCardIcon, tone: "bg-red-50 text-red-600", label: "Payment" },
+  risk_flag: { icon: AlertCircleIcon, tone: "bg-amber-50 text-amber-600", label: "Risk" },
+  equipment: { icon: BriefcaseIcon, tone: "bg-blue-50 text-blue-500", label: "Equipment" },
 };
 
 export default function NotificationsPage() {

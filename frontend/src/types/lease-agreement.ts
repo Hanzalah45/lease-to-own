@@ -10,14 +10,23 @@ export interface EquipmentUnit {
   expected_return_or_ownership_date: string | null;
   status: "in_stock" | "leased" | "returned" | "owned_by_customer";
   service_records_count?: number;
+  updated_by?: { id: number; name: string } | null;
 }
 
 export interface Contract {
   id: number;
   lease_agreement_id: number;
   signer_user_id: number;
+  signer?: { id: number; name: string };
+  signer_name: string | null;
+  file_path: string | null;
   version: number;
   signed_at: string;
+  external_provider: string | null;
+  external_envelope_id: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
+  voided_by?: { id: number; name: string } | null;
 }
 
 export interface Payment {
@@ -28,6 +37,7 @@ export interface Payment {
   paid_date: string | null;
   method: "ach" | "card" | "cash" | "other" | null;
   status: "pending" | "paid" | "failed" | "refunded";
+  recorded_by?: { id: number; name: string } | null;
   lease_agreement?: {
     id: number;
     application_id: number;
@@ -60,10 +70,13 @@ export interface LeaseAgreement {
   promo_discount: string | null;
   created_at: string;
   updated_at: string;
+  updated_by?: { id: number; name: string } | null;
   customer?: { id: number; name: string; email: string };
   equipment_unit?: EquipmentUnit | null;
   payments?: Payment[];
   contract?: Contract | null;
+  /** Full signature history including voided ones, newest first — admin views only. */
+  contracts?: Contract[];
   /** Server-computed — see LeaseEngine on the backend. */
   sales_tax_amount: number;
   total_monthly_payment: number;
