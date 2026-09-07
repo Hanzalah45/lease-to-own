@@ -156,7 +156,7 @@ export default function AdminEquipmentDetailPage() {
             <Row
               label="GPS device ID"
               value={unit.gps_device_id ?? "Not set"}
-              hint="Phase 2 — stored now, no live tracking yet."
+              hint="Phase 2: stored now, no live tracking yet."
               mono={!!unit.gps_device_id}
             />
             {unit.updated_by && <Row label="Last edited by" value={unit.updated_by.name} />}
@@ -374,7 +374,7 @@ function ServiceLog({ unit, onChanged }: { unit: EquipmentUnit; onChanged: () =>
             </div>
             <button
               type="submit"
-              disabled={submitting || !isValid}
+              disabled={submitting}
               className="font-heading rounded-md bg-neutral-900 px-4 py-2 text-sm font-bold text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? "Saving…" : "Save"}

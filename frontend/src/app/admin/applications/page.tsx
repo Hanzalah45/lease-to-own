@@ -14,13 +14,13 @@ import { NOTES_MAX, validateNotes } from "@/lib/validation";
 import type { Application, ApplicationStatus } from "@/types/application";
 
 const STATUS_STYLE: Record<ApplicationStatus, { color: string; label: string }> = {
-  submitted: { color: "#404040", label: "Submitted" },
-  under_review: { color: "#D97706", label: "Under review" },
+  waiting_review: { color: "#404040", label: "Waiting review" },
   needs_info: { color: "#D97706", label: "Needs info" },
-  approved: { color: "#2563EB", label: "Approved" },
-  completed: { color: "#0D9488", label: "Completed" },
-  processed: { color: "#7C3AED", label: "Processed" },
-  funded_paid: { color: "#16A34A", label: "Funded" },
+  waiting_approval: { color: "#D97706", label: "Waiting approval" },
+  in_verification: { color: "#2563EB", label: "In verification" },
+  waiting_deposit: { color: "#0D9488", label: "Waiting deposit" },
+  waiting_delivery: { color: "#7C3AED", label: "Waiting delivery" },
+  finished: { color: "#16A34A", label: "Finished" },
   declined: { color: "#DC2626", label: "Declined" },
   withdrawn: { color: "#A3A3A3", label: "Withdrawn" },
 };
@@ -28,11 +28,12 @@ const STATUS_STYLE: Record<ApplicationStatus, { color: string; label: string }> 
 const FILTERS: { key: "all" | ApplicationStatus; label: string }[] = [
   { key: "all", label: "All" },
   { key: "needs_info", label: "Needs Info" },
-  { key: "approved", label: "Approved" },
-  { key: "completed", label: "To Complete" },
-  { key: "processed", label: "Processed" },
+  { key: "waiting_approval", label: "Waiting Approval" },
+  { key: "in_verification", label: "In Verification" },
+  { key: "waiting_deposit", label: "Waiting Deposit" },
+  { key: "waiting_delivery", label: "Waiting Delivery" },
   { key: "declined", label: "Declined" },
-  { key: "funded_paid", label: "Funded" },
+  { key: "finished", label: "Finished" },
   { key: "withdrawn", label: "Withdrawn" },
 ];
 
@@ -57,6 +58,14 @@ export default function AdminApplicationsPage() {
   const [decliningId, setDecliningId] = useState<number | null>(null);
   const [declineNote, setDeclineNote] = useState("");
   const [declineNoteTouched, setDeclineNoteTouched] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  function copyApplicationLink() {
+    navigator.clipboard.writeText(`${window.location.origin}/apply`).then(() => {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    });
+  }
 
   useEffect(() => {
     if (!canReview) return;
@@ -92,7 +101,7 @@ export default function AdminApplicationsPage() {
     );
   }
 
-  async function decide(id: number, next: "approved" | "declined", statusNotes?: string) {
+  async function decide(id: number, next: "waiting_approval" | "declined", statusNotes?: string) {
     setActingId(id);
     setError(null);
     try {
@@ -100,7 +109,7 @@ export default function AdminApplicationsPage() {
       setRows((prev) => prev.map((row) => (row.id === id ? updated : row)));
     } catch (err) {
       // leave the row as-is — the admin can retry — but say why it didn't take
-      setError(err instanceof ApiError ? err.message : `Could not ${next === "approved" ? "accept" : "decline"} this application.`);
+      setError(err instanceof ApiError ? err.message : `Could not ${next === "waiting_approval" ? "accept" : "decline"} this application.`);
     } finally {
       setActingId(null);
     }
@@ -130,13 +139,22 @@ export default function AdminApplicationsPage() {
         title="Applications"
         subtitle={`Outdoor Fix · ${rows.length} total`}
         action={
-          <Link
-            href="/admin/applications/new"
-            className="font-heading flex items-center gap-1.5 self-start rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
-          >
-            <PlusIcon className="h-4 w-4" />
-            New Application
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={copyApplicationLink}
+              className="font-heading self-start rounded-md border border-red-600 px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
+              title="Copy the public, no-login application link to share with a prospective customer."
+            >
+              {linkCopied ? "Link Copied ✓" : "Copy Application Link"}
+            </button>
+            <Link
+              href="/admin/applications/new"
+              className="font-heading flex items-center gap-1.5 self-start rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
+            >
+              <PlusIcon className="h-4 w-4" />
+              New Application
+            </Link>
+          </div>
         }
       />
 
@@ -145,7 +163,7 @@ export default function AdminApplicationsPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search applications — customer name, equipment..."
+          placeholder="Search applications: customer name, equipment..."
           className="w-full rounded-md border border-neutral-200 bg-white py-2.5 pl-10 pr-3 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-red-300 focus:outline-none"
         />
       </div>
@@ -205,10 +223,10 @@ export default function AdminApplicationsPage() {
                     <td className="py-3 text-neutral-600">{row.created_by?.name ?? "—"}</td>
                     <td className="py-3 text-neutral-500">{new Date(row.updated_at).toLocaleDateString()}</td>
                     <td className="py-3 text-right">
-                      {row.status === "submitted" && canReview ? (
+                      {row.status === "waiting_review" && canReview ? (
                         <div className="flex justify-end gap-2">
                           <button
-                            onClick={() => decide(row.id, "approved")}
+                            onClick={() => decide(row.id, "waiting_approval")}
                             disabled={actingId === row.id}
                             className="font-heading flex items-center gap-1 rounded-md bg-green-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-green-700 disabled:opacity-60"
                           >
@@ -222,7 +240,7 @@ export default function AdminApplicationsPage() {
                             ✕ Decline
                           </button>
                         </div>
-                      ) : row.status === "submitted" ? (
+                      ) : row.status === "waiting_review" ? (
                         <span className="text-xs text-neutral-400" title="Requires application review access">
                           Awaiting review
                         </span>
@@ -251,7 +269,7 @@ export default function AdminApplicationsPage() {
         <Modal title="Decline application" onClose={closeDeclineModal} maxWidthClassName="max-w-sm">
           <div className="space-y-4">
             <p className="text-sm text-neutral-600">
-              Decline this application? The customer will see this reason — this can be reversed with Change Status
+              Decline this application? The customer will see this reason. This can be reversed with Change Status
               if needed.
             </p>
             <div>

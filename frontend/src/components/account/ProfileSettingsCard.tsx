@@ -2,7 +2,7 @@
 
 import { useId, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { removeMyAvatar, updateMyAvatar, updateMyProfile } from "@/lib/auth";
-import { validateEmail, validateName, validatePassword, validatePhone } from "@/lib/validation";
+import { validateName, validatePassword, validatePhone } from "@/lib/validation";
 import { ApiError } from "@/lib/api";
 import { EyeIcon, EyeOffIcon } from "@/components/icons";
 import { Avatar } from "@/components/account/Avatar";
@@ -73,20 +73,16 @@ export function ProfileSettingsCard({ user, onUpdated }: { user: AuthUser; onUpd
   }
 
   const [name, setName] = useState(user.name);
-  const [email, setEmail] = useState(user.email);
   const [phone, setPhone] = useState(user.phone ?? "");
-  const [currentPasswordForEmail, setCurrentPasswordForEmail] = useState("");
   const [profileTouched, setProfileTouched] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSuccess, setProfileSuccess] = useState(false);
 
   const nameErr = validateName(name, "Full name");
-  const emailErr = validateEmail(email);
   const phoneErr = validatePhone(phone, false);
-  const emailChanged = email !== user.email;
-  const profileValid = !nameErr && !emailErr && !phoneErr && (!emailChanged || currentPasswordForEmail.length > 0);
-  const profileDirty = name !== user.name || emailChanged || phone !== (user.phone ?? "");
+  const profileValid = !nameErr && !phoneErr;
+  const profileDirty = name !== user.name || phone !== (user.phone ?? "");
 
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
@@ -99,11 +95,8 @@ export function ProfileSettingsCard({ user, onUpdated }: { user: AuthUser; onUpd
     try {
       await updateMyProfile({
         name,
-        email,
         phone: phone || null,
-        ...(emailChanged ? { current_password: currentPasswordForEmail } : {}),
       });
-      setCurrentPasswordForEmail("");
       await onUpdated();
       setProfileSuccess(true);
     } catch (err) {
@@ -128,8 +121,12 @@ export function ProfileSettingsCard({ user, onUpdated }: { user: AuthUser; onUpd
   const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   const newPasswordErr = validatePassword(newPassword, true);
-  const confirmErr = confirmPassword && confirmPassword !== newPassword ? "Passwords do not match." : undefined;
-  const passwordValid = currentPassword.length > 0 && !newPasswordErr && !!confirmPassword && !confirmErr;
+  const confirmErr = !confirmPassword
+    ? "Please confirm your new password."
+    : confirmPassword !== newPassword
+      ? "Passwords do not match."
+      : undefined;
+  const passwordValid = currentPassword.length > 0 && !newPasswordErr && !confirmErr;
 
   async function savePassword(event: FormEvent) {
     event.preventDefault();
@@ -219,26 +216,11 @@ export function ProfileSettingsCard({ user, onUpdated }: { user: AuthUser; onUpd
           </div>
           <div>
             <label htmlFor={emailId} className={labelClass}>Email</label>
-            <input id={emailId} className={inputClass} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            {profileTouched && emailErr && <p className={errorClass}>{emailErr}</p>}
+            <input id={emailId} className={`${inputClass} cursor-not-allowed bg-neutral-50 text-neutral-500`} type="email" value={user.email} disabled readOnly />
+            <p className="mt-1 text-xs text-neutral-400">
+              Email can&rsquo;t be changed here — contact an admin if it needs to be updated.
+            </p>
           </div>
-          {emailChanged && (
-            <div>
-              <label htmlFor={`${emailId}-current-password`} className={labelClass}>
-                Current password (required to change email)
-              </label>
-              <input
-                id={`${emailId}-current-password`}
-                className={inputClass}
-                type="password"
-                value={currentPasswordForEmail}
-                onChange={(e) => setCurrentPasswordForEmail(e.target.value)}
-              />
-              {profileTouched && !currentPasswordForEmail && (
-                <p className={errorClass}>Enter your current password to confirm this email change.</p>
-              )}
-            </div>
-          )}
           <div>
             <label htmlFor={phoneId} className={labelClass}>Phone</label>
             <input id={phoneId} className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(000) 000-0000" />
@@ -284,6 +266,7 @@ export function ProfileSettingsCard({ user, onUpdated }: { user: AuthUser; onUpd
                 {showCurrent ? <EyeOffIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
               </button>
             </div>
+            {passwordTouched && !currentPassword && <p className={errorClass}>Current password is required.</p>}
           </div>
           <div>
             <label htmlFor={newPasswordId} className={labelClass}>New password</label>
@@ -304,7 +287,7 @@ export function ProfileSettingsCard({ user, onUpdated }: { user: AuthUser; onUpd
                 {showNew ? <EyeOffIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
               </button>
             </div>
-            {passwordTouched && newPassword && newPasswordErr && <p className={errorClass}>{newPasswordErr}</p>}
+            {passwordTouched && newPasswordErr && <p className={errorClass}>{newPasswordErr}</p>}
           </div>
           <div>
             <label htmlFor={confirmPasswordId} className={labelClass}>Confirm new password</label>
@@ -323,7 +306,7 @@ export function ProfileSettingsCard({ user, onUpdated }: { user: AuthUser; onUpd
 
           <button
             type="submit"
-            disabled={savingPassword || !passwordValid}
+            disabled={savingPassword}
             className="font-heading rounded-md bg-red-600 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white hover:bg-red-700 disabled:opacity-50"
           >
             {savingPassword ? "Saving…" : "Change password"}

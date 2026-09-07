@@ -6,6 +6,7 @@ import { DataTable, type DataTableColumn } from "@/components/dashboard/DataTabl
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { StatusTag } from "@/components/dashboard/StatusTag";
 import { listRiskProfiles } from "@/lib/risk-profiles";
+import { resolveRiskRedFlag } from "@/lib/applications";
 import { ApiError } from "@/lib/api";
 import type { RiskProfile } from "@/types/risk-profile";
 
@@ -26,9 +27,11 @@ export function RiskAssessmentPanel() {
   const [profiles, setProfiles] = useState<RiskProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [resolvingFlagId, setResolvingFlagId] = useState<number | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
 
-  useEffect(() => {
-    listRiskProfiles()
+  function load() {
+    return listRiskProfiles()
       .then(setProfiles)
       .catch((err) =>
         setError(
@@ -38,7 +41,29 @@ export function RiskAssessmentPanel() {
         ),
       )
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    load();
   }, []);
+
+  // Resolving a flag is the one risk_assessment action this panel exists to
+  // support — without it here, an admin scoped to risk_assessment only (no
+  // application_review) has a queue of flagged customers with no way to
+  // clear any of them, since the application detail page's own resolve
+  // button sits behind a permission they may not have.
+  async function resolveFlag(riskProfileId: number, redFlagId: number) {
+    setResolvingFlagId(redFlagId);
+    setResolveError(null);
+    try {
+      await resolveRiskRedFlag(riskProfileId, redFlagId);
+      await load();
+    } catch (err) {
+      setResolveError(err instanceof ApiError ? err.message : "Could not resolve this flag.");
+    } finally {
+      setResolvingFlagId(null);
+    }
+  }
 
   if (loading) return <p className="py-6 text-sm text-neutral-500">Loading risk profiles…</p>;
   if (error) return <p className="py-6 text-sm text-neutral-500">{error}</p>;
@@ -78,11 +103,25 @@ export function RiskAssessmentPanel() {
     {
       key: "action",
       header: "",
-      render: (r) => (
-        <Link href={`/admin/customers/${r.customer_id}`} className="text-sm font-semibold text-red-600 hover:underline">
-          Review →
-        </Link>
-      ),
+      render: (r) => {
+        const openFlag = r.red_flags?.find((f) => !f.resolved);
+        return (
+          <div className="flex items-center justify-end gap-3">
+            {openFlag && (
+              <button
+                onClick={() => resolveFlag(r.id, openFlag.id)}
+                disabled={resolvingFlagId === openFlag.id}
+                className="text-sm font-semibold text-green-700 hover:underline disabled:opacity-50"
+              >
+                {resolvingFlagId === openFlag.id ? "Resolving…" : "Resolve"}
+              </button>
+            )}
+            <Link href={`/admin/customers/${r.customer_id}`} className="text-sm font-semibold text-red-600 hover:underline">
+              Review →
+            </Link>
+          </div>
+        );
+      },
     },
   ];
 
@@ -94,6 +133,7 @@ export function RiskAssessmentPanel() {
         <MetricCard value={backgroundPending} label="Background pending" barColor="#171717" barPercent={pct(backgroundPending, total)} />
         <MetricCard value={clear} label="Clear / passed" barColor="#16A34A" barPercent={pct(clear, total)} />
       </div>
+      {resolveError && <p className="text-sm text-red-600">{resolveError}</p>}
       <DataTable title="Risk queue" columns={columns} rows={attention} emptyLabel="No open risk items." />
     </div>
   );

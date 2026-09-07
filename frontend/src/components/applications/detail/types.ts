@@ -1,11 +1,11 @@
 export type AppStatus =
-  | "submitted"
-  | "under_review"
+  | "waiting_review"
   | "needs_info"
-  | "approved"
-  | "completed"
-  | "processed"
-  | "funded_paid"
+  | "waiting_approval"
+  | "in_verification"
+  | "waiting_deposit"
+  | "waiting_delivery"
+  | "finished"
   | "declined"
   | "withdrawn";
 

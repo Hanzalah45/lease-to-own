@@ -13,13 +13,24 @@ import { DealerNotes } from "@/components/applications/detail/DealerNotes";
 import { ChecklistCard } from "@/components/applications/detail/ChecklistCard";
 import { AssignmentCard } from "@/components/applications/detail/AssignmentCard";
 import { EditDetailModal, type EditField } from "@/components/applications/detail/EditDetailModal";
+import { AddLeaseModal } from "@/components/applications/detail/AddLeaseModal";
 import { EpoChart } from "@/components/applications/wizard/EpoChart";
 import { Modal } from "@/components/ui/Modal";
 import type { AppStatus } from "@/components/applications/detail/types";
 import type { AdminPermissionKey } from "@/types/auth";
 import type { Application } from "@/types/application";
-import { addDealerNote, downloadIdDocument, downloadInfoRequestDocument, getApplication, resolveRiskRedFlag, updateApplication } from "@/lib/applications";
-import { money } from "@/components/applications/wizard/types";
+import {
+  addDealerNote,
+  downloadIdDocument,
+  downloadInfoRequestDocument,
+  downloadUtilityBill,
+  getApplication,
+  requestBankVerification,
+  resolveRiskRedFlag,
+  runBackgroundCheck,
+  updateApplication,
+} from "@/lib/applications";
+import { money, TRACKING_DEVICE_FEE } from "@/components/applications/wizard/types";
 import { ApiError } from "@/lib/api";
 import {
   NOTES_MAX,
@@ -30,7 +41,9 @@ import {
   validateEquipmentModel,
   validateIntegerInRange,
   validateMoney,
+  validateName,
   validateNotes,
+  validatePhone,
   validatePromoCode,
   validateSerialNumber,
   validateState,
@@ -41,9 +54,10 @@ import {
   AlertCircleIcon,
   CheckCircleIcon,
   ClockIcon,
-  CreditCardIcon,
   DocumentIcon,
+  PlusIcon,
   SettingsIcon,
+  ShieldIcon,
 } from "@/components/icons";
 
 const RESIDENCE_LABEL: Record<string, string> = { house: "House", apartment: "Apartment", other: "Other" };
@@ -69,35 +83,35 @@ const RED_FLAG_LABEL: Record<string, string> = {
 };
 
 const BADGE_STYLE: Record<AppStatus, { label: string; color: string }> = {
-  submitted: { label: "Submitted", color: "bg-neutral-700 text-white" },
-  under_review: { label: "Under Review", color: "bg-amber-500 text-white" },
+  waiting_review: { label: "Waiting Review", color: "bg-neutral-700 text-white" },
   needs_info: { label: "Needs Info", color: "bg-amber-500 text-white" },
-  approved: { label: "Approved", color: "bg-blue-600 text-white" },
-  completed: { label: "Completed", color: "bg-teal-500 text-white" },
-  processed: { label: "Processed", color: "bg-purple-600 text-white" },
-  funded_paid: { label: "Funded", color: "bg-green-600 text-white" },
+  waiting_approval: { label: "Waiting on Approval", color: "bg-amber-500 text-white" },
+  in_verification: { label: "In Verification", color: "bg-blue-600 text-white" },
+  waiting_deposit: { label: "Waiting on Deposit", color: "bg-teal-500 text-white" },
+  waiting_delivery: { label: "Waiting on Delivery", color: "bg-purple-600 text-white" },
+  finished: { label: "Finished", color: "bg-green-600 text-white" },
   declined: { label: "Application Declined", color: "bg-neutral-100 text-red-700 border border-red-200" },
   withdrawn: { label: "Withdrawn", color: "bg-neutral-200 text-neutral-700" },
 };
 
-// needs_info deliberately has no forward edge — an admin can't approve past
+// needs_info deliberately has no forward edge — an admin can't advance past
 // an info request they themselves opened until the customer answers it (that
-// reply auto-advances the application to under_review; see
+// reply auto-advances the application to waiting_review; see
 // Customer\ApplicationController::respondToInfoRequest on the backend).
 const FLOW: Partial<Record<AppStatus, AppStatus>> = {
-  submitted: "under_review",
-  under_review: "approved",
-  approved: "completed",
-  completed: "processed",
-  processed: "funded_paid",
+  waiting_review: "waiting_approval",
+  waiting_approval: "in_verification",
+  in_verification: "waiting_deposit",
+  waiting_deposit: "waiting_delivery",
+  waiting_delivery: "finished",
 };
 
 const PRIMARY_LABEL: Partial<Record<AppStatus, string>> = {
-  submitted: "Mark Under Review",
-  under_review: "Approved",
-  approved: "Mark Completed",
-  completed: "Mark Processed",
-  processed: "Mark Funded",
+  waiting_review: "Move to Approval Call",
+  waiting_approval: "Start Verification",
+  in_verification: "Mark Verified",
+  waiting_deposit: "Mark Deposit Received",
+  waiting_delivery: "Mark Delivered & Paid",
 };
 
 function num(value: string | number | null | undefined): number {
@@ -120,6 +134,7 @@ export default function ApplicationDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const [editingCard, setEditingCard] = useState<"customer" | "lease" | "equipment" | "risk" | null>(null);
+  const [showAddLeaseModal, setShowAddLeaseModal] = useState(false);
   const [postingNote, setPostingNote] = useState(false);
   const [togglingChecklist, setTogglingChecklist] = useState(false);
 
@@ -143,7 +158,7 @@ export default function ApplicationDetailPage() {
     setActing(true);
     setActionError(null);
     try {
-      setApplication(await updateApplication(application.id, { status: "submitted", status_notes: null }));
+      setApplication(await updateApplication(application.id, { status: "waiting_review", status_notes: null }));
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : "Could not change this application's status.");
     } finally {
@@ -242,6 +257,39 @@ export default function ApplicationDetailPage() {
       setActionError(err instanceof ApiError ? err.message : "Could not resolve this flag.");
     } finally {
       setResolvingFlagId(null);
+    }
+  }
+
+  const [runningBackgroundCheck, setRunningBackgroundCheck] = useState(false);
+  const [requestingBankVerification, setRequestingBankVerification] = useState(false);
+  const [bankVerificationRequested, setBankVerificationRequested] = useState(false);
+
+  async function handleRunBackgroundCheck() {
+    if (!application) return;
+    setRunningBackgroundCheck(true);
+    setActionError(null);
+    try {
+      await runBackgroundCheck(application.id);
+      await load();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not run the background check.");
+    } finally {
+      setRunningBackgroundCheck(false);
+    }
+  }
+
+  async function handleRequestBankVerification() {
+    if (!application) return;
+    setRequestingBankVerification(true);
+    setActionError(null);
+    try {
+      await requestBankVerification(application.id);
+      setBankVerificationRequested(true);
+      await load();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Could not send the bank verification request.");
+    } finally {
+      setRequestingBankVerification(false);
     }
   }
 
@@ -371,7 +419,7 @@ export default function ApplicationDetailPage() {
   const signed = !!lease?.contract;
 
   const salesTaxPct = lease ? (num(lease.sales_tax_rate) * 100).toFixed(2) : "0";
-  const totalDue = lease ? num(lease.total_monthly_payment) + num(lease.security_deposit) : 0;
+  const totalDue = lease ? num(lease.total_monthly_payment) + num(lease.security_deposit) + TRACKING_DEVICE_FEE : 0;
 
   // Every rule below comes from @/lib/validation, so a field is checked the
   // same way here as in the customer and equipment modals. The profile columns
@@ -399,6 +447,39 @@ export default function ApplicationDetailPage() {
       value: profile?.residence_type ?? "house",
       type: "select",
       options: ["house", "apartment", "other"],
+    },
+    { key: "previous_address", label: "Previous address", value: profile?.previous_address ?? "", validate: optional(validateStreet) },
+    { key: "landlord_name", label: "Landlord name", value: profile?.landlord_name ?? "", validate: optional((v) => validateName(v, "Landlord name")) },
+    { key: "landlord_phone", label: "Landlord phone", value: profile?.landlord_phone ?? "", validate: optional((v) => validatePhone(v, false)) },
+    { key: "monthly_rent", label: "Monthly rent", value: profile?.monthly_rent ?? "", validate: optional((v) => validateMoney(v, "Monthly rent")) },
+    { key: "mortgage_amount", label: "Mortgage amount", value: profile?.mortgage_amount ?? "", validate: optional((v) => validateMoney(v, "Mortgage amount")) },
+    { key: "mortgage_years", label: "Mortgage history (years)", value: profile?.mortgage_years ?? "" },
+    { key: "employer_name", label: "Employer name", value: profile?.employer_name ?? "", validate: optional((v) => validateName(v, "Employer name")) },
+    { key: "employer_phone", label: "Employer phone", value: profile?.employer_phone ?? "", validate: optional((v) => validatePhone(v, false)) },
+    { key: "employer_position", label: "Position / title", value: profile?.employer_position ?? "", validate: optional((v) => validateName(v, "Position")) },
+    {
+      key: "alternate_contact_1_name",
+      label: "Alternate contact 1 name",
+      value: profile?.alternate_contact_1_name ?? "",
+      validate: optional((v) => validateName(v, "Alternate contact name")),
+    },
+    {
+      key: "alternate_contact_1_phone",
+      label: "Alternate contact 1 phone",
+      value: profile?.alternate_contact_1_phone ?? "",
+      validate: optional((v) => validatePhone(v, false)),
+    },
+    {
+      key: "alternate_contact_2_name",
+      label: "Alternate contact 2 name",
+      value: profile?.alternate_contact_2_name ?? "",
+      validate: optional((v) => validateName(v, "Alternate contact name")),
+    },
+    {
+      key: "alternate_contact_2_phone",
+      label: "Alternate contact 2 phone",
+      value: profile?.alternate_contact_2_phone ?? "",
+      validate: optional((v) => validatePhone(v, false)),
     },
   ];
 
@@ -513,38 +594,56 @@ export default function ApplicationDetailPage() {
         onDownloadDocument={(infoRequestId) => downloadInfoRequestDocument(application.id, infoRequestId, `application-${application.id}-id-r${infoRequestId}`)}
       />
 
-      {status === "submitted" && (
+      {!lease && status !== "declined" && status !== "withdrawn" && (
+        <div className="flex flex-col gap-3 rounded-xl border-l-4 border-neutral-400 bg-neutral-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div>
+            <p className="text-sm font-bold text-neutral-900">No equipment or pricing yet</p>
+            <p className="mt-0.5 text-sm text-neutral-600">
+              This came in through the guest application link. Add the equipment and lease terms once you&rsquo;ve
+              confirmed them with the customer.
+            </p>
+          </div>
+          {can("application_review") && (
+            <button
+              onClick={() => setShowAddLeaseModal(true)}
+              className="font-heading flex shrink-0 items-center justify-center gap-1.5 self-start rounded-md bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700 sm:self-auto"
+            >
+              <PlusIcon className="h-4 w-4" />
+              Add Equipment & Pricing
+            </button>
+          )}
+        </div>
+      )}
+
+      {status === "waiting_review" && (
         <>
           <TakeActionBanner
-            primaryLabel={PRIMARY_LABEL.submitted!}
+            primaryLabel={PRIMARY_LABEL.waiting_review!}
             onPrimary={advance}
             onDecline={() => setShowDeclineConfirm(true)}
             onRequestInfo={() => setShowRequestInfoConfirm(true)}
             disabled={!can("application_review") || acting}
+            noPermission={!can("application_review")}
           />
-          <InfoCallout tone="blue" icon={DocumentIcon} title="New submission" description="Just came in — no review or automated checks have started yet." />
+          <InfoCallout tone="blue" icon={DocumentIcon} title="New submission" description="Just came in. No review or automated checks have started yet." />
         </>
       )}
 
-      {status === "under_review" && (
+      {status === "waiting_approval" && (
         <>
           <TakeActionBanner
-            primaryLabel={PRIMARY_LABEL.under_review!}
+            primaryLabel={PRIMARY_LABEL.waiting_approval!}
             onPrimary={advance}
             onDecline={() => setShowDeclineConfirm(true)}
             onRequestInfo={() => setShowRequestInfoConfirm(true)}
             disabled={!can("application_review") || acting}
+            noPermission={!can("application_review")}
           />
           <InfoCallout
-            tone="green"
+            tone="amber"
             icon={ClockIcon}
-            title="Verification in progress"
-            description="Automated checks are running."
-            items={[
-              `Identity check — ${VERIFICATION_LABEL[risk?.identity_verification_status ?? "pending"]}`,
-              `Bank verification (Plaid) — ${VERIFICATION_LABEL[risk?.bank_verification_status ?? "pending"]}`,
-              `Background check — ${BACKGROUND_LABEL[risk?.background_check_status ?? "pending"]}`,
-            ]}
+            title="Call the customer"
+            description="Confirm the equipment, monthly price, and deposit before starting verification. Background check and bank verification do not run until the customer has agreed to these numbers."
           />
         </>
       )}
@@ -553,58 +652,114 @@ export default function ApplicationDetailPage() {
         <>
           <TakeActionBanner
             title="Waiting on the customer"
-            description="Approval is unavailable until they reply — this moves to Under Review on its own once they respond. You can still decline."
+            description="Approval is unavailable until they reply. This moves to Waiting Review on its own once they respond. You can still decline."
             onDecline={() => setShowDeclineConfirm(true)}
             disabled={!can("application_review") || acting}
+            noPermission={!can("application_review")}
           />
           <InfoCallout
             tone="amber"
             icon={AlertCircleIcon}
             title="Action required"
-            description={openInfoRequest?.request_text ?? "Missing information — see the info requests below."}
+            description={openInfoRequest?.request_text ?? "Missing information. See the info requests below."}
           />
         </>
       )}
 
-      {status === "approved" && (
+      {status === "in_verification" && (
         <>
-          <TakeActionBanner primaryLabel={PRIMARY_LABEL.approved!} onPrimary={advance} onDecline={() => setShowDeclineConfirm(true)} disabled={!can("application_review") || acting} />
-          <InfoCallout tone="blue" icon={CheckCircleIcon} title="Approved — next step" description="Application passed underwriting. Contract not yet sent." items={["Payment schedule generated", "Contract generation pending — send for signature"]} />
-        </>
-      )}
-
-      {status === "completed" && (
-        <>
-          <TakeActionBanner primaryLabel={PRIMARY_LABEL.completed!} onPrimary={advance} onDecline={() => setShowDeclineConfirm(true)} disabled={!can("application_review") || acting} />
+          <TakeActionBanner
+            primaryLabel={PRIMARY_LABEL.in_verification!}
+            onPrimary={advance}
+            onDecline={() => setShowDeclineConfirm(true)}
+            disabled={!can("application_review") || acting}
+            noPermission={!can("application_review")}
+          />
           <InfoCallout
-            tone="teal"
-            icon={SettingsIcon}
-            title="Equipment delivered"
-            description="Unit is with the customer. Final funding step remaining."
-            items={["Contract signed", ...(equipment?.delivery_date ? [`Delivered ${equipment.delivery_date}`] : []), "Awaiting first payment to move to Funded"]}
+            tone="green"
+            icon={ShieldIcon}
+            title="Verification in progress"
+            description="Background check and bank verification are two separate, admin-triggered actions. Neither runs automatically."
+            items={[
+              `Identity check: ${VERIFICATION_LABEL[risk?.identity_verification_status ?? "pending"]}`,
+              `Bank verification (Plaid): ${VERIFICATION_LABEL[risk?.bank_verification_status ?? "pending"]}`,
+              `Background check: ${BACKGROUND_LABEL[risk?.background_check_status ?? "pending"]}`,
+            ]}
           />
-        </>
-      )}
-
-      {status === "processed" && (
-        <>
-          <TakeActionBanner primaryLabel={PRIMARY_LABEL.processed!} onPrimary={advance} onDecline={() => setShowDeclineConfirm(true)} disabled={!can("application_review") || acting} />
-          <InfoCallout tone="purple" icon={CreditCardIcon} title="Processing final payment" description="Payment submitted — waiting on bank confirmation." items={["Contract signed", "ACH payment processing (1–2 business days)"]} />
-          {paidPayment && (
-            <div className="rounded-xl border border-green-200 bg-green-50 px-5 py-3.5">
-              <p className="text-sm font-bold text-green-700">Payment received — {money(num(paidPayment.amount))}</p>
-              <p className="text-xs text-neutral-500">{paidPayment.paid_date}</p>
+          {can("risk_assessment") && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={handleRunBackgroundCheck}
+                disabled={runningBackgroundCheck || !lease}
+                title={!lease ? "Add equipment and pricing first" : undefined}
+                className="font-heading rounded-md border border-neutral-300 bg-white px-4 py-2 text-xs font-bold text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {runningBackgroundCheck ? "Running…" : "Run Background Check"}
+              </button>
+              <button
+                onClick={handleRequestBankVerification}
+                disabled={requestingBankVerification}
+                className="font-heading rounded-md border border-neutral-300 bg-white px-4 py-2 text-xs font-bold text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {requestingBankVerification
+                  ? "Sending…"
+                  : bankVerificationRequested || risk?.bank_verification_requested_at
+                    ? "Resend Bank Verification Request"
+                    : "Request Bank Verification"}
+              </button>
+              {risk?.bank_verification_requested_at && (
+                <p className="self-center text-xs text-neutral-400">
+                  Last requested {new Date(risk.bank_verification_requested_at).toLocaleString()}
+                </p>
+              )}
             </div>
           )}
         </>
       )}
 
-      {status === "funded_paid" && (
+      {status === "waiting_deposit" && (
+        <>
+          <TakeActionBanner
+            primaryLabel={PRIMARY_LABEL.waiting_deposit!}
+            onPrimary={advance}
+            onDecline={() => setShowDeclineConfirm(true)}
+            disabled={!can("application_review") || acting}
+            noPermission={!can("application_review")}
+          />
+          <InfoCallout tone="blue" icon={CheckCircleIcon} title="Verified: next step" description="Application passed verification. Payment schedule generated." items={["Contract ready to send for signature", "Security deposit not yet collected"]} />
+        </>
+      )}
+
+      {status === "waiting_delivery" && (
+        <>
+          <TakeActionBanner
+            primaryLabel={PRIMARY_LABEL.waiting_delivery!}
+            onPrimary={advance}
+            onDecline={() => setShowDeclineConfirm(true)}
+            disabled={!can("application_review") || acting}
+            noPermission={!can("application_review")}
+          />
+          <InfoCallout
+            tone="teal"
+            icon={SettingsIcon}
+            title="Ready for pickup"
+            description="Unit is ready to hand off. First month's payment is due at delivery."
+            items={[
+              `Contract ${application.signature_received ? "signed" : "not yet signed"}`,
+              `Security deposit ${application.deposit_received ? "collected" : "not yet collected"}`,
+              "Awaiting delivery and first payment to move to Finished",
+            ]}
+          />
+        </>
+      )}
+
+      {status === "finished" && (
         <div className="rounded-xl border border-green-200 bg-green-50 px-5 py-3.5">
           <p className="text-sm font-bold text-green-700">
-            {paidPayment ? `Payment received — ${money(num(paidPayment.amount))}` : "Lease funded — awaiting first payment"}
+            {paidPayment ? `Payment received: ${money(num(paidPayment.amount))}` : "Lease active. Delivered and first payment made"}
           </p>
-          {paidPayment && <p className="text-xs text-neutral-500">{paidPayment.paid_date}</p>}
+          {paidPayment && <p className="text-xs text-neutral-500">{new Date(paidPayment.paid_date).toLocaleDateString()}</p>}
+          {equipment?.delivery_date && <p className="text-xs text-neutral-500">Delivered {new Date(equipment.delivery_date).toLocaleDateString()}</p>}
         </div>
       )}
 
@@ -650,12 +805,40 @@ export default function ApplicationDetailPage() {
                 { label: "Date of birth", value: profile?.date_of_birth?.slice(0, 10) ?? "—" },
                 { label: "Driver's license #", value: profile?.government_id_number ?? "—" },
                 { label: "Residence type", value: RESIDENCE_LABEL[profile?.residence_type ?? ""] ?? "—" },
+                ...(profile?.previous_address ? [{ label: "Previous address", value: profile.previous_address }] : []),
+                ...(profile?.landlord_name
+                  ? [
+                      { label: "Landlord", value: `${profile.landlord_name} · ${profile.landlord_phone ?? "—"}` },
+                      { label: "Monthly rent", value: profile.monthly_rent ? money(num(profile.monthly_rent)) : "—" },
+                    ]
+                  : []),
+                ...(profile?.mortgage_amount
+                  ? [{ label: "Mortgage", value: `${money(num(profile.mortgage_amount))} · ${profile.mortgage_years ?? "—"} yrs history` }]
+                  : []),
+                { label: "Employer", value: profile?.employer_name ? `${profile.employer_name}${profile.employer_position ? `, ${profile.employer_position}` : ""}` : "—" },
+                { label: "Employer phone", value: profile?.employer_phone ?? "—" },
                 { label: "Monthly income", value: profile?.monthly_income ? money(num(profile.monthly_income)) : "—" },
+                ...(profile?.alternate_contact_1_name
+                  ? [{ label: "Alternate contact 1", value: `${profile.alternate_contact_1_name} · ${profile.alternate_contact_1_phone ?? "—"}` }]
+                  : []),
+                ...(profile?.alternate_contact_2_name
+                  ? [{ label: "Alternate contact 2", value: `${profile.alternate_contact_2_name} · ${profile.alternate_contact_2_phone ?? "—"}` }]
+                  : []),
                 ...(profile?.government_id_document_path
                   ? [{
                       label: "ID document",
                       value: (
                         <button onClick={() => downloadIdDocument(application.id, `application-${application.id}-id`)} className="text-red-600 hover:underline">
+                          Download →
+                        </button>
+                      ),
+                    }]
+                  : []),
+                ...(profile?.utility_bill_document_path
+                  ? [{
+                      label: "Utility bill",
+                      value: (
+                        <button onClick={() => downloadUtilityBill(application.id, `application-${application.id}-utility-bill`)} className="text-red-600 hover:underline">
                           Download →
                         </button>
                       ),
@@ -667,8 +850,8 @@ export default function ApplicationDetailPage() {
             <DetailCard
               title="Lease terms"
               editable
-              canEdit={can("contract_generation")}
-              onEdit={() => setEditingCard("lease")}
+              canEdit={lease ? can("contract_generation") : can("application_review")}
+              onEdit={() => (lease ? setEditingCard("lease") : setShowAddLeaseModal(true))}
               rows={
                 lease
                   ? [
@@ -677,6 +860,7 @@ export default function ApplicationDetailPage() {
                       { label: `Sales tax @ ${salesTaxPct}%`, value: money(num(lease.sales_tax_amount)) },
                       { label: "Total monthly", value: money(num(lease.total_monthly_payment)) },
                       { label: "Security deposit", value: money(num(lease.security_deposit)) },
+                      { label: "Tracking device fee", value: money(TRACKING_DEVICE_FEE) },
                       { label: "Total due", value: money(totalDue) },
                       { label: "AutoPay", value: lease.autopay_enabled ? "Yes" : "No" },
                       { label: "LDW selected", value: lease.ldw_selected ? "Yes" : "No" },
@@ -689,13 +873,14 @@ export default function ApplicationDetailPage() {
             <DetailCard
               title="Equipment unit"
               editable
-              canEdit={can("equipment_tracking")}
-              onEdit={() => setEditingCard("equipment")}
+              canEdit={lease ? can("equipment_tracking") : can("application_review")}
+              onEdit={() => (lease ? setEditingCard("equipment") : setShowAddLeaseModal(true))}
               rows={[
                 { label: "Make / model", value: equipment?.model ?? "—" },
                 { label: "Cash price", value: lease ? money(num(lease.cash_price)) : "—" },
                 { label: "Condition", value: equipment?.condition_notes ?? "—" },
                 { label: "Serial # / VIN", value: equipment?.serial_number ?? "—" },
+                { label: "GPS device serial", value: equipment?.gps_device_id ?? "—" },
                 { label: "Delivery date", value: equipment?.delivery_date ?? "—" },
                 { label: "Expected ownership", value: equipment?.expected_return_or_ownership_date?.slice(0, 10) ?? "—" },
                 { label: "Live EPO price", value: <span className="text-red-600">{lease ? money(lease.epo_today) : "—"}</span> },
@@ -705,7 +890,7 @@ export default function ApplicationDetailPage() {
                 equipment?.service_records_count
                   ? `${equipment.service_records_count} record${equipment.service_records_count === 1 ? "" : "s"}`
                   : "no records yet"
-              } · GPS: not tracked (Phase 2)`}
+              } · Live GPS tracking not active yet (Phase 2); device serial above is on file`}
             />
             <DetailCard
               title="Risk profile"
@@ -730,7 +915,7 @@ export default function ApplicationDetailPage() {
                         <li key={flag.id} className="flex items-start justify-between gap-2 rounded bg-red-50 px-2 py-1.5">
                           <span className={flag.resolved ? "text-neutral-400 line-through" : "text-red-700"}>
                             <span className="font-semibold">{RED_FLAG_LABEL[flag.type] ?? flag.type}</span>
-                            {flag.description && <span> — {flag.description}</span>}
+                            {flag.description && <span>: {flag.description}</span>}
                             {flag.resolved && flag.resolved_by && (
                               <span className="ml-1 text-xs no-underline">(resolved by {flag.resolved_by.name})</span>
                             )}
@@ -802,6 +987,17 @@ export default function ApplicationDetailPage() {
             onToggle={(i) => toggleChecklistField(i === 0 ? "deposit_received" : "signature_received")}
             disabled={togglingChecklist}
           />
+          {application.deposit_forfeited_at ? (
+            <p className="-mt-3 text-xs text-red-600">
+              Deposit forfeited {new Date(application.deposit_forfeited_at).toLocaleDateString()} — unit not picked up in time.
+            </p>
+          ) : (
+            application.deposit_hold_expires_at && (
+              <p className="-mt-3 text-xs text-neutral-400">
+                Deposit hold expires {new Date(application.deposit_hold_expires_at).toLocaleDateString()}.
+              </p>
+            )
+          )}
           <AssignmentCard
             salesperson={application.internal_notes?.replace("Sales person: ", "") || "Outdoor Fix"}
             reviewedBy={application.reviewed_by?.name ?? "—"}
@@ -821,6 +1017,17 @@ export default function ApplicationDetailPage() {
         </div>
       )}
 
+      {showAddLeaseModal && (
+        <AddLeaseModal
+          applicationId={application.id}
+          onClose={() => setShowAddLeaseModal(false)}
+          onSaved={(updated) => {
+            setApplication(updated);
+            setShowAddLeaseModal(false);
+          }}
+        />
+      )}
+
       {editingCard === "customer" && <EditDetailModal title="Customer" fields={CUSTOMER_FIELDS} onSave={saveCustomer} onClose={() => setEditingCard(null)} />}
       {editingCard === "lease" && lease && <EditDetailModal title="Lease terms" fields={LEASE_FIELDS} onSave={saveLease} onClose={() => setEditingCard(null)} />}
       {editingCard === "equipment" && <EditDetailModal title="Equipment unit" fields={EQUIPMENT_FIELDS} onSave={saveEquipment} onClose={() => setEditingCard(null)} />}
@@ -830,7 +1037,7 @@ export default function ApplicationDetailPage() {
         <Modal title="Decline application" onClose={closeDeclineConfirm} maxWidthClassName="max-w-sm">
           <div className="space-y-4">
             <p className="text-sm text-neutral-600">
-              Decline this application? The customer will see this reason — this can be reversed with Change Status
+              Decline this application? The customer will see this reason. This can be reversed with Change Status
               if needed.
             </p>
             <div>

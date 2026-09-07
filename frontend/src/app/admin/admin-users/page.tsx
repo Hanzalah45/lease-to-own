@@ -76,7 +76,7 @@ export default function AdminUsersPage() {
       {loading ? (
         <p className="mt-6 text-sm text-neutral-500">Loading…</p>
       ) : admins.length === 0 ? (
-        <p className="mt-6 text-sm text-neutral-400">No admins yet — create one above.</p>
+        <p className="mt-6 text-sm text-neutral-400">No admins yet. Create one above.</p>
       ) : (
         <div className="mt-6 overflow-hidden rounded-xl border border-neutral-200">
           <table className="w-full text-left text-sm">
@@ -161,7 +161,7 @@ export default function AdminUsersPage() {
       )}
 
       {editing && (
-        <Modal title={`Edit — ${editing.name}`} onClose={() => setEditing(null)}>
+        <Modal title={`Edit: ${editing.name}`} onClose={() => setEditing(null)}>
           <AdminForm
             admin={editing}
             onSaved={() => {
@@ -218,7 +218,7 @@ function DeleteConfirm({
       {error && <p className="text-sm text-red-600">{error}</p>}
       <p className="text-sm text-neutral-600">
         Remove <span className="font-semibold text-neutral-900">{admin.name}</span> (
-        {admin.email})? They immediately lose access — this can&apos;t be undone.
+        {admin.email})? They immediately lose access. This can&apos;t be undone.
       </p>
       <div className="flex justify-end gap-2">
         <button
@@ -479,7 +479,7 @@ function AdminForm({
         </button>
         <button
           type="submit"
-          disabled={submitting || !isValid}
+          disabled={submitting}
           className="font-heading rounded-md bg-neutral-900 px-4 py-2 text-sm font-bold uppercase tracking-wide text-white hover:bg-neutral-800 disabled:opacity-50"
         >
           {submitting ? "Saving…" : isEdit ? "Save changes" : "Create admin"}

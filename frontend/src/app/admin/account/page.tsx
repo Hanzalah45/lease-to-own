@@ -9,7 +9,7 @@ export default function AdminAccountPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeroHeader title="My Account" subtitle="Update your own name, email, phone, and password." />
+      <PageHeroHeader title="My Account" subtitle="Update your own name, phone, and password." />
       {user && <ProfileSettingsCard user={user} onUpdated={refresh} />}
     </div>
   );

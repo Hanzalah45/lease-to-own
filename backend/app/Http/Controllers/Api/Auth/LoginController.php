@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\CommonValidationRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
@@ -14,8 +15,10 @@ class LoginController extends Controller
     public function __invoke(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'email' => ['required', 'string', 'email'],
-            'password' => ['required', 'string'],
+            'email' => ['required', 'string', 'email', 'max:'.CommonValidationRules::EMAIL_MAX],
+            // Bcrypt only hashes the first 72 bytes anyway — capping here
+            // avoids spending hashing time on an arbitrarily long payload.
+            'password' => ['required', 'string', 'max:'.CommonValidationRules::PASSWORD_MAX],
         ]);
 
         if ($validator->fails()) {
@@ -40,7 +43,11 @@ class LoginController extends Controller
         if ($user->status !== 'active') {
             Auth::logout();
 
-            return response()->json(['message' => 'This account is not active.'], 403);
+            $message = ($user->status === 'pending' && ! $user->email_verified_at)
+                ? 'Please verify your email before logging in.'
+                : 'This account is not active.';
+
+            return response()->json(['message' => $message], 403);
         }
 
         $token = $user->createToken('auth_token')->plainTextToken;

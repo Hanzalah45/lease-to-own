@@ -1,12 +1,39 @@
 import { API_BASE_URL, apiFetch, ApiError } from "@/lib/api";
 import { getToken } from "@/lib/auth";
-import type { Contract } from "@/types/lease-agreement";
+import type { Contract, LeaseAgreement } from "@/types/lease-agreement";
 
 export async function signLease(leaseAgreementId: number, signerName: string): Promise<Contract> {
   const data = await apiFetch<{ data: Contract }>("/customer/contracts", {
     method: "POST",
     token: getToken(),
     body: { lease_agreement_id: leaseAgreementId, signer_name: signerName },
+  });
+  return data.data;
+}
+
+/** The signed params carried by a "sign your contract" email link — see ContractSigner on the backend. */
+export interface SignedContractLinkParams {
+  id: string;
+  lease: string;
+  hash: string;
+  expires: string;
+  signature: string;
+}
+
+/** Unauthenticated counterpart to fetching a lease for signing — used by /sign-contract, reached from the emailed signed link (guest customers have no working login yet). */
+export async function getSignedLease(params: SignedContractLinkParams): Promise<LeaseAgreement> {
+  const data = await apiFetch<{ data: LeaseAgreement }>("/contracts/verify-lease", {
+    method: "POST",
+    body: params,
+  });
+  return data.data;
+}
+
+/** Unauthenticated counterpart to signLease() — used by /sign-contract. */
+export async function signLeaseViaLink(params: SignedContractLinkParams, signerName: string): Promise<Contract> {
+  const data = await apiFetch<{ data: Contract }>("/contracts/verify-sign", {
+    method: "POST",
+    body: { ...params, signer_name: signerName },
   });
   return data.data;
 }

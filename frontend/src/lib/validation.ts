@@ -210,11 +210,11 @@ export function validateSerialNumber(value: string): string | undefined {
   return undefined;
 }
 
-export function validateEquipmentModel(value: string): string | undefined {
+export function validateEquipmentModel(value: string, fieldLabel: string = "Model"): string | undefined {
   const v = value.trim();
-  if (!v) return "Model is required.";
-  if (v.length < EQUIPMENT_MODEL_MIN) return `Model must be at least ${EQUIPMENT_MODEL_MIN} characters.`;
-  if (v.length > EQUIPMENT_MODEL_MAX) return `Model must be ${EQUIPMENT_MODEL_MAX} characters or fewer.`;
+  if (!v) return `${fieldLabel} is required.`;
+  if (v.length < EQUIPMENT_MODEL_MIN) return `${fieldLabel} must be at least ${EQUIPMENT_MODEL_MIN} characters.`;
+  if (v.length > EQUIPMENT_MODEL_MAX) return `${fieldLabel} must be ${EQUIPMENT_MODEL_MAX} characters or fewer.`;
   return undefined;
 }
 

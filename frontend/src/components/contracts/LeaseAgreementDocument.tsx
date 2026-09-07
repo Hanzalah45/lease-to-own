@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { money } from "@/components/applications/wizard/types";
+import { money, TRACKING_DEVICE_FEE } from "@/components/applications/wizard/types";
 import type { LeaseAgreement } from "@/types/lease-agreement";
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -38,10 +38,11 @@ export function LeaseAgreementDocument({
   const equipment = lease.equipment_unit;
   const cashPrice = num(lease.cash_price);
   const monthlyRental = num(lease.monthly_rental_payment);
+  const ldwAmount = num(lease.ldw_amount);
   const salesTax = num(lease.sales_tax_amount);
   const totalMonthly = num(lease.total_monthly_payment);
   const securityDeposit = num(lease.security_deposit);
-  const totalDueToday = securityDeposit + totalMonthly;
+  const totalDueToday = securityDeposit + TRACKING_DEVICE_FEE + totalMonthly;
   const taxRatePct = (num(lease.sales_tax_rate) * 100).toFixed(2);
   const signed = !!lease.contract;
 
@@ -90,9 +91,11 @@ export function LeaseAgreementDocument({
             <Row label="Months to Ownership" value={String(lease.term_months)} />
             <Row label="Payment Due Day" value={lease.payment_due_day ?? "—"} />
             <Row label="Rental Payment" value={money(monthlyRental)} />
+            <Row label={lease.ldw_selected ? "LDW (monthly)" : "No-LDW Surcharge (monthly)"} value={`${money(ldwAmount)} / mo`} />
             <Row label="Sales Tax" value={money(salesTax)} />
             <Row label="Total Monthly Payment" value={money(totalMonthly)} />
             <Row label="Security Deposit" value={money(securityDeposit)} />
+            <Row label="Tracking Device Fee" value={money(TRACKING_DEVICE_FEE)} />
             <Row label="TOTAL DUE TODAY" value={money(totalDueToday)} />
             <Row label="AutoPay" value={lease.autopay_enabled ? "Yes" : "No"} />
             <Row label="Total Rental-Purchase Price" value={money(num(lease.total_rental_purchase_price))} />
@@ -100,6 +103,12 @@ export function LeaseAgreementDocument({
         </div>
 
         <p className="mt-5 text-xs italic leading-relaxed text-neutral-400">
+          <strong>Security Deposit &amp; Unit Hold.</strong> Your Security Deposit of {money(securityDeposit)} secures
+          the Property described above and holds it exclusively for you for thirty (30) days from the date you sign
+          this Agreement. You must pick up the Property and complete your first rental payment within that 30-day
+          period. If you do not, your Security Deposit is forfeited in full and this reservation is cancelled.
+        </p>
+        <p className="mt-3 text-xs italic leading-relaxed text-neutral-400">
           <strong>2. Lease Term &amp; Payment Schedule.</strong> This Agreement is for one month. It begins on the
           effective date of this Agreement and expires one month later. You can renew the Agreement for additional
           one-month terms at your option by making a monthly rental renewal payment on or before the expiration

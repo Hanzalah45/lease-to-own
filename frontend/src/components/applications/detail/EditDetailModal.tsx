@@ -163,7 +163,7 @@ export function EditDetailModal({
           </button>
           <button
             onClick={submit}
-            disabled={!isValid || submitting}
+            disabled={submitting}
             className="font-heading flex-1 rounded-md bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? "Saving…" : "Save Changes"}

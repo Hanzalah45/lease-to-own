@@ -6,7 +6,7 @@ import { Suspense, useState, type FormEvent } from "react";
 import { AuthCard, AuthField, AuthSubmitButton } from "@/components/auth/AuthCard";
 import { useAuth } from "@/context/AuthContext";
 import { ApiError } from "@/lib/api";
-import { dashboardPathForRole, login } from "@/lib/auth";
+import { dashboardPathForRole, login, resendVerificationEmail } from "@/lib/auth";
 import { validateEmail } from "@/lib/validation";
 
 export default function LoginPage() {
@@ -28,6 +28,8 @@ function LoginForm() {
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle");
 
   function touch(key: string) {
     setTouched((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
@@ -57,6 +59,8 @@ function LoginForm() {
     event.preventDefault();
     if (submitting) return; // guard against a double-click/double-Enter race
     setError(null);
+    setNeedsVerification(false);
+    setResendState("idle");
 
     if (!isValid) {
       setTouched({ email: true, password: true });
@@ -76,11 +80,27 @@ function LoginForm() {
           Object.fromEntries(Object.entries(err.errors).map(([key, messages]) => [key, messages[0]])),
         );
         setError(null);
+      } else if (err instanceof ApiError && err.status === 403 && err.message.toLowerCase().includes("verify")) {
+        setNeedsVerification(true);
+        setError(err.message);
       } else {
         setError(err instanceof ApiError ? err.message : "Something went wrong.");
       }
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleResend() {
+    if (resendState === "sending") return;
+    setResendState("sending");
+    try {
+      await resendVerificationEmail(email);
+      setResendState("sent");
+    } catch {
+      // The endpoint itself never errors on a bad/unknown email (anti-enumeration) —
+      // this only fails on something like a network hiccup. Leave the button clickable again.
+      setResendState("idle");
     }
   }
 
@@ -100,6 +120,22 @@ function LoginForm() {
     >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && <p className="text-sm text-red-600">{error}</p>}
+        {needsVerification && (
+          <p className="text-sm">
+            {resendState === "sent" ? (
+              <span className="text-green-700">Verification email sent. Check your inbox.</span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={resendState === "sending"}
+                className="font-semibold text-neutral-900 underline disabled:opacity-50"
+              >
+                {resendState === "sending" ? "Sending…" : "Resend verification email"}
+              </button>
+            )}
+          </p>
+        )}
 
         <AuthField
           label="Email"
@@ -134,7 +170,7 @@ function LoginForm() {
           </Link>
         </div>
 
-        <AuthSubmitButton disabled={submitting || !isValid}>
+        <AuthSubmitButton disabled={submitting}>
           {submitting ? "Signing in…" : "Sign in →"}
         </AuthSubmitButton>
       </form>

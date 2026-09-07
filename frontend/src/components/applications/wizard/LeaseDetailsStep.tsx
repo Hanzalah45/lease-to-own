@@ -1,7 +1,13 @@
 import { Field, RadioGroup, TextInput } from "@/components/applications/wizard/fields";
 import { SidebarCard } from "@/components/applications/wizard/SidebarCard";
 import { EpoChart } from "@/components/applications/wizard/EpoChart";
-import { computeLeasePricing, fieldError, money, type WizardState } from "@/components/applications/wizard/types";
+import {
+  computeLeasePricing,
+  fieldError,
+  money,
+  TERM_MONTH_OPTIONS,
+  type WizardState,
+} from "@/components/applications/wizard/types";
 import { SectionHeading } from "@/components/dashboard/SectionHeading";
 
 export function LeaseDetailsStep({
@@ -23,11 +29,10 @@ export function LeaseDetailsStep({
           <SectionHeading title="Lease details" />
           <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
             <Field label="Lease Months to Ownership" required error={err("term_months")}>
-              <TextInput
+              <RadioGroup
                 value={state.termMonths}
                 onChange={(v) => set("termMonths", v)}
-                placeholder="36"
-                type="number"
+                options={TERM_MONTH_OPTIONS.map((m) => ({ value: String(m), label: `${m} mo` }))}
                 hasError={!!err("term_months")}
               />
             </Field>
@@ -41,32 +46,26 @@ export function LeaseDetailsStep({
               />
             </Field>
 
-            <Field label="Monthly Rental Payment" required error={err("monthly_rental")}>
-              <TextInput
-                value={state.monthlyRental}
-                onChange={(v) => set("monthlyRental", v)}
-                placeholder="0.00"
-                type="number"
-                hasError={!!err("monthly_rental")}
-              />
+            <Field label="Monthly Rental Payment">
+              <TextInput value={money(pricing.monthlyRental)} onChange={() => {}} />
             </Field>
             <Field label="Sales Tax">
               <TextInput value={money(pricing.salesTax)} onChange={() => {}} />
             </Field>
 
+            <Field label={pricing.ldwSelected ? "LDW (Loss Damage Waiver)" : "No-LDW Surcharge"}>
+              <TextInput value={`${money(pricing.ldwAmount)} / mo`} onChange={() => {}} />
+            </Field>
             <Field label="Total Monthly Payment">
               <TextInput value={money(pricing.totalMonthlyPayment)} onChange={() => {}} />
             </Field>
-            <Field label="Security Deposit" error={err("security_deposit")}>
-              <TextInput
-                value={state.securityDeposit}
-                onChange={(v) => set("securityDeposit", v)}
-                placeholder="0.00"
-                type="number"
-                hasError={!!err("security_deposit")}
-              />
-            </Field>
 
+            <Field label="Security Deposit">
+              <TextInput value={money(pricing.securityDeposit)} onChange={() => {}} />
+            </Field>
+            <Field label="Tracking Device Fee">
+              <TextInput value={money(pricing.trackingDeviceFee)} onChange={() => {}} />
+            </Field>
             <Field label="TOTAL DUE">
               <TextInput value={money(pricing.totalDueToday)} onChange={() => {}} />
             </Field>
@@ -93,8 +92,12 @@ export function LeaseDetailsStep({
           </div>
 
           <p className="mt-5 text-xs text-neutral-400">
-            Full-term ownership transfers once Total Rental Purchase Price (monthly rental × term, excl. tax) is
-            paid. Early Purchase Option recalculates live per payment — see chart →
+            Monthly rental is cash price ÷ 10.0, 16.0, or 19.8 (per the official 12/24/36-month terms sheet) —
+            auto-calculated, not admin-editable. Taking LDW adds 0.75% of cash price per month and sets the deposit
+            to 7% of cash price; declining it adds a smaller 0.35%/month surcharge instead and sets the deposit to
+            3× the monthly payment. The $150 tracking device fee is separate from the deposit, due at the same
+            time. Full-term ownership transfers once Total Rental Purchase Price (monthly rental × term, excl. tax)
+            is paid. Early Purchase Option recalculates live per payment, see chart →
           </p>
         </div>
 
@@ -113,7 +116,7 @@ export function LeaseDetailsStep({
 
       <div className="rounded-xl border border-neutral-200 bg-white p-6">
         <SectionHeading
-          title="Early purchase option — payoff preview"
+          title="Early purchase option: payoff preview"
           subtitle="Auto-generated from cash price, monthly rental and term. Shown to the customer in the contract and portal."
         />
         <div className="mt-6">

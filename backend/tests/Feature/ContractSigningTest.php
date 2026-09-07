@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Notifications\ContractVoidedNotification;
 use App\Services\ContractPdfService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -38,7 +39,7 @@ class ContractSigningTest extends TestCase
 
     public function test_cannot_sign_before_application_is_approved(): void
     {
-        $lease = $this->leaseFor(Application::STATUS_UNDER_REVIEW);
+        $lease = $this->leaseFor(Application::STATUS_WAITING_REVIEW);
 
         $response = $this->actingAs($lease->customer, 'sanctum')->postJson('/api/customer/contracts', [
             'lease_agreement_id' => $lease->id,
@@ -51,7 +52,7 @@ class ContractSigningTest extends TestCase
 
     public function test_can_sign_once_application_is_approved(): void
     {
-        $lease = $this->leaseFor(Application::STATUS_APPROVED);
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
 
         $response = $this->actingAs($lease->customer, 'sanctum')->postJson('/api/customer/contracts', [
             'lease_agreement_id' => $lease->id,
@@ -68,7 +69,7 @@ class ContractSigningTest extends TestCase
 
     public function test_cannot_sign_a_lease_twice_while_active(): void
     {
-        $lease = $this->leaseFor(Application::STATUS_APPROVED);
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
         Contract::factory()->create(['lease_agreement_id' => $lease->id, 'signer_user_id' => $lease->customer_id]);
 
         $response = $this->actingAs($lease->customer, 'sanctum')->postJson('/api/customer/contracts', [
@@ -82,7 +83,7 @@ class ContractSigningTest extends TestCase
 
     public function test_cannot_sign_another_customers_lease(): void
     {
-        $lease = $this->leaseFor(Application::STATUS_APPROVED);
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
         $otherCustomer = User::factory()->create(['role' => User::ROLE_CUSTOMER]);
 
         $response = $this->actingAs($otherCustomer, 'sanctum')->postJson('/api/customer/contracts', [
@@ -95,26 +96,26 @@ class ContractSigningTest extends TestCase
 
     public function test_signed_lease_cannot_be_edited_until_voided(): void
     {
-        $lease = $this->leaseFor(Application::STATUS_APPROVED);
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
         Contract::factory()->create(['lease_agreement_id' => $lease->id, 'signer_user_id' => $lease->customer_id]);
         $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
 
         $blocked = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/lease-agreements/{$lease->id}", [
-            'term_months' => 48,
+            'term_months' => 24,
         ]);
         $blocked->assertStatus(422);
 
         $lease->contract->update(['voided_at' => now(), 'voided_by' => $admin->id, 'void_reason' => 'test']);
 
         $allowed = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/lease-agreements/{$lease->id}", [
-            'term_months' => 48,
+            'term_months' => 24,
         ]);
         $allowed->assertOk();
     }
 
     public function test_admin_void_requires_a_reason(): void
     {
-        $lease = $this->leaseFor(Application::STATUS_APPROVED);
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
         $contract = Contract::factory()->create(['lease_agreement_id' => $lease->id, 'signer_user_id' => $lease->customer_id]);
         $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
 
@@ -126,7 +127,7 @@ class ContractSigningTest extends TestCase
 
     public function test_voiding_lets_the_customer_sign_again_with_an_incremented_version(): void
     {
-        $lease = $this->leaseFor(Application::STATUS_APPROVED);
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
         $firstContract = Contract::factory()->create([
             'lease_agreement_id' => $lease->id,
             'signer_user_id' => $lease->customer_id,
@@ -158,7 +159,7 @@ class ContractSigningTest extends TestCase
     {
         Storage::fake('local');
 
-        $lease = $this->leaseFor(Application::STATUS_APPROVED);
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
         $contract = Contract::factory()->create([
             'lease_agreement_id' => $lease->id,
             'signer_user_id' => $lease->customer_id,
@@ -188,7 +189,7 @@ class ContractSigningTest extends TestCase
     {
         Notification::fake();
 
-        $lease = $this->leaseFor(Application::STATUS_APPROVED);
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
         $lease->customer->customerProfile()->create(['status_change_emails' => false]);
         $contract = Contract::factory()->create(['lease_agreement_id' => $lease->id, 'signer_user_id' => $lease->customer_id]);
         $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
@@ -204,7 +205,7 @@ class ContractSigningTest extends TestCase
     {
         Notification::fake();
 
-        $lease = $this->leaseFor(Application::STATUS_APPROVED);
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
         $contract = Contract::factory()->create(['lease_agreement_id' => $lease->id, 'signer_user_id' => $lease->customer_id]);
         $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
 
@@ -213,5 +214,33 @@ class ContractSigningTest extends TestCase
         ])->assertOk();
 
         Notification::assertSentTo($lease->customer, ContractVoidedNotification::class);
+    }
+
+    /**
+     * Real bug found this session (2026-09-04): the "your contract was
+     * signed" notification sent right after Contract::create() had no
+     * try/catch — a live test against Mailtrap's sandbox hit its rate limit
+     * mid-signature and the request 500'd, even though the signature had
+     * already committed. The customer saw a scary SMTP error for a
+     * successful signing. A transport failure here must not undo or hide
+     * that the signature itself succeeded.
+     */
+    public function test_signing_succeeds_even_if_the_confirmation_email_fails_to_send(): void
+    {
+        Mail::shouldReceive('send')->andThrow(new \RuntimeException('SMTP transport failure (simulated)'));
+
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
+
+        $response = $this->actingAs($lease->customer, 'sanctum')->postJson('/api/customer/contracts', [
+            'lease_agreement_id' => $lease->id,
+            'signer_name' => 'Test Signer',
+        ]);
+
+        $response->assertCreated();
+        $this->assertDatabaseHas('contracts', [
+            'lease_agreement_id' => $lease->id,
+            'version' => 1,
+            'voided_at' => null,
+        ]);
     }
 }

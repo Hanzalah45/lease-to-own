@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Contract;
+use App\Models\LeaseAgreement;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
@@ -58,7 +59,8 @@ class ContractPdfService
             'salesTax' => $lease->salesTaxAmount(),
             'totalMonthly' => $lease->totalMonthlyPayment(),
             'securityDeposit' => (float) $lease->security_deposit,
-            'totalDueToday' => (float) $lease->security_deposit + $lease->totalMonthlyPayment(),
+            'trackingDeviceFee' => LeaseAgreement::TRACKING_DEVICE_FEE,
+            'totalDueToday' => (float) $lease->security_deposit + LeaseAgreement::TRACKING_DEVICE_FEE + $lease->totalMonthlyPayment(),
             'totalRentalPurchasePrice' => (float) $lease->total_rental_purchase_price,
         ])->render();
     }

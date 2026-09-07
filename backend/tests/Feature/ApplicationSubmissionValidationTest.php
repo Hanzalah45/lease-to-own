@@ -116,7 +116,7 @@ class ApplicationSubmissionValidationTest extends TestCase
         $customer = User::factory()->create(['role' => User::ROLE_CUSTOMER]);
         $application = \App\Models\Application::factory()->create([
             'customer_id' => $customer->id,
-            'status' => \App\Models\Application::STATUS_UNDER_REVIEW,
+            'status' => \App\Models\Application::STATUS_WAITING_REVIEW,
         ]);
         $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
 

@@ -149,7 +149,7 @@ export default function LeaseContractPage() {
       )}
       {lease && !lease.contract && (
         <p className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-700 print:hidden">
-          This lease has not been signed yet — a downloadable PDF becomes available once the customer signs.
+          This lease has not been signed yet. A downloadable PDF becomes available once the customer signs.
         </p>
       )}
       {lease && customer && (
@@ -164,11 +164,11 @@ export default function LeaseContractPage() {
               <div key={c.id} className="flex items-start justify-between gap-3 rounded-lg border border-neutral-100 bg-neutral-50 p-3 text-sm">
                 <div>
                   <p className={c.voided_at ? "text-neutral-400 line-through" : "text-neutral-800"}>
-                    v{c.version} — {c.signer_name ?? c.signer?.name ?? "—"} · {new Date(c.signed_at).toLocaleString()}
+                    v{c.version} · {c.signer_name ?? c.signer?.name ?? "—"} · {new Date(c.signed_at).toLocaleString()}
                   </p>
                   {c.voided_at && (
                     <p className="mt-1 text-xs text-neutral-500">
-                      Voided by {c.voided_by?.name ?? "—"} on {new Date(c.voided_at).toLocaleString()} — &ldquo;{c.void_reason}&rdquo;
+                      Voided by {c.voided_by?.name ?? "—"} on {new Date(c.voided_at).toLocaleString()}: &ldquo;{c.void_reason}&rdquo;
                     </p>
                   )}
                 </div>
@@ -189,7 +189,7 @@ export default function LeaseContractPage() {
         <Modal title="Void this signature" onClose={closeVoidConfirm} maxWidthClassName="max-w-sm">
           <div className="space-y-4">
             <p className="text-sm text-neutral-600">
-              The customer will be notified and asked to sign again. The old PDF stays on file — this doesn&rsquo;t delete anything.
+              The customer will be notified and asked to sign again. The old PDF stays on file; this doesn&rsquo;t delete anything.
             </p>
             <div>
               <textarea

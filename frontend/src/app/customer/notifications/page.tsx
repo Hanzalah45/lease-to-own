@@ -11,10 +11,13 @@ const TYPE_STYLE: Record<string, { icon: ComponentType<SVGProps<SVGSVGElement>>;
   application: { icon: DocumentIcon, tone: "bg-blue-50 text-blue-600" },
   contract_signed: { icon: CheckCircleIcon, tone: "bg-green-50 text-green-600" },
   contract_voided: { icon: AlertCircleIcon, tone: "bg-amber-50 text-amber-600" },
+  contract_signature_requested: { icon: DocumentIcon, tone: "bg-amber-50 text-amber-600" },
   bank_verified: { icon: ShieldIcon, tone: "bg-green-50 text-green-600" },
+  bank_verification_requested: { icon: ShieldIcon, tone: "bg-amber-50 text-amber-600" },
   payment: { icon: CreditCardIcon, tone: "bg-red-50 text-red-600" },
   equipment: { icon: BriefcaseIcon, tone: "bg-blue-50 text-blue-500" },
   account: { icon: UserIcon, tone: "bg-neutral-100 text-neutral-600" },
+  account_setup: { icon: UserIcon, tone: "bg-neutral-100 text-neutral-600" },
 };
 
 export default function CustomerNotificationsPage() {

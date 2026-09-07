@@ -30,13 +30,13 @@ import {
 } from "@/components/icons";
 
 const ACTIVITY_STATUS: Record<ApplicationStatus, ActivityRow["status"]> = {
-  submitted: "submitted",
-  under_review: "under_review",
+  waiting_review: "waiting_review",
   needs_info: "needs_info",
-  approved: "approved",
-  completed: "funded",
-  processed: "funded",
-  funded_paid: "funded",
+  waiting_approval: "waiting_approval",
+  in_verification: "in_verification",
+  waiting_deposit: "waiting_deposit",
+  waiting_delivery: "waiting_delivery",
+  finished: "finished",
   declined: "declined",
   withdrawn: "withdrawn",
 };
@@ -63,6 +63,13 @@ export default function AdminDashboardPage() {
   const [zip, setZip] = useState("");
   const router = useRouter();
 
+  // The owner tab's stat cards need application_review (for applications) and
+  // payment_tracking (for payments) — a restricted admin with neither used to
+  // hit two 403s here and see a scary "could not load" error on the very tab
+  // their own tile defaults to, even though nothing was actually broken.
+  const canSeeApplications = hasFullAccess || restrictions.includes("application_review");
+  const canSeePayments = hasFullAccess || restrictions.includes("payment_tracking");
+
   const [applications, setApplications] = useState<Application[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [ownerDataLoading, setOwnerDataLoading] = useState(false);
@@ -70,23 +77,29 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (activeTab !== "owner") return;
+    if (!canSeeApplications && !canSeePayments) return;
     setOwnerDataLoading(true);
     setOwnerDataError(null);
     // A failure here previously reset both lists to [], which rendered
     // identically to a tenant with genuinely zero activity — no way to tell
     // "nothing to review" from "the dashboard couldn't load."
-    Promise.all([listApplications(), listPayments()])
+    Promise.all([
+      canSeeApplications ? listApplications() : Promise.resolve([]),
+      canSeePayments ? listPayments() : Promise.resolve([]),
+    ])
       .then(([apps, pmts]) => {
         setApplications(apps);
         setPayments(pmts);
       })
       .catch(() => setOwnerDataError("Could not load dashboard data. Try refreshing the page."))
       .finally(() => setOwnerDataLoading(false));
-  }, [activeTab]);
+  }, [activeTab, canSeeApplications, canSeePayments]);
 
   const needsInfo = applications.filter((a) => a.status === "needs_info");
-  const approved = applications.filter((a) => a.status === "approved");
-  const fundedApplications = applications.filter((a) => a.status === "funded_paid");
+  // "Verified and progressing toward funding" — the closest equivalent of the
+  // old single "approved" stage, now split across two stages in the new flow.
+  const verified = applications.filter((a) => a.status === "waiting_deposit" || a.status === "waiting_delivery");
+  const fundedApplications = applications.filter((a) => a.status === "finished");
   const fundedVolume = fundedApplications.reduce((sum, a) => sum + Number(a.lease_agreement?.cash_price ?? 0), 0);
 
   const paidPayments = payments.filter((p) => p.status === "paid" && p.paid_date);
@@ -211,7 +224,14 @@ export default function AdminDashboardPage() {
         )}
       </div>
 
-      {activeTab === "owner" && (
+      {activeTab === "owner" && !canSeeApplications && !canSeePayments && (
+        <p className="rounded-xl border border-neutral-200 bg-white p-5 text-sm text-neutral-500">
+          Your admin account doesn&apos;t have access to the applications or payments overview. Pick one of your
+          permitted areas above to get started.
+        </p>
+      )}
+
+      {activeTab === "owner" && (canSeeApplications || canSeePayments) && (
         <>
           {ownerDataLoading && <p className="text-sm text-neutral-400">Loading dashboard…</p>}
           {ownerDataError && <p className="text-sm text-red-600">{ownerDataError}</p>}
@@ -260,8 +280,8 @@ export default function AdminDashboardPage() {
               viewHref="/admin/applications"
             />
             <StatCard
-              label="Approved"
-              value={String(approved.length)}
+              label="Verified"
+              value={String(verified.length)}
               note="Ready for funding"
               noteTone="positive"
               icon={CheckCircleIcon}

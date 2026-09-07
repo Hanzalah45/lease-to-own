@@ -16,7 +16,7 @@ const barlowCondensed = Barlow_Condensed({
 });
 
 export const metadata: Metadata = {
-  title: "Outdoor Fix — Lease to Own",
+  title: "Outdoor Fix · Lease to Own",
   description: "Lease-to-own equipment management portal",
 };
 

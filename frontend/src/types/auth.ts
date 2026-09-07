@@ -21,6 +21,7 @@ export interface CustomerProfile {
   government_id_type: string | null;
   government_id_number: string | null;
   government_id_document_path: string | null;
+  utility_bill_document_path: string | null;
   address_line_1: string | null;
   city: string | null;
   state: string | null;
@@ -28,13 +29,22 @@ export interface CustomerProfile {
   date_of_birth: string | null;
   residence_type: "apartment" | "house" | "other" | null;
   years_at_residence: string | null;
+  previous_address: string | null;
   landlord_name: string | null;
   landlord_phone: string | null;
+  monthly_rent: string | null;
+  mortgage_amount: string | null;
+  mortgage_years: string | null;
+  alternate_contact_1_name: string | null;
+  alternate_contact_1_phone: string | null;
+  alternate_contact_2_name: string | null;
+  alternate_contact_2_phone: string | null;
   move_notification_agreed: boolean;
   internal_notes: string | null;
   employment_status: string | null;
   employer_name: string | null;
   employer_phone: string | null;
+  employer_position: string | null;
   monthly_income: string | null;
   bank_verified_at: string | null;
   payment_reminder_emails: boolean;
@@ -60,4 +70,10 @@ export interface AuthUser {
 export interface LoginResponse {
   user: AuthUser;
   token: string;
+}
+
+/** No token: the account stays "pending" until the emailed verification link is clicked. */
+export interface RegisterResponse {
+  message: string;
+  user: AuthUser;
 }

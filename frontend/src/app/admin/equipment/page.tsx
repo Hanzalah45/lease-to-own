@@ -213,7 +213,7 @@ export default function AdminEquipmentPage() {
                           <span className="ml-1 text-xs text-neutral-400">#{unit.current_lease.id}</span>
                         </span>
                       ) : (
-                        <span className="text-neutral-400">— In stock —</span>
+                        <span className="text-neutral-400">In stock</span>
                       )}
                     </td>
                     <td className="py-3 text-neutral-500">{formatDate(unit.delivery_date)}</td>
@@ -265,7 +265,7 @@ export default function AdminEquipmentPage() {
                     <td colSpan={7} className="py-6 text-center text-sm text-neutral-400">
                       {search || statusFilter !== "all"
                         ? "No units match this search."
-                        : "No equipment yet — add your first unit."}
+                        : "No equipment yet. Add your first unit."}
                     </td>
                   </tr>
                 )}
@@ -276,7 +276,7 @@ export default function AdminEquipmentPage() {
       </div>
 
       <p className="text-xs text-neutral-400">
-        Phase 1 tracks units by serial number. Live GPS location comes in Phase 2 — the GPS device ID field on each
+        Phase 1 tracks units by serial number. Live GPS location comes in Phase 2; the GPS device ID field on each
         unit is stored now so the provider can be wired in without a data migration.
       </p>
 
@@ -348,7 +348,7 @@ function DeleteUnitConfirm({
       {error && <p className="text-sm text-red-600">{error}</p>}
       <p className="text-sm text-neutral-600">
         Remove <span className="font-mono font-semibold text-neutral-900">{unit.serial_number}</span> ({unit.model})
-        from the fleet? Units that have been on a lease keep their history and cannot be deleted — mark those returned
+        from the fleet? Units that have been on a lease keep their history and cannot be deleted; mark those returned
         instead.
       </p>
       <div className="flex justify-end gap-2">

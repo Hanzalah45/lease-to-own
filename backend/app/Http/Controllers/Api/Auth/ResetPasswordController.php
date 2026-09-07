@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Services\CommonValidationRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
@@ -13,9 +14,11 @@ class ResetPasswordController extends Controller
     public function __invoke(Request $request)
     {
         $data = $request->validate([
-            'email' => ['required', 'string', 'email', 'max:255'],
-            'token' => ['required', 'string', 'max:255'],
-            'password' => ['required', 'string', 'min:8', 'max:72', 'confirmed'],
+            'email' => ['required', 'string', 'email', 'max:'.CommonValidationRules::EMAIL_MAX],
+            // Laravel's own reset token (DatabaseTokenRepository) is a sha256
+            // hex digest — always exactly 64 characters.
+            'token' => ['required', 'string', 'max:'.CommonValidationRules::RESET_TOKEN_MAX],
+            'password' => array_merge(CommonValidationRules::password(), ['confirmed']),
         ]);
 
         $status = Password::reset($data, function ($user, $password) {

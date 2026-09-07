@@ -238,7 +238,7 @@ export function AssignUnitModal({
             </button>
             <button
               type="submit"
-              disabled={submitting || !isValid}
+              disabled={submitting}
               className="font-heading flex-1 rounded-md bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {submitting ? "Assigning…" : "Assign Unit"}

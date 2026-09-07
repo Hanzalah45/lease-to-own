@@ -73,7 +73,7 @@ export function DealerNotes({
       </div>
       <button
         onClick={submit}
-        disabled={draft.trim().length === 0 || !!draftError || posting}
+        disabled={posting}
         className="font-heading mt-2 w-full rounded-md bg-red-600 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {posting ? "Posting…" : "Post Note"}

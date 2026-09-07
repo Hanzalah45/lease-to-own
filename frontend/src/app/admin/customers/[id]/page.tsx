@@ -70,21 +70,21 @@ export default function AdminCustomerDetailPage() {
       </div>
 
       <div className="rounded-xl border border-neutral-200 bg-white p-5">
-        <SectionHeading title="Applications" subtitle="Milestone 5 — application workflow" />
+        <SectionHeading title="Applications" subtitle="Milestone 5: application workflow" />
         <p className="mt-4 text-sm text-neutral-400">
           {customer.applications?.length ? `${customer.applications.length} on file` : "None yet."}
         </p>
       </div>
 
       <div className="rounded-xl border border-neutral-200 bg-white p-5">
-        <SectionHeading title="Lease agreements" subtitle="Milestone 2 — lease & ownership engine" />
+        <SectionHeading title="Lease agreements" subtitle="Milestone 2: lease & ownership engine" />
         <p className="mt-4 text-sm text-neutral-400">
           {customer.lease_agreements?.length ? `${customer.lease_agreements.length} on file` : "None yet."}
         </p>
       </div>
 
       <div className="rounded-xl border border-neutral-200 bg-white p-5">
-        <SectionHeading title="Risk profile" subtitle="Milestone 3 — risk assessment engine" />
+        <SectionHeading title="Risk profile" subtitle="Milestone 3: risk assessment engine" />
         <p className="mt-4 text-sm text-neutral-400">
           {customer.risk_profile ? "On file" : "Not assessed yet."}
         </p>

@@ -37,7 +37,7 @@
     <tr><td class="label">Cash Price / Retail</td><td class="value">${{ number_format($cashPrice, 2) }}</td></tr>
     <tr><td class="label">Make</td><td class="value">{{ $equipment->model ?? '—' }}</td></tr>
     <tr><td class="label">Serial # / VIN</td><td class="value">{{ $equipment->serial_number ?? '—' }}</td></tr>
-    <tr><td class="label">Description or Damage to Property</td><td class="value">{{ $equipment->condition_notes ?: 'None noted' }}</td></tr>
+    <tr><td class="label">Description or Damage to Property</td><td class="value">{{ $equipment?->condition_notes ?: 'None noted' }}</td></tr>
 </table>
 
 <div class="sub">Lease details</div>
@@ -45,14 +45,25 @@
     <tr><td class="label">Months to Ownership</td><td class="value">{{ $lease->term_months }}</td></tr>
     <tr><td class="label">Payment Due Day</td><td class="value">{{ $lease->payment_due_day ?? '—' }}</td></tr>
     <tr><td class="label">Rental Payment</td><td class="value">${{ number_format($monthlyRental, 2) }}</td></tr>
+    <tr>
+        <td class="label">{{ $lease->ldw_selected ? 'LDW (monthly)' : 'No-LDW Surcharge (monthly)' }}</td>
+        <td class="value">${{ number_format($lease->ldwMonthlyAmount(), 2) }} / mo</td>
+    </tr>
     <tr><td class="label">Sales Tax</td><td class="value">${{ number_format($salesTax, 2) }}</td></tr>
     <tr><td class="label">Total Monthly Payment</td><td class="value">${{ number_format($totalMonthly, 2) }}</td></tr>
     <tr><td class="label">Security Deposit</td><td class="value">${{ number_format($securityDeposit, 2) }}</td></tr>
+    <tr><td class="label">Tracking Device Fee</td><td class="value">${{ number_format($trackingDeviceFee, 2) }}</td></tr>
     <tr><td class="label">TOTAL DUE TODAY</td><td class="value">${{ number_format($totalDueToday, 2) }}</td></tr>
     <tr><td class="label">AutoPay</td><td class="value">{{ $lease->autopay_enabled ? 'Yes' : 'No' }}</td></tr>
     <tr><td class="label">Total Rental-Purchase Price</td><td class="value">${{ number_format($totalRentalPurchasePrice, 2) }}</td></tr>
 </table>
 
+<p class="terms">
+    <strong>Security Deposit &amp; Unit Hold.</strong> Your Security Deposit of ${{ number_format($securityDeposit, 2) }}
+    secures the Property described above and holds it exclusively for you for thirty (30) days from the date you sign
+    this Agreement. You must pick up the Property and complete your first rental payment within that 30-day period.
+    If you do not, your Security Deposit is forfeited in full and this reservation is cancelled.
+</p>
 <p class="terms">
     <strong>2. Lease Term &amp; Payment Schedule.</strong> This Agreement is for one month. It begins on the effective
     date of this Agreement and expires one month later. You can renew the Agreement for additional one-month terms at

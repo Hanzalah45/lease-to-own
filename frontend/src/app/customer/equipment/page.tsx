@@ -107,7 +107,7 @@ export default function CustomerEquipmentPage() {
         </div>
       )}
 
-      <p className="text-xs text-neutral-400">
+      <p className="text-center text-xs text-neutral-400">
         Condition and service details are maintained by Outdoor Fix. If something here looks wrong, contact your
         account manager.
       </p>

@@ -6,6 +6,7 @@ export function TakeActionBanner({
   onDecline,
   onRequestInfo,
   disabled,
+  noPermission,
 }: {
   title?: string;
   description?: string;
@@ -14,13 +15,15 @@ export function TakeActionBanner({
   onDecline: () => void;
   onRequestInfo?: () => void;
   disabled?: boolean;
+  /** True specifically when the admin lacks permission — as opposed to `disabled` also covering "a request is in flight," which isn't a permission problem and shouldn't be reported as one. */
+  noPermission?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
       <div>
         <p className="text-sm font-bold text-amber-800">{title}</p>
         <p className="text-xs text-neutral-500">
-          {disabled ? "You don't have permission to act on applications." : description}
+          {noPermission ? "You don't have permission to act on applications." : description}
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">

@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Contract;
+use App\Notifications\Concerns\BuildsMailFromArray;
 use Illuminate\Notifications\Notification;
 
 /**
@@ -14,11 +15,13 @@ use Illuminate\Notifications\Notification;
  */
 class ContractPdfGenerationFailedNotification extends Notification
 {
+    use BuildsMailFromArray;
+
     public function __construct(private readonly Contract $contract) {}
 
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['database', 'mail'];
     }
 
     public function toArray(object $notifiable): array

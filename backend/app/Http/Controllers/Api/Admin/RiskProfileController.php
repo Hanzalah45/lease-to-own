@@ -4,10 +4,14 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AdminPermission;
+use App\Models\Application;
 use App\Models\RiskProfile;
 use App\Models\RiskRedFlag;
 use App\Models\User;
+use App\Notifications\BackgroundCheckRunNotification;
 use App\Notifications\RedFlagResolvedNotification;
+use App\Notifications\RequestBankVerificationNotification;
+use App\Services\BankVerificationSigner;
 use App\Services\RiskScoringService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -36,13 +40,65 @@ class RiskProfileController extends Controller
             'employment_verification_status' => ['sometimes', Rule::in(['pending', 'verified', 'failed'])],
             'bank_verification_status' => ['sometimes', Rule::in(['pending', 'verified', 'failed'])],
             'background_check_status' => ['sometimes', Rule::in(['pending', 'clear', 'flagged'])],
-            'background_check_notes' => ['sometimes', 'nullable', 'string'],
+            'background_check_notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'landlord_contact_required' => ['sometimes', 'boolean'],
-            'landlord_contact_reason' => ['sometimes', 'nullable', 'string'],
+            'landlord_contact_reason' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ]);
 
         $riskProfile->update(array_merge($data, ['updated_by' => Auth::id()]));
         RiskScoringService::recomputeScore($riskProfile);
+
+        return response()->json(['data' => $riskProfile->fresh()->load(['redFlags.resolvedBy:id,name', 'updatedBy:id,name'])]);
+    }
+
+    /**
+     * "Run background check" (client, 2026-09-04): the affordability check
+     * used to run automatically at submission — the client was explicit that
+     * verification must be admin-triggered instead, once the customer has
+     * agreed to price/terms on the approval call (waiting_approval ->
+     * in_verification, see Application::LEGAL_STATUS_TRANSITIONS). Recomputes
+     * the full risk profile (identity/employment/bank all being "on file"
+     * checks anyway, not third-party calls) so it isn't stale by the time an
+     * admin acts on it.
+     */
+    public function runBackgroundCheck(Application $application)
+    {
+        abort_unless($application->status === Application::STATUS_IN_VERIFICATION, 422, 'Move this application to verification before running a background check.');
+        abort_unless($application->leaseAgreement, 422, 'Add equipment and pricing before running a background check.');
+
+        $riskProfile = RiskScoringService::evaluate($application->customer, (float) $application->leaseAgreement->monthly_rental_payment);
+
+        $recipients = User::where('role', User::ROLE_SUPER_ADMIN)
+            ->orWhere(function ($query) {
+                $query->where('role', User::ROLE_ADMIN)
+                    ->where(function ($inner) {
+                        $inner->whereDoesntHave('adminPermissions')
+                            ->orWhereHas('adminPermissions', fn ($p) => $p->where('permission', AdminPermission::RISK_ASSESSMENT));
+                    });
+            })->get();
+        Notification::send($recipients, new BackgroundCheckRunNotification($application, $riskProfile->background_check_status));
+
+        return response()->json(['data' => $riskProfile->fresh()->load(['redFlags.resolvedBy:id,name', 'updatedBy:id,name'])]);
+    }
+
+    /**
+     * "Request bank verification" (client, 2026-09-04): a separate,
+     * independently-trackable action from runBackgroundCheck() above — an
+     * admin cannot complete Plaid on the customer's behalf (Plaid Link needs
+     * the account holder's own bank-credential session), so this instead
+     * emails the customer a signed link (BankVerificationSigner) to a public
+     * page that can complete Plaid without requiring them to already be
+     * logged in — a guest-originated customer's account has no usable
+     * password until Phase 6's pickup/first-payment account setup.
+     */
+    public function requestBankVerification(Application $application)
+    {
+        abort_unless($application->status === Application::STATUS_IN_VERIFICATION, 422, 'Move this application to verification before requesting bank verification.');
+
+        $riskProfile = RiskProfile::firstOrCreate(['customer_id' => $application->customer_id]);
+        $riskProfile->update(['bank_verification_requested_at' => now()]);
+
+        $application->customer->notify(new RequestBankVerificationNotification(BankVerificationSigner::urlFor($application->customer)));
 
         return response()->json(['data' => $riskProfile->fresh()->load(['redFlags.resolvedBy:id,name', 'updatedBy:id,name'])]);
     }

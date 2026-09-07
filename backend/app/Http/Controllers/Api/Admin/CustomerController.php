@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Notifications\AccountSecurityUpdatedNotification;
+use App\Services\CommonValidationRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -31,16 +32,16 @@ class CustomerController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
-            'phone' => ['nullable', 'string', 'max:30'],
-            'password' => ['required', 'string', 'min:8', 'max:72'],
-            'address_line_1' => ['nullable', 'string', 'max:255'],
-            'city' => ['nullable', 'string', 'max:255'],
+            'name' => CommonValidationRules::name(),
+            'email' => CommonValidationRules::email('unique:users,email'),
+            'phone' => CommonValidationRules::phone(),
+            'password' => CommonValidationRules::password(),
+            'address_line_1' => ['nullable', 'string', 'max:'.CommonValidationRules::STREET_MAX],
+            'city' => ['nullable', 'string', 'max:'.CommonValidationRules::CITY_MAX],
             'state' => ['nullable', 'string', 'max:2'],
             'zip' => ['nullable', 'string', 'max:10'],
             'date_of_birth' => ['nullable', 'date'],
-            'internal_notes' => ['nullable', 'string'],
+            'internal_notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $customer = User::create([
@@ -78,17 +79,17 @@ class CustomerController extends Controller
         $this->assertIsCustomer($customer);
 
         $data = $request->validate([
-            'name' => ['sometimes', 'string', 'max:255'],
-            'email' => ['sometimes', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($customer->id)],
-            'phone' => ['sometimes', 'nullable', 'string', 'max:30'],
-            'password' => ['sometimes', 'nullable', 'string', 'min:8', 'max:72'],
+            'name' => CommonValidationRules::name(required: false),
+            'email' => CommonValidationRules::email(Rule::unique('users', 'email')->ignore($customer->id), required: false),
+            'phone' => array_merge(['sometimes'], CommonValidationRules::phone()),
+            'password' => array_merge(['nullable'], CommonValidationRules::password(required: false)),
             'status' => ['sometimes', 'in:active,suspended,pending'],
-            'address_line_1' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'city' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'address_line_1' => ['sometimes', 'nullable', 'string', 'max:'.CommonValidationRules::STREET_MAX],
+            'city' => ['sometimes', 'nullable', 'string', 'max:'.CommonValidationRules::CITY_MAX],
             'state' => ['sometimes', 'nullable', 'string', 'max:2'],
             'zip' => ['sometimes', 'nullable', 'string', 'max:10'],
             'date_of_birth' => ['sometimes', 'nullable', 'date'],
-            'internal_notes' => ['sometimes', 'nullable', 'string'],
+            'internal_notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ]);
 
         $emailChanged = isset($data['email']) && $data['email'] !== $customer->email;

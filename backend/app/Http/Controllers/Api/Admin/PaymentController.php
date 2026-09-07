@@ -42,6 +42,7 @@ class PaymentController extends Controller
         ]);
 
         $wasFailed = $payment->status === Payment::STATUS_FAILED;
+        $wasPaid = $payment->status === Payment::STATUS_PAID;
 
         $payment->update([
             'status' => $data['status'],
@@ -62,7 +63,13 @@ class PaymentController extends Controller
                 ),
                 $payment,
             );
+        }
 
+        // Staff are notified on both a failure and a successful payment landing —
+        // only on the transition into that status, not on every re-save.
+        $enteredFailed = $data['status'] === Payment::STATUS_FAILED && ! $wasFailed;
+        $enteredPaid = $data['status'] === Payment::STATUS_PAID && ! $wasPaid;
+        if ($enteredFailed || $enteredPaid) {
             $recipients = User::where('role', User::ROLE_SUPER_ADMIN)
                 ->orWhere(function ($query) {
                     $query->where('role', User::ROLE_ADMIN)
@@ -76,9 +83,18 @@ class PaymentController extends Controller
 
         LeaseEngine::syncPaymentsPaidToDate($payment->leaseAgreement);
 
-        // "...emails" is the field name from the customer's own preferences UI, but this
-        // app has no email channel wired up yet (see .env's MAIL_MAILER=log comment) — the
-        // toggle controls the in-app notification instead, since that's the only one that exists.
+        // Pickup/first-payment account setup (client, 2026-09-04) — see
+        // LeaseEngine::activateGuestAccountIfFirstPayment(), also used by
+        // the "Mark Delivered & Paid" path (ApplicationController::update()),
+        // so this isn't the only place a first payment can trigger it.
+        if ($enteredPaid) {
+            LeaseEngine::activateGuestAccountIfFirstPayment($payment->leaseAgreement);
+        }
+
+        // "...emails" is the field name from the customer's own preferences UI — the
+        // toggle gates both the in-app and email notification together (skips
+        // ->notify() entirely), matching the same on/off pattern used elsewhere
+        // (e.g. status_change_emails for contract/equipment notifications).
         if (in_array($data['status'], [Payment::STATUS_PAID, Payment::STATUS_FAILED, Payment::STATUS_REFUNDED], true)) {
             $customer = $payment->leaseAgreement->customer;
             if ($customer->customerProfile?->payment_reminder_emails ?? true) {

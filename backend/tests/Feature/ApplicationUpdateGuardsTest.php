@@ -35,60 +35,100 @@ class ApplicationUpdateGuardsTest extends TestCase
 
     public function test_status_cannot_jump_past_intermediate_steps(): void
     {
-        $application = Application::factory()->create(['status' => Application::STATUS_SUBMITTED]);
+        $application = Application::factory()->create(['status' => Application::STATUS_WAITING_REVIEW]);
         $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
 
         $response = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", [
-            'status' => Application::STATUS_FUNDED_PAID,
+            'status' => Application::STATUS_FINISHED,
         ]);
 
         $response->assertStatus(422);
-        $this->assertSame(Application::STATUS_SUBMITTED, $application->fresh()->status);
+        $this->assertSame(Application::STATUS_WAITING_REVIEW, $application->fresh()->status);
     }
 
     public function test_status_can_advance_one_legal_step_at_a_time(): void
     {
-        $application = Application::factory()->create(['status' => Application::STATUS_SUBMITTED]);
+        $application = Application::factory()->create(['status' => Application::STATUS_WAITING_REVIEW]);
         $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
 
         $response = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", [
-            'status' => Application::STATUS_UNDER_REVIEW,
+            'status' => Application::STATUS_WAITING_APPROVAL,
         ]);
 
         $response->assertOk();
-        $this->assertSame(Application::STATUS_UNDER_REVIEW, $application->fresh()->status);
+        $this->assertSame(Application::STATUS_WAITING_APPROVAL, $application->fresh()->status);
     }
 
-    public function test_submitted_can_be_approved_directly_via_the_list_pages_quick_accept(): void
+    /**
+     * Real gap found by live-testing this session: "Mark Deposit Received"
+     * only ever relabeled the status — nothing stopped a unit reaching
+     * "waiting on delivery" (ready for pickup) with no signed contract at
+     * all, and signature_received/deposit_received stayed false forever
+     * even when both had actually happened, misleading the "Ready for
+     * pickup" admin checklist.
+     */
+    public function test_cannot_mark_waiting_on_delivery_without_a_signed_contract(): void
     {
-        // admin/applications/page.tsx's one-click "Accept" on a submitted row
-        // skips under_review entirely — this must stay legal.
-        $application = Application::factory()->create(['status' => Application::STATUS_SUBMITTED]);
+        $application = Application::factory()->create(['status' => Application::STATUS_WAITING_DEPOSIT]);
+        LeaseAgreement::factory()->create(['application_id' => $application->id, 'customer_id' => $application->customer_id]);
         $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
 
         $response = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", [
-            'status' => Application::STATUS_APPROVED,
+            'status' => Application::STATUS_WAITING_DELIVERY,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertSame(Application::STATUS_WAITING_DEPOSIT, $application->fresh()->status);
+    }
+
+    public function test_marking_waiting_on_delivery_records_signature_and_deposit_received(): void
+    {
+        $application = Application::factory()->create(['status' => Application::STATUS_WAITING_DEPOSIT]);
+        $lease = LeaseAgreement::factory()->create(['application_id' => $application->id, 'customer_id' => $application->customer_id]);
+        Contract::factory()->create(['lease_agreement_id' => $lease->id, 'signer_user_id' => $application->customer_id]);
+        $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
+
+        $response = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", [
+            'status' => Application::STATUS_WAITING_DELIVERY,
         ]);
 
         $response->assertOk();
-        $this->assertSame(Application::STATUS_APPROVED, $application->fresh()->status);
+        $fresh = $application->fresh();
+        $this->assertTrue($fresh->signature_received);
+        $this->assertTrue($fresh->deposit_received);
     }
 
-    public function test_declined_can_still_be_reversed_to_submitted(): void
+    public function test_verification_cannot_be_entered_without_the_customer_approval_call_step(): void
+    {
+        // The client was explicit (2026-09-04): background check/Plaid must
+        // never fire before the customer has verbally agreed to price/term/
+        // deposit on a call — this is what enforces that at the status level.
+        $application = Application::factory()->create(['status' => Application::STATUS_WAITING_REVIEW]);
+        $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
+
+        $response = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", [
+            'status' => Application::STATUS_IN_VERIFICATION,
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertSame(Application::STATUS_WAITING_REVIEW, $application->fresh()->status);
+    }
+
+    public function test_declined_can_still_be_reversed_to_waiting_review(): void
     {
         $application = Application::factory()->create(['status' => Application::STATUS_DECLINED]);
         $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
 
         $response = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", [
-            'status' => Application::STATUS_SUBMITTED,
+            'status' => Application::STATUS_WAITING_REVIEW,
         ]);
 
         $response->assertOk();
     }
 
-    public function test_funded_paid_is_terminal(): void
+    public function test_finished_is_terminal(): void
     {
-        $application = Application::factory()->create(['status' => Application::STATUS_FUNDED_PAID]);
+        $application = Application::factory()->create(['status' => Application::STATUS_FINISHED]);
         $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
 
         $response = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", [
@@ -104,7 +144,7 @@ class ApplicationUpdateGuardsTest extends TestCase
         $admin = $this->restrictedAdmin(AdminPermission::APPLICATION_REVIEW);
 
         $response = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$lease->application_id}", [
-            'lease' => ['term_months' => 48],
+            'lease' => ['term_months' => 24],
         ]);
 
         $response->assertStatus(403);
@@ -122,11 +162,11 @@ class ApplicationUpdateGuardsTest extends TestCase
         AdminPermission::create(['user_id' => $admin->id, 'permission' => AdminPermission::CONTRACT_GENERATION]);
 
         $response = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$lease->application_id}", [
-            'lease' => ['term_months' => 48],
+            'lease' => ['term_months' => 24],
         ]);
 
         $response->assertOk();
-        $this->assertSame(48, $lease->fresh()->term_months);
+        $this->assertSame(24, $lease->fresh()->term_months);
     }
 
     public function test_application_review_only_admin_cannot_edit_equipment(): void

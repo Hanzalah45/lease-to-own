@@ -36,7 +36,7 @@ export function InfoRequestTimeline({
                 {r.reply_text && <p className="text-sm text-neutral-700">{r.reply_text}</p>}
                 {r.reply_has_document && (
                   <button onClick={() => onDownloadDocument(r.id)} className="mt-1 text-sm font-semibold text-red-600 hover:underline">
-                    {r.reply_text ? "Also attached: " : "Attached: "}updated ID document — Download →
+                    {r.reply_text ? "Also attached: " : "Attached: "}updated ID document: Download →
                   </button>
                 )}
                 <p className="mt-1 text-xs text-neutral-400">Replied {new Date(r.replied_at).toLocaleString()}</p>

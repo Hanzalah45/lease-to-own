@@ -3,10 +3,7 @@
 namespace App\Http\Controllers\Api\Customer;
 
 use App\Http\Controllers\Controller;
-use App\Models\RiskRedFlag;
-use App\Notifications\BankVerifiedNotification;
 use App\Services\PlaidClient;
-use App\Services\RiskRedFlagger;
 use App\Services\RiskScoringService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -50,46 +47,14 @@ class PlaidController extends Controller
             return response()->json(['message' => 'Could not verify your bank connection. Please try again.'], 502);
         }
 
-        $profile = $request->user()->customerProfile()->firstOrCreate([]);
-        $isReconnectToDifferentAccount = $profile->bank_verified_at
-            && $profile->plaid_item_id
-            && $profile->plaid_item_id !== $exchange['item_id'];
+        $result = RiskScoringService::recordBankVerification(
+            $request->user(),
+            $exchange['item_id'],
+            $exchange['access_token'],
+            $accounts,
+        );
 
-        $profile->update([
-            'plaid_item_id' => $exchange['item_id'],
-            'plaid_access_token' => $exchange['access_token'],
-            'bank_verified_at' => now(),
-        ]);
-
-        if ($isReconnectToDifferentAccount) {
-            RiskRedFlagger::flag(
-                $request->user()->id,
-                RiskRedFlag::TYPE_BANK_ACCOUNT_CHANGE,
-                'Customer reconnected Plaid to a different bank account than the one previously verified.',
-            );
-        }
-
-        // Bank verification happens standalone from the application wizard,
-        // so risk_score/bank_verification_status would otherwise stay stale
-        // (last computed at submission time) even after the connection succeeds.
-        $latestMonthlyRental = $request->user()->leaseAgreements()->latest()->value('monthly_rental_payment');
-        RiskScoringService::evaluate($request->user(), $latestMonthlyRental ? (float) $latestMonthlyRental : null);
-
-        $request->user()->notify(new BankVerifiedNotification());
-
-        return response()->json([
-            'data' => [
-                'verified_at' => $profile->bank_verified_at,
-                'accounts' => array_map(
-                    fn ($account) => [
-                        'name' => $account['name'],
-                        'mask' => $account['mask'],
-                        'subtype' => $account['subtype'],
-                    ],
-                    $accounts,
-                ),
-            ],
-        ]);
+        return response()->json(['data' => $result]);
     }
 
     public function status(Request $request)

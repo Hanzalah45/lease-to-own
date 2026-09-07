@@ -8,6 +8,7 @@ use App\Models\AdminPermission;
 use App\Models\User;
 use App\Notifications\AdminAccountCreatedNotification;
 use App\Notifications\AdminAccountUpdatedNotification;
+use App\Services\CommonValidationRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -36,10 +37,10 @@ class AdminUserController extends Controller
     public function store(Request $request)
     {
         $data = Validator::make($request->all(), [
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
-            'phone' => ['nullable', 'string', 'max:30'],
-            'password' => ['required', 'string', 'min:8', 'max:72'],
+            'name' => CommonValidationRules::name(),
+            'email' => CommonValidationRules::email('unique:users,email'),
+            'phone' => CommonValidationRules::phone(),
+            'password' => CommonValidationRules::password(),
             // Restriction list — leave empty/omitted for full access.
             'permissions' => ['nullable', 'array'],
             'permissions.*' => ['in:'.implode(',', [
@@ -58,6 +59,9 @@ class AdminUserController extends Controller
             'password' => Hash::make($data['password']),
             'role' => User::ROLE_ADMIN,
             'status' => 'active',
+            // Admins never self-register or click a verification link — their
+            // credentials come straight from a super admin, already vetted.
+            'email_verified_at' => now(),
         ]);
 
         foreach ($data['permissions'] ?? [] as $permission) {
@@ -85,8 +89,8 @@ class AdminUserController extends Controller
         $this->assertIsAdmin($adminUser);
 
         $data = Validator::make($request->all(), [
-            'name' => ['sometimes', 'string', 'max:255'],
-            'phone' => ['sometimes', 'nullable', 'string', 'max:30'],
+            'name' => CommonValidationRules::name(required: false),
+            'phone' => array_merge(['sometimes'], CommonValidationRules::phone()),
             'status' => ['sometimes', 'in:active,suspended,pending'],
             'permissions' => ['sometimes', 'nullable', 'array'],
             'permissions.*' => ['in:'.implode(',', [

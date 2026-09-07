@@ -33,6 +33,7 @@ export interface RiskProfile {
   risk_score: number | null;
   landlord_contact_required: boolean;
   landlord_contact_reason: string | null;
+  bank_verification_requested_at: string | null;
   updated_by?: { id: number; name: string } | null;
   red_flags?: RiskRedFlag[];
   customer?: { id: number; name: string; email: string };

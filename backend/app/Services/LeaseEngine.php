@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\LeaseAgreement;
 use App\Models\Payment;
+use App\Notifications\ActivateAccountNotification;
 use Carbon\Carbon;
 
 /**
@@ -20,14 +21,22 @@ class LeaseEngine
     /**
      * Early Purchase Option payoff at a given month of the term.
      *
-     * Within the first 90 days (~3 monthly cycles): Cash Price minus
-     * payments made to date. After that: Cash Price minus 50% of payments
-     * scheduled to date, plus payments still owed, plus any additional
-     * funds. Taxes are due separately when the EPO is exercised — not part
-     * of this number. At/after the final month the customer already owns
-     * the unit via the full-term path, so EPO is 0.
+     * Final formula (client, direct answer, 2026-09-05 — supersedes the
+     * 2026-09-04 "full term scheduled" restatement, which produced an EPO
+     * that could exceed the cash price and jump discontinuously at the
+     * 90-day mark; this version doesn't): within the first 90 days (~3
+     * monthly cycles), Cash Price minus all rental payments scheduled to
+     * date (100% credit). After that: Cash Price minus 50% of rental
+     * payments scheduled TO DATE (not the full term), plus any payments
+     * still owed (amounts already past due and unpaid — $0 for a customer
+     * current on payments; this only bites if they're behind), minus any
+     * additional funds (extra amounts already paid in). The client was
+     * explicit the security deposit does NOT reduce this — "it's
+     * considered the cost of the loan." Taxes are due separately when the
+     * EPO is exercised — not part of this number. At/after the final month
+     * the customer already owns the unit via the full-term path, so EPO is 0.
      */
-    public static function epoAt(LeaseAgreement $lease, int $month): float
+    public static function epoAt(LeaseAgreement $lease, int $month, float $amountPastDue = 0.0): float
     {
         $term = (int) $lease->term_months;
         $monthlyRental = (float) $lease->monthly_rental_payment;
@@ -39,18 +48,21 @@ class LeaseEngine
             return 0.0;
         }
 
-        $paymentsToDate = $m * $monthlyRental;
+        $paymentsScheduledToDate = $m * $monthlyRental;
 
         if ($m <= self::EPO_NINETY_DAY_MONTH_CUTOFF) {
-            return round(max(0, $cashPrice - $paymentsToDate), 2);
+            return round(max(0, $cashPrice - $paymentsScheduledToDate), 2);
         }
 
-        $stillOwed = ($term - $m) * $monthlyRental;
-
-        return round(max(0, $cashPrice - 0.5 * $paymentsToDate + $stillOwed + $additionalFunds), 2);
+        return round(max(0, $cashPrice - 0.5 * $paymentsScheduledToDate + $amountPastDue - $additionalFunds), 2);
     }
 
-    /** EPO price for every month of the term (1..term-1), plus month `term` at 0. */
+    /**
+     * EPO price for every month of the term (1..term-1), plus month `term`
+     * at 0 — a hypothetical projection "assuming on-time payments" (see the
+     * chart's own caption), so amountPastDue is always 0 here. Real arrears
+     * only apply to epoToday()'s actual current-state quote below.
+     */
     public static function fullSchedule(LeaseAgreement $lease): array
     {
         $term = (int) $lease->term_months;
@@ -62,10 +74,27 @@ class LeaseEngine
         return $schedule;
     }
 
-    /** EPO price at the lease's current position (based on payments actually marked paid). */
+    /**
+     * EPO price at the lease's current position (based on payments actually
+     * marked paid), with real "still owed" arrears — any payment past its
+     * due date and not yet marked paid — folded in per the formula above.
+     */
     public static function epoToday(LeaseAgreement $lease): float
     {
-        return self::epoAt($lease, max(1, $lease->paymentsMadeCount()));
+        // Same relationLoaded guard as paymentsMadeCount() — callers that
+        // list many leases eager-load payments once up front (see
+        // Customer\ApplicationController::index()); querying via payments()
+        // here instead of filtering the loaded collection turned one list
+        // request into an extra query per row (real regression, caught by
+        // ApplicationListQueryCountTest).
+        $today = now()->startOfDay();
+        $isPastDueUnpaid = fn (Payment $p) => $p->status !== Payment::STATUS_PAID && $p->due_date && $p->due_date->lte($today);
+
+        $amountPastDue = $lease->relationLoaded('payments')
+            ? (float) $lease->payments->filter($isPastDueUnpaid)->sum('amount')
+            : (float) $lease->payments()->where('status', '!=', Payment::STATUS_PAID)->whereDate('due_date', '<=', $today)->sum('amount');
+
+        return self::epoAt($lease, max(1, $lease->paymentsMadeCount()), $amountPastDue);
     }
 
     public static function totalRentalPurchasePrice(float $monthlyRental, int $termMonths): float
@@ -138,6 +167,47 @@ class LeaseEngine
 
         if ($lease->ownership_status !== $ownershipStatus) {
             $lease->update(['ownership_status' => $ownershipStatus]);
+        }
+    }
+
+    /**
+     * Marks a lease's earliest still-pending payment as paid. Used where a
+     * payment is recorded as a side effect of an admin action other than
+     * PaymentController::update() itself — e.g. "Mark Delivered & Paid",
+     * which advances the application to "finished" and is meant to record
+     * that first payment landed, not just relabel the status.
+     */
+    public static function markFirstPaymentPaid(LeaseAgreement $lease, int $recordedBy): ?Payment
+    {
+        $payment = $lease->payments()->where('status', Payment::STATUS_PENDING)->orderBy('due_date')->first();
+        if (! $payment) {
+            return null;
+        }
+
+        $payment->update([
+            'status' => Payment::STATUS_PAID,
+            'paid_date' => now()->toDateString(),
+            'recorded_by' => $recordedBy,
+        ]);
+
+        self::syncPaymentsPaidToDate($lease);
+
+        return $payment;
+    }
+
+    /**
+     * Pickup/first-payment account setup (client, 2026-09-04): a
+     * guest-originated customer's shadow account has no usable password
+     * until they set one via this signed link, sent the moment their first
+     * payment lands — wherever that happens. Shared by
+     * PaymentController::update() and the "Mark Delivered & Paid" path so
+     * neither one is the only place this fires.
+     */
+    public static function activateGuestAccountIfFirstPayment(LeaseAgreement $lease): void
+    {
+        $customer = $lease->customer;
+        if ($customer->status === 'pending' && $lease->paymentsMadeCount() === 1) {
+            $customer->notify(new ActivateAccountNotification(AccountSetupSigner::urlFor($customer)));
         }
     }
 }

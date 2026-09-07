@@ -5,7 +5,16 @@ import { SectionHeading } from "@/components/dashboard/SectionHeading";
 
 export interface ActivityRow {
   id: number;
-  status: "submitted" | "under_review" | "funded" | "needs_info" | "approved" | "declined" | "withdrawn";
+  status:
+    | "waiting_review"
+    | "waiting_approval"
+    | "in_verification"
+    | "waiting_deposit"
+    | "waiting_delivery"
+    | "finished"
+    | "needs_info"
+    | "declined"
+    | "withdrawn";
   customer: string;
   location: string;
   price: string;
@@ -13,16 +22,29 @@ export interface ActivityRow {
 }
 
 const STATUS_STYLE: Record<ActivityRow["status"], { dot: string; label: string }> = {
-  submitted: { dot: "bg-neutral-500", label: "Submitted" },
-  under_review: { dot: "bg-purple-500", label: "Under review" },
-  funded: { dot: "bg-green-500", label: "Funded" },
+  waiting_review: { dot: "bg-neutral-500", label: "Waiting review" },
+  waiting_approval: { dot: "bg-amber-500", label: "Waiting approval" },
+  in_verification: { dot: "bg-purple-500", label: "In verification" },
+  waiting_deposit: { dot: "bg-teal-500", label: "Waiting deposit" },
+  waiting_delivery: { dot: "bg-blue-500", label: "Waiting delivery" },
+  finished: { dot: "bg-green-500", label: "Finished" },
   needs_info: { dot: "bg-amber-500", label: "Needs info" },
-  approved: { dot: "bg-blue-500", label: "Approved" },
   declined: { dot: "bg-neutral-400", label: "Declined" },
   withdrawn: { dot: "bg-neutral-300", label: "Withdrawn" },
 };
 
-const FILTERS = ["All", "Submitted", "Under review", "Needs info", "Approved", "Funded", "Declined", "Withdrawn"] as const;
+const FILTERS = [
+  "All",
+  "Waiting review",
+  "Waiting approval",
+  "In verification",
+  "Waiting deposit",
+  "Waiting delivery",
+  "Needs info",
+  "Finished",
+  "Declined",
+  "Withdrawn",
+] as const;
 
 export function RecentActivityTable({ rows }: { rows: ActivityRow[] }) {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");

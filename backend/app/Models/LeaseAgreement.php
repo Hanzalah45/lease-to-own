@@ -15,6 +15,14 @@ class LeaseAgreement extends Model
     public const OWNERSHIP_LEASING = 'leasing';
     public const OWNERSHIP_OWNED = 'owned';
 
+    /**
+     * Flat GPS tracking device fee (client's official pricing blueprint,
+     * 2026-09-04) — due at signing alongside the deposit, but a SEPARATE
+     * line item from it, not folded in. Same for every lease, so this is a
+     * constant rather than a persisted column.
+     */
+    public const TRACKING_DEVICE_FEE = 150.0;
+
     protected $fillable = [
         'application_id',
         'customer_id',
@@ -110,13 +118,23 @@ class LeaseAgreement extends Model
         return $this->payments()->where('status', Payment::STATUS_PAID)->count();
     }
 
+    /**
+     * The recurring LDW charge (ldw_selected true) or the no-LDW surcharge
+     * (ldw_selected false) — exactly one applies, both stored in the same
+     * column (see ApplicationCreationService::buildEquipmentAndLease).
+     */
+    public function ldwMonthlyAmount(): float
+    {
+        return round((float) ($this->ldw_amount ?? 0), 2);
+    }
+
     public function salesTaxAmount(): float
     {
-        return round((float) $this->monthly_rental_payment * (float) $this->sales_tax_rate, 2);
+        return round(((float) $this->monthly_rental_payment + $this->ldwMonthlyAmount()) * (float) $this->sales_tax_rate, 2);
     }
 
     public function totalMonthlyPayment(): float
     {
-        return round((float) $this->monthly_rental_payment + $this->salesTaxAmount(), 2);
+        return round((float) $this->monthly_rental_payment + $this->ldwMonthlyAmount() + $this->salesTaxAmount(), 2);
     }
 }

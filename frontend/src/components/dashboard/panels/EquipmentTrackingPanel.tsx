@@ -34,7 +34,7 @@ const COLUMNS: DataTableColumn<EquipmentUnit>[] = [
       unit.current_lease ? (
         <span className="text-neutral-700">{unit.current_lease.customer_name ?? "—"}</span>
       ) : (
-        <span className="text-neutral-400">— In stock —</span>
+        <span className="text-neutral-400">In stock</span>
       ),
   },
   {

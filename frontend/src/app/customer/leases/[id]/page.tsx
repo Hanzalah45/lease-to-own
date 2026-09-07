@@ -79,7 +79,7 @@ export default function CustomerLeaseDetailPage() {
               Path 1 · Full-term ownership
             </h2>
           </div>
-          <p className="mb-4 text-sm text-neutral-600">Keep paying monthly — you own it once the full rental price is paid.</p>
+          <p className="mb-4 text-sm text-neutral-600">Keep paying monthly, and you own it once the full rental price is paid.</p>
 
           <div className="mb-1 flex items-center justify-between text-xs font-bold uppercase tracking-wide text-neutral-500">
             <span>Progress</span>
@@ -121,7 +121,7 @@ export default function CustomerLeaseDetailPage() {
           <p className="mb-4 text-sm text-neutral-600">Buy out the equipment today instead of finishing the full term.</p>
 
           <p className="font-heading text-4xl font-black text-red-600">{money(lease.epo_today)}</p>
-          <p className="mb-4 text-sm text-neutral-500">Excludes tax — recalculates live as you pay</p>
+          <p className="mb-4 text-sm text-neutral-500">Excludes tax. Recalculates live as you pay</p>
 
           <div className="mb-4 flex items-center justify-between text-sm">
             <span className="text-neutral-500">Pricing rule applied</span>

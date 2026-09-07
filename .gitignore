@@ -12,7 +12,10 @@ Thumbs.db
 
 # Dependencies
 node_modules/
-vendor/
+# Anchored to the actual Composer vendor directory — a bare "vendor/" also
+# matches backend/resources/views/vendor/ (Laravel's published, customized
+# mail theme lives there and must be committed).
+/backend/vendor/
 
 # Build and cache outputs
 .next/

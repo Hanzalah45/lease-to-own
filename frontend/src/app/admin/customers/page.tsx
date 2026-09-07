@@ -79,7 +79,7 @@ export default function AdminCustomersPage() {
     <div className="space-y-6">
       <PageHeroHeader
         title="Customer List"
-        subtitle={`Outdoor Fix · Willis — ${total} total`}
+        subtitle={`Outdoor Fix · Willis · ${total} total`}
         action={
           canReview ? (
             <button
@@ -269,7 +269,7 @@ function DeleteCustomerConfirm({
       {error && <p className="text-sm text-red-600">{error}</p>}
       <p className="text-sm text-neutral-600">
         Remove <span className="font-semibold text-neutral-900">{customer.name}</span> ({customer.email}) from the
-        active directory? This is a soft delete — the record is kept and can be restored later, it just disappears
+        active directory? This is a soft delete: the record is kept and can be restored later, it just disappears
         from this list.
       </p>
       <div className="flex justify-end gap-2">

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Services\CommonValidationRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Password;
 
@@ -15,7 +16,7 @@ class ForgotPasswordController extends Controller
      */
     public function __invoke(Request $request)
     {
-        $request->validate(['email' => ['required', 'string', 'email', 'max:255']]);
+        $request->validate(['email' => ['required', 'string', 'email', 'max:'.CommonValidationRules::EMAIL_MAX]]);
 
         Password::sendResetLink($request->only('email'));
 

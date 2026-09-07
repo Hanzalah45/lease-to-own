@@ -9,6 +9,8 @@ export interface EquipmentUnit {
   delivery_date: string | null;
   expected_return_or_ownership_date: string | null;
   status: "in_stock" | "leased" | "returned" | "owned_by_customer";
+  /** Phase 2 (GPS provider) placeholder — stored but not acted on yet. */
+  gps_device_id: string | null;
   service_records_count?: number;
   updated_by?: { id: number; name: string } | null;
 }

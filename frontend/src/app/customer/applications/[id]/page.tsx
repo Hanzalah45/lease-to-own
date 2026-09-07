@@ -14,13 +14,13 @@ import type { Application } from "@/types/application";
 import type { AppStatus } from "@/components/applications/detail/types";
 
 const BADGE_STYLE: Record<AppStatus, { label: string; color: string }> = {
-  submitted: { label: "Submitted", color: "bg-neutral-700 text-white" },
-  under_review: { label: "Under Review", color: "bg-amber-500 text-white" },
+  waiting_review: { label: "Waiting Review", color: "bg-neutral-700 text-white" },
   needs_info: { label: "Needs Info", color: "bg-amber-500 text-white" },
-  approved: { label: "Approved", color: "bg-blue-600 text-white" },
-  completed: { label: "Completed", color: "bg-teal-500 text-white" },
-  processed: { label: "Processed", color: "bg-purple-600 text-white" },
-  funded_paid: { label: "Funded", color: "bg-green-600 text-white" },
+  waiting_approval: { label: "Waiting on Approval Call", color: "bg-amber-500 text-white" },
+  in_verification: { label: "In Verification", color: "bg-blue-600 text-white" },
+  waiting_deposit: { label: "Waiting on Deposit", color: "bg-teal-500 text-white" },
+  waiting_delivery: { label: "Waiting on Delivery", color: "bg-purple-600 text-white" },
+  finished: { label: "Finished", color: "bg-green-600 text-white" },
   declined: { label: "Application Declined", color: "bg-neutral-100 text-red-700 border border-red-200" },
   withdrawn: { label: "Withdrawn", color: "bg-neutral-200 text-neutral-700" },
 };
@@ -161,7 +161,7 @@ export default function CustomerApplicationDetailPage() {
                     onClick={() => downloadMyInfoRequestDocument(application.id, r.id, `application-${application.id}-id-r${r.id}`)}
                     className="mt-1.5 text-sm font-semibold text-red-600 hover:underline"
                   >
-                    {r.reply_text ? "Also attached: " : "You attached: "}your uploaded document — Download →
+                    {r.reply_text ? "Also attached: " : "You attached: "}your uploaded document: Download →
                   </button>
                 )}
               </div>

@@ -10,11 +10,16 @@ use App\Models\Payment;
 use App\Models\RiskProfile;
 use App\Models\User;
 use App\Notifications\ApplicationStatusChangedNotification;
+use App\Notifications\PaymentStatusChangedNotification;
+use App\Notifications\RequestContractSignatureNotification;
 use App\Services\ApplicationCreationService;
+use App\Services\ApplicationValidationRules;
+use App\Services\ContractSigner;
 use App\Services\LeaseEngine;
 use App\Services\RiskScoringService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
@@ -41,41 +46,12 @@ class ApplicationController extends Controller
 
     public function store(Request $request)
     {
-        $data = $request->validate([
-            'registered_customer_id' => ['required', 'integer', 'exists:users,id'],
-            'cell_phone' => ['nullable', 'string', 'max:30'],
-            'mailing_address' => ['nullable', 'string', 'max:255'],
-            'city' => ['nullable', 'string', 'max:255'],
-            'state' => ['nullable', 'string', 'max:2'],
-            'zip' => ['nullable', 'string', 'max:10'],
-            'date_of_birth' => ['nullable', 'date', 'before_or_equal:today', 'after_or_equal:'.now()->subDays(365 * 120)->toDateString()],
-            'drivers_license' => ['nullable', 'string', 'max:60'],
-            'id_document' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240'],
-
-            'residence_type' => ['nullable', Rule::in(['rent_apartment', 'own_single', 'own_multi', 'rent_house', 'other'])],
-            'years_at_residence' => ['nullable', 'string', 'max:10'],
-            'income_source' => ['nullable', 'string', 'max:30'],
-            'gross_monthly_income' => ['nullable', 'numeric', 'min:0'],
-            'move_notification_agreed' => ['required', 'accepted'],
-
-            'sales_person' => ['nullable', 'string', 'max:255'],
-            'condition' => ['nullable', 'in:new,used'],
-            'make' => ['nullable', 'string', 'max:255'],
-            'model' => ['nullable', 'string', 'max:255'],
-            'serial' => ['nullable', 'string', 'max:255'],
-            'description' => ['nullable', 'string', 'max:1000'],
-            'ldw' => ['nullable', 'in:yes,no'],
-            'cash_price' => ['required', 'numeric', 'min:0'],
-            'year' => ['nullable', 'string', 'max:10'],
-            'promo_code' => ['nullable', 'string', 'max:60'],
-
-            'term_months' => ['required', 'integer', 'min:1', 'max:120'],
-            'monthly_rental' => ['required', 'numeric', 'min:0'],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'security_deposit' => ['nullable', 'numeric', 'min:0'],
-            'payment_due_day' => ['nullable', 'integer', 'between:1,31'],
-            'autopay' => ['nullable', 'in:yes,no'],
-        ]);
+        $data = $request->validate(array_merge(
+            ['registered_customer_id' => ['required', 'integer', 'exists:users,id']],
+            ApplicationValidationRules::customerAndRisk(),
+            ApplicationValidationRules::salesPerson(),
+            ApplicationValidationRules::equipmentAndLease(),
+        ));
 
         $customer = User::findOrFail($data['registered_customer_id']);
 
@@ -85,6 +61,7 @@ class ApplicationController extends Controller
             $request->file('id_document'),
             $data['sales_person'] ?? null,
             Auth::id(),
+            $request->file('utility_bill'),
         );
 
         return response()->json(['data' => $this->present($application)], 201);
@@ -95,17 +72,36 @@ class ApplicationController extends Controller
         return response()->json(['data' => $this->present($application)]);
     }
 
+    /**
+     * Rejoins a guest-originated application (submitted with no equipment or
+     * pricing) with the normal lease-creation flow — an admin fills these in
+     * once the approval call has happened. 404s (via leaseAgreement() being
+     * null) rather than a generic form for any application that already has
+     * a lease; attachLease() itself also guards this.
+     */
+    public function attachLease(Request $request, Application $application)
+    {
+        $data = $request->validate(ApplicationValidationRules::equipmentAndLease());
+
+        ApplicationCreationService::attachLease($application, $data, Auth::id());
+
+        return response()->json(['data' => $this->present($application->fresh())]);
+    }
+
     public function update(Request $request, Application $application)
     {
         $equipmentUnitId = $application->leaseAgreement?->equipment_unit_id;
 
         $data = $request->validate([
             'status' => ['sometimes', Rule::in(Application::ALL_STATUSES)],
-            'status_notes' => ['sometimes', 'nullable', 'string'],
+            'status_notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'signature_received' => ['sometimes', 'boolean'],
             'deposit_received' => ['sometimes', 'boolean'],
             'lease' => ['sometimes', 'array'],
-            'lease.term_months' => ['sometimes', 'integer', 'min:1', 'max:120'],
+            // Only 12/24/36 have a defined monthly-payment divisor (see
+            // ApplicationValidationRules::equipmentAndLease / the official
+            // terms sheet) — the update path must match the creation path.
+            'lease.term_months' => ['sometimes', 'integer', Rule::in([12, 24, 36])],
             'lease.monthly_rental_payment' => ['sometimes', 'numeric', 'min:0'],
             'lease.sales_tax_rate' => ['sometimes', 'numeric', 'min:0', 'max:1'],
             'lease.security_deposit' => ['sometimes', 'numeric', 'min:0'],
@@ -113,21 +109,35 @@ class ApplicationController extends Controller
             'lease.ldw_selected' => ['sometimes', 'boolean'],
             'lease.promo_code' => ['sometimes', 'nullable', 'string', 'max:60'],
             'equipment' => ['sometimes', 'array'],
-            'equipment.model' => ['sometimes', 'string', 'max:255'],
-            'equipment.serial_number' => ['sometimes', 'string', 'max:255', Rule::unique('equipment_units', 'serial_number')->ignore($equipmentUnitId)],
-            'equipment.condition_notes' => ['sometimes', 'nullable', 'string'],
+            'equipment.model' => ['sometimes', 'string', 'max:100'],
+            'equipment.serial_number' => ['sometimes', 'string', 'max:50', Rule::unique('equipment_units', 'serial_number')->ignore($equipmentUnitId)],
+            'equipment.condition_notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'customer' => ['sometimes', 'array'],
-            'customer.address_line_1' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'customer.city' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'customer.address_line_1' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'customer.city' => ['sometimes', 'nullable', 'string', 'max:50'],
             'customer.state' => ['sometimes', 'nullable', 'string', 'max:2'],
             'customer.zip' => ['sometimes', 'nullable', 'string', 'max:10'],
-            'customer.residence_type' => ['sometimes', 'nullable', 'string', 'max:30'],
+            'customer.residence_type' => ['sometimes', 'nullable', Rule::in(['rent_apartment', 'own_single', 'own_multi', 'rent_house', 'other'])],
+            'customer.years_at_residence' => ['sometimes', 'nullable', 'string', 'max:10'],
+            'customer.previous_address' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'customer.landlord_name' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'customer.landlord_phone' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'customer.monthly_rent' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'customer.mortgage_amount' => ['sometimes', 'nullable', 'numeric', 'min:0'],
+            'customer.mortgage_years' => ['sometimes', 'nullable', 'string', 'max:10'],
+            'customer.employer_name' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'customer.employer_phone' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'customer.employer_position' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'customer.alternate_contact_1_name' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'customer.alternate_contact_1_phone' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'customer.alternate_contact_2_name' => ['sometimes', 'nullable', 'string', 'max:80'],
+            'customer.alternate_contact_2_phone' => ['sometimes', 'nullable', 'string', 'max:20'],
             'risk' => ['sometimes', 'array'],
             'risk.identity_verification_status' => ['sometimes', Rule::in(['pending', 'verified', 'failed'])],
             'risk.employment_verification_status' => ['sometimes', Rule::in(['pending', 'verified', 'failed'])],
             'risk.bank_verification_status' => ['sometimes', Rule::in(['pending', 'verified', 'failed'])],
             'risk.background_check_status' => ['sometimes', Rule::in(['pending', 'clear', 'flagged'])],
-            'risk.background_check_notes' => ['sometimes', 'nullable', 'string'],
+            'risk.background_check_notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ]);
 
         if (array_key_exists('status', $data) && $data['status'] !== $application->status) {
@@ -137,6 +147,22 @@ class ApplicationController extends Controller
                 422,
                 "This application cannot move from \"{$application->status}\" to \"{$data['status']}\".",
             );
+
+            // Real gap found in testing (2026-09-04): "Mark Deposit Received"
+            // only ever relabeled the status — it never actually recorded
+            // that a contract was signed or a deposit collected, and nothing
+            // stopped a unit reaching "waiting on delivery" (ready for
+            // pickup) with no signed contract at all. The "Ready for pickup"
+            // checklist reads signature_received/deposit_received, which
+            // stayed false forever unless an admin separately remembered to
+            // toggle them by hand — misleading, not just cosmetic.
+            if ($data['status'] === Application::STATUS_WAITING_DELIVERY) {
+                abort_unless(
+                    $application->leaseAgreement?->contract()->exists(),
+                    422,
+                    'Cannot mark this ready for delivery until the lease contract is signed.',
+                );
+            }
         }
 
         if (array_key_exists('status', $data)) {
@@ -149,6 +175,17 @@ class ApplicationController extends Controller
                 // status change (decline reasons, etc.).
                 'status_notes' => $isNeedsInfo ? $application->status_notes : ($data['status_notes'] ?? $application->status_notes),
                 'reviewed_by' => Auth::id(),
+                // A manual decline (any reason — this is distinct from the
+                // automatic deposits:forfeit-expired-holds job, which never
+                // goes through this endpoint) ends the current 30-day hold.
+                // Without this, an already-signed application that's declined
+                // and later reopened (declined -> waiting_review is legal)
+                // would carry a now-in-the-past deposit_hold_expires_at into
+                // its next run through the pipeline — since a lease can't be
+                // re-signed once signed, that stale timestamp would be caught
+                // by the very next day's forfeiture job and wrongly cancel a
+                // legitimately reopened application.
+                ...($data['status'] === Application::STATUS_DECLINED ? ['deposit_hold_expires_at' => null] : []),
             ]);
 
             // Guards against a duplicate open request from a race between two
@@ -162,13 +199,66 @@ class ApplicationController extends Controller
                 ]);
             }
 
-            // Terms are locked in once approved, so the payment schedule is
-            // generated here — well before "funded_paid", which just means
-            // the lease is live and funds have moved.
-            if ($data['status'] === Application::STATUS_APPROVED) {
+            // Terms are locked in once verification passes and the
+            // application enters "waiting on deposit" — matches the same
+            // point ContractController opens up for signing — so the
+            // payment schedule is generated here, well before "finished".
+            if ($data['status'] === Application::STATUS_WAITING_DEPOSIT) {
                 $lease = $application->leaseAgreement;
                 if ($lease && ! $lease->payments()->exists()) {
                     LeaseEngine::generatePaymentSchedule($lease);
+                }
+
+                // A guest-originated customer has no usable password yet
+                // (activated at first payment/pickup, which happens AFTER
+                // signing) — Customer\ContractController's authenticated
+                // sign endpoint is unreachable for them, so they need the
+                // signed link instead. A customer with a real account can
+                // already sign from their own portal, so this is guest-only.
+                // The status change and payment schedule above are already
+                // committed — a mail transport hiccup here must not turn
+                // this into an apparent failure to advance the application.
+                if ($lease && $application->customer->status === 'pending') {
+                    try {
+                        $application->customer->notify(
+                            new RequestContractSignatureNotification(ContractSigner::urlFor($application->customer, $lease)),
+                        );
+                    } catch (\Throwable $e) {
+                        report($e);
+                    }
+                }
+            }
+
+            // "Mark Deposit Received" (waiting_deposit -> waiting_delivery):
+            // the contract's existence was already required above — record
+            // both flags now rather than leaving the "Ready for pickup"
+            // checklist to show "not yet signed"/"not yet collected" forever.
+            if ($data['status'] === Application::STATUS_WAITING_DELIVERY) {
+                $application->update(['signature_received' => true, 'deposit_received' => true]);
+            }
+
+            // "Mark Delivered & Paid" (waiting_delivery -> finished) is the
+            // other place, besides Payments, where a lease's first payment
+            // gets recorded — without this it only relabeled the status,
+            // leaving the payment "pending" forever and never sending a
+            // guest-originated customer their account-activation link.
+            if ($data['status'] === Application::STATUS_FINISHED) {
+                $lease = $application->leaseAgreement;
+                if ($lease) {
+                    $payment = LeaseEngine::markFirstPaymentPaid($lease, Auth::id());
+                    if ($payment) {
+                        $recipients = User::where('role', User::ROLE_SUPER_ADMIN)
+                            ->orWhere(function ($query) {
+                                $query->where('role', User::ROLE_ADMIN)
+                                    ->where(function ($inner) {
+                                        $inner->whereDoesntHave('adminPermissions')
+                                            ->orWhereHas('adminPermissions', fn ($p) => $p->where('permission', AdminPermission::PAYMENT_TRACKING));
+                                    });
+                            })->get();
+                        Notification::send($recipients, new PaymentStatusChangedNotification($payment));
+
+                        LeaseEngine::activateGuestAccountIfFirstPayment($lease);
+                    }
                 }
             }
 
@@ -253,6 +343,14 @@ class ApplicationController extends Controller
     public function idDocument(Application $application)
     {
         $path = $application->customer->customerProfile?->government_id_document_path;
+        abort_unless($path && Storage::disk('local')->exists($path), 404);
+
+        return Storage::disk('local')->download($path);
+    }
+
+    public function utilityBill(Application $application)
+    {
+        $path = $application->customer->customerProfile?->utility_bill_document_path;
         abort_unless($path && Storage::disk('local')->exists($path), 404);
 
         return Storage::disk('local')->download($path);

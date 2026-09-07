@@ -10,6 +10,7 @@ use App\Models\LeaseAgreement;
 use App\Models\User;
 use App\Notifications\ContractPdfGenerationFailedNotification;
 use App\Notifications\ContractSignedNotification;
+use App\Services\CommonValidationRules;
 use App\Services\ContractPdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -44,25 +45,27 @@ class ContractController extends Controller
     {
         $data = $request->validate([
             'lease_agreement_id' => ['required', 'integer', 'exists:lease_agreements,id'],
-            'signer_name' => ['required', 'string', 'min:2', 'max:80'],
+            'signer_name' => ['required', 'string', 'min:'.CommonValidationRules::NAME_MIN, 'max:'.CommonValidationRules::NAME_MAX],
         ]);
 
         $lease = LeaseAgreement::findOrFail($data['lease_agreement_id']);
         abort_unless($lease->customer_id === $request->user()->id, 404);
 
-        // Terms are only locked in once the application is approved — signing
-        // any earlier would let a customer bind themselves to numbers that
-        // underwriting hasn't actually signed off on yet.
+        // Terms are only locked in once verification has passed — signing any
+        // earlier would let a customer bind themselves to numbers that
+        // underwriting hasn't actually signed off on yet. Per the client's
+        // 2026-09-04 flow: verification -> approval -> signed contract ->
+        // deposit, so "waiting on deposit" onward is the earliest eligible
+        // point (in_verification itself hasn't concluded yet).
         $eligibleStatuses = [
-            Application::STATUS_APPROVED,
-            Application::STATUS_COMPLETED,
-            Application::STATUS_PROCESSED,
-            Application::STATUS_FUNDED_PAID,
+            Application::STATUS_WAITING_DEPOSIT,
+            Application::STATUS_WAITING_DELIVERY,
+            Application::STATUS_FINISHED,
         ];
         abort_unless(
             in_array($lease->application?->status, $eligibleStatuses, true),
             422,
-            'This lease agreement cannot be signed until the application is approved.',
+            'This lease agreement cannot be signed until the application clears verification.',
         );
 
         // Locking the lease row serializes concurrent sign attempts (e.g. a
@@ -87,6 +90,18 @@ class ContractController extends Controller
             ]);
         });
 
+        // Keeps the "Ready for pickup" checklist honest — it reads this flag
+        // directly, and it otherwise stayed false forever unless an admin
+        // separately remembered to toggle it by hand (real gap, 2026-09-04).
+        // Signing is also what starts the 30-day deposit hold (client,
+        // 2026-09-05): the customer just agreed to the hold-and-forfeiture
+        // clause in the contract itself, so the clock starts now, not at
+        // some earlier "waiting on deposit" status change.
+        $lease->application?->update([
+            'signature_received' => true,
+            'deposit_hold_expires_at' => now()->addDays(30),
+        ]);
+
         $recipients = User::where('role', User::ROLE_SUPER_ADMIN)
             ->orWhere(function ($query) {
                 $query->where('role', User::ROLE_ADMIN)
@@ -100,10 +115,21 @@ class ContractController extends Controller
             ContractPdfService::ensure($contract);
         } catch (\Throwable $e) {
             report($e);
-            Notification::send($recipients, new ContractPdfGenerationFailedNotification($contract));
+            try {
+                Notification::send($recipients, new ContractPdfGenerationFailedNotification($contract));
+            } catch (\Throwable $notifyException) {
+                report($notifyException);
+            }
         }
 
-        Notification::send($recipients->push($request->user()), new ContractSignedNotification($lease));
+        // The signature is already committed above — a mail transport hiccup
+        // here (e.g. a rate limit) must not turn a successful signing into
+        // an apparent failure for the customer.
+        try {
+            Notification::send($recipients->push($request->user()), new ContractSignedNotification($lease));
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return response()->json(['data' => $contract->fresh()->load('leaseAgreement.equipmentUnit')], 201);
     }

@@ -1,6 +1,6 @@
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { getToken } from "@/lib/auth";
-import type { WizardState } from "@/components/applications/wizard/types";
+import { computeLeasePricing, num, type WizardState } from "@/components/applications/wizard/types";
 import type { Application, ApplicationDealerNote, ApplicationStatus } from "@/types/application";
 
 
@@ -23,6 +23,22 @@ export async function resolveRiskRedFlag(riskProfileId: number, redFlagId: numbe
   });
 }
 
+/** Admin action: runs the affordability/background check on demand — previously ran automatically at submission. */
+export async function runBackgroundCheck(applicationId: number): Promise<void> {
+  await apiFetch(`/admin/applications/${applicationId}/run-background-check`, {
+    method: "POST",
+    token: getToken(),
+  });
+}
+
+/** Admin action: emails the customer a signed link to connect their bank via Plaid — an admin cannot do this on their behalf. */
+export async function requestBankVerification(applicationId: number): Promise<void> {
+  await apiFetch(`/admin/applications/${applicationId}/request-bank-verification`, {
+    method: "POST",
+    token: getToken(),
+  });
+}
+
 export async function addDealerNote(applicationId: number, text: string): Promise<ApplicationDealerNote> {
   const data = await apiFetch<{ data: ApplicationDealerNote }>(`/admin/applications/${applicationId}/dealer-notes`, {
     method: "POST",
@@ -41,6 +57,8 @@ export function wizardStateToFormData(state: WizardState): FormData {
   };
 
   set("registered_customer_id", state.registeredCustomerId);
+  set("name", state.name);
+  set("email", state.email);
   set("cell_phone", state.cellPhone);
   set("mailing_address", state.mailingAddress);
   set("city", state.city);
@@ -50,7 +68,20 @@ export function wizardStateToFormData(state: WizardState): FormData {
   set("drivers_license", state.driversLicense);
   set("residence_type", state.residenceType);
   set("years_at_residence", state.yearsAtResidence);
+  set("previous_address", state.previousAddress);
+  set("landlord_name", state.landlordName);
+  set("landlord_phone", state.landlordPhone);
+  set("monthly_rent", state.monthlyRent);
+  set("mortgage_amount", state.mortgageAmount);
+  set("mortgage_years", state.mortgageYears);
+  set("alternate_contact_1_name", state.alternateContact1Name);
+  set("alternate_contact_1_phone", state.alternateContact1Phone);
+  set("alternate_contact_2_name", state.alternateContact2Name);
+  set("alternate_contact_2_phone", state.alternateContact2Phone);
   set("income_source", state.incomeSource);
+  set("employer_name", state.employerName);
+  set("employer_phone", state.employerPhone);
+  set("employer_position", state.employerPosition);
   set("gross_monthly_income", state.grossMonthlyIncome);
   set("move_notification_agreed", state.moveNotificationAgreed);
   set("sales_person", state.salesPerson);
@@ -64,17 +95,72 @@ export function wizardStateToFormData(state: WizardState): FormData {
   set("year", state.year);
   set("promo_code", state.promoCode);
   set("term_months", state.termMonths);
-  set("monthly_rental", state.monthlyRental);
   set("tax_rate", state.taxRate);
-  set("security_deposit", state.securityDeposit);
   set("payment_due_day", state.paymentDueDay);
   set("autopay", state.autopay);
+
+  // Monthly rental and (when LDW is declined) the security deposit are
+  // auto-calculated from cash price + term — never read from raw typed
+  // state, so a stale/blank value can't be submitted (client requirement,
+  // 2026-09-04). Guest applications never reach this branch since they have
+  // no cash price yet.
+  if (num(state.cashPrice) > 0) {
+    const pricing = computeLeasePricing(state);
+    set("monthly_rental", String(pricing.monthlyRental));
+    set("security_deposit", String(pricing.securityDeposit));
+  }
 
   if (state.idDocument) {
     form.set("id_document", state.idDocument);
   }
+  if (state.utilityBill) {
+    form.set("utility_bill", state.utilityBill);
+  }
 
   return form;
+}
+
+/** Public, no-login application — no auth token, and the wizard payload minus equipment/lease fields (nothing has been priced yet). */
+export async function submitGuestApplication(state: WizardState): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>("/guest-applications", {
+    method: "POST",
+    body: wizardStateToFormData(state),
+  });
+}
+
+/** Admin action: adds equipment + lease terms to a guest-originated application that doesn't have them yet. */
+export async function attachLeaseToApplication(applicationId: number | string, state: WizardState): Promise<Application> {
+  const form = new FormData();
+  const set = (key: string, value: string | undefined | null) => {
+    if (value === undefined || value === null || value === "") return;
+    form.set(key, value);
+  };
+  set("condition", state.condition);
+  set("make", state.make);
+  set("model", state.model);
+  set("serial", state.serial);
+  set("description", state.description);
+  set("ldw", state.ldw);
+  set("cash_price", state.cashPrice);
+  set("year", state.year);
+  set("promo_code", state.promoCode);
+  set("term_months", state.termMonths);
+  set("tax_rate", state.taxRate);
+  set("payment_due_day", state.paymentDueDay);
+  set("autopay", state.autopay);
+
+  // See the matching comment in wizardStateToFormData — always the computed
+  // value, never the raw (now-unused) typed field.
+  const pricing = computeLeasePricing(state);
+  set("monthly_rental", String(pricing.monthlyRental));
+  set("security_deposit", String(pricing.securityDeposit));
+
+  const data = await apiFetch<{ data: Application }>(`/admin/applications/${applicationId}/lease`, {
+    method: "POST",
+    token: getToken(),
+    body: form,
+  });
+  return data.data;
 }
 
 export async function createApplication(state: WizardState): Promise<Application> {
@@ -99,7 +185,7 @@ export async function getMyApplication(id: number | string): Promise<Application
 /**
  * Responds to a "needs info" request — a text reply, a replacement ID
  * document, or both (at least one required) — and moves the application
- * back to under_review.
+ * back to waiting_review.
  */
 export async function respondToInfoRequest(
   applicationId: number | string,
@@ -192,6 +278,21 @@ export async function downloadIdDocument(applicationId: number | string, filenam
     headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!response.ok) throw new Error("Could not download the ID document.");
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadUtilityBill(applicationId: number | string, filename = "utility-bill"): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/admin/applications/${applicationId}/utility-bill`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!response.ok) throw new Error("Could not download the utility bill.");
 
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);

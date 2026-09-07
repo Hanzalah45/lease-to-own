@@ -1,5 +1,5 @@
 import { apiFetch, ApiError } from "@/lib/api";
-import type { AuthUser, LoginResponse, UserRole } from "@/types/auth";
+import type { AuthUser, LoginResponse, RegisterResponse, UserRole } from "@/types/auth";
 
 const TOKEN_COOKIE = "auth_token";
 const ROLE_COOKIE = "auth_role";
@@ -56,20 +56,37 @@ export async function login(email: string, password: string): Promise<LoginRespo
   return data;
 }
 
+/** No token comes back — the account is "pending" until the emailed link is verified, so there's nothing to sign in with yet. */
 export async function register(payload: {
   name: string;
   email: string;
   phone?: string;
   password: string;
   password_confirmation: string;
-}): Promise<LoginResponse> {
-  const data = await apiFetch<LoginResponse>("/auth/register", {
+}): Promise<RegisterResponse> {
+  return apiFetch<RegisterResponse>("/auth/register", {
     method: "POST",
     body: payload,
   });
-  setToken(data.token);
-  setRole(data.user.role);
-  return data;
+}
+
+export async function verifyEmail(params: {
+  id: string;
+  hash: string;
+  expires: string;
+  signature: string;
+}): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>("/auth/email/verify", {
+    method: "POST",
+    body: params,
+  });
+}
+
+export async function resendVerificationEmail(email: string): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>("/auth/email/resend", {
+    method: "POST",
+    body: { email },
+  });
 }
 
 export async function logout(): Promise<void> {
@@ -117,9 +134,23 @@ export async function resetPassword(payload: {
   });
 }
 
+/** Sets a first real password for a guest-originated customer's shadow account — see AccountSetupSigner on the backend. */
+export async function setUpAccount(payload: {
+  id: string;
+  hash: string;
+  expires: string;
+  signature: string;
+  password: string;
+  password_confirmation: string;
+}): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>("/auth/account-setup", {
+    method: "POST",
+    body: payload,
+  });
+}
+
 export async function updateMyProfile(payload: {
   name?: string;
-  email?: string;
   phone?: string | null;
   password?: string;
   password_confirmation?: string;

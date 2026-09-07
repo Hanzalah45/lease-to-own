@@ -9,11 +9,11 @@ use App\Models\ApplicationInfoRequest;
 use App\Models\User;
 use App\Notifications\ApplicationInfoProvidedNotification;
 use App\Services\ApplicationCreationService;
+use App\Services\ApplicationValidationRules;
 use App\Services\LeaseEngine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\Rule;
 
 class ApplicationController extends Controller
 {
@@ -32,41 +32,12 @@ class ApplicationController extends Controller
     /** Self-service application — the customer applies for themselves, same engine as the admin wizard. */
     public function store(Request $request)
     {
-        $data = $request->validate([
-            'cell_phone' => ['nullable', 'string', 'max:30'],
-            'mailing_address' => ['nullable', 'string', 'max:255'],
-            'city' => ['nullable', 'string', 'max:255'],
-            'state' => ['nullable', 'string', 'max:2'],
-            'zip' => ['nullable', 'string', 'max:10'],
-            'date_of_birth' => ['nullable', 'date', 'before_or_equal:today', 'after_or_equal:'.now()->subDays(365 * 120)->toDateString()],
-            'drivers_license' => ['nullable', 'string', 'max:60'],
-            'id_document' => ['nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240'],
+        $data = $request->validate(array_merge(
+            ApplicationValidationRules::customerAndRisk(),
+            ApplicationValidationRules::equipmentAndLease(),
+        ));
 
-            'residence_type' => ['nullable', Rule::in(['rent_apartment', 'own_single', 'own_multi', 'rent_house', 'other'])],
-            'years_at_residence' => ['nullable', 'string', 'max:10'],
-            'income_source' => ['nullable', 'string', 'max:30'],
-            'gross_monthly_income' => ['nullable', 'numeric', 'min:0'],
-            'move_notification_agreed' => ['required', 'accepted'],
-
-            'condition' => ['nullable', 'in:new,used'],
-            'make' => ['nullable', 'string', 'max:255'],
-            'model' => ['nullable', 'string', 'max:255'],
-            'serial' => ['nullable', 'string', 'max:255'],
-            'description' => ['nullable', 'string', 'max:1000'],
-            'ldw' => ['nullable', 'in:yes,no'],
-            'cash_price' => ['required', 'numeric', 'min:0'],
-            'year' => ['nullable', 'string', 'max:10'],
-            'promo_code' => ['nullable', 'string', 'max:60'],
-
-            'term_months' => ['required', 'integer', 'min:1', 'max:120'],
-            'monthly_rental' => ['required', 'numeric', 'min:0'],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'security_deposit' => ['nullable', 'numeric', 'min:0'],
-            'payment_due_day' => ['nullable', 'integer', 'between:1,31'],
-            'autopay' => ['nullable', 'in:yes,no'],
-        ]);
-
-        $application = ApplicationCreationService::create($request->user(), $data, $request->file('id_document'), actorUserId: $request->user()->id);
+        $application = ApplicationCreationService::create($request->user(), $data, $request->file('id_document'), actorUserId: $request->user()->id, utilityBill: $request->file('utility_bill'));
 
         return response()->json(['data' => $this->present($application)], 201);
     }
@@ -118,7 +89,7 @@ class ApplicationController extends Controller
             'reply_document_path' => $replyDocumentPath,
         ]);
 
-        $application->update(['status' => Application::STATUS_UNDER_REVIEW]);
+        $application->update(['status' => Application::STATUS_WAITING_REVIEW]);
 
         $recipients = User::where('role', User::ROLE_SUPER_ADMIN)
             ->orWhere(function ($query) {

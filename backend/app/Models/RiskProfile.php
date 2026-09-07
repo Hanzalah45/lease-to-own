@@ -30,12 +30,14 @@ class RiskProfile extends Model
         'landlord_contact_required',
         'landlord_contact_reason',
         'updated_by',
+        'bank_verification_requested_at',
     ];
 
     protected function casts(): array
     {
         return [
             'landlord_contact_required' => 'boolean',
+            'bank_verification_requested_at' => 'datetime',
         ];
     }
 

@@ -254,7 +254,7 @@ export function EquipmentFormModal({
           </select>
           {lockedToLease ? (
             <p className="mt-1 text-xs text-neutral-500">
-              On lease #{unit!.current_lease!.id} — use Assign / Release to change status.
+              On lease #{unit!.current_lease!.id}. Use Assign / Release to change status.
             </p>
           ) : (
             fieldError("status") && <p className={errorClass}>{fieldError("status")}</p>
@@ -318,7 +318,7 @@ export function EquipmentFormModal({
             id="equipment-condition"
             rows={3}
             className={inputClass(!!fieldError("condition_notes"))}
-            placeholder="e.g. New / 2026, or Used / 2024 — 320 hrs"
+            placeholder="e.g. New / 2026, or Used / 2024, 320 hrs"
             value={form.condition_notes}
             onChange={(e) => set("condition_notes", e.target.value)}
             onBlur={() => touch("condition_notes")}
@@ -340,7 +340,7 @@ export function EquipmentFormModal({
           <input
             id="equipment-gps"
             className={`${inputClass(!!fieldError("gps_device_id"))} font-mono`}
-            placeholder="Stored for the future GPS provider — not tracked yet"
+            placeholder="Stored for the future GPS provider, not tracked yet"
             value={form.gps_device_id}
             onChange={(e) => set("gps_device_id", e.target.value)}
             onBlur={() => touch("gps_device_id")}
@@ -360,7 +360,7 @@ export function EquipmentFormModal({
           </button>
           <button
             type="submit"
-            disabled={submitting || !isValid}
+            disabled={submitting}
             className="font-heading flex-1 rounded-md bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? "Saving…" : isEdit ? "Save Changes" : "Add Unit"}

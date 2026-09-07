@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { money } from "@/components/applications/wizard/types";
+import { money, TRACKING_DEVICE_FEE } from "@/components/applications/wizard/types";
 import { getMyLeaseAgreement } from "@/lib/lease-agreements";
 import { signLease } from "@/lib/contracts";
 import { ApiError } from "@/lib/api";
@@ -24,6 +24,7 @@ export default function SignLeaseAgreementPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [agreed, setAgreed] = useState(false);
+  const [agreedTouched, setAgreedTouched] = useState(false);
   const [typedName, setTypedName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
   const [signing, setSigning] = useState(false);
@@ -37,10 +38,15 @@ export default function SignLeaseAgreementPage() {
   }, [params.id]);
 
   const nameError = validateName(typedName, "Full legal name");
-  const canSign = agreed && !nameError && !signing;
+  const isValid = agreed && !nameError;
 
   async function handleSign() {
     if (!lease) return;
+    if (!isValid) {
+      setNameTouched(true);
+      setAgreedTouched(true);
+      return;
+    }
     setSigning(true);
     setSignError(null);
     try {
@@ -57,7 +63,7 @@ export default function SignLeaseAgreementPage() {
   if (loadError || !lease) return <p className="text-sm text-red-600">{loadError ?? "Lease not found."}</p>;
 
   const totalMonthly = num(lease.total_monthly_payment);
-  const totalDueToday = num(lease.security_deposit) + totalMonthly;
+  const totalDueToday = num(lease.security_deposit) + TRACKING_DEVICE_FEE + totalMonthly;
   const signed = !!lease.contract;
 
   return (
@@ -121,16 +127,25 @@ export default function SignLeaseAgreementPage() {
             <h2 className="font-heading text-base font-bold uppercase tracking-wide text-neutral-900">Signature</h2>
           </div>
 
-          <label className="mb-4 flex items-start gap-2.5 text-sm text-neutral-700">
-            <input
-              type="checkbox"
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
-              className="mt-0.5 h-4 w-4 accent-red-600"
-            />
-            I have read and agree to the Lease Purchase Agreement, Early Purchase Option terms, and AutoPay Payment
-            Authorization.
-          </label>
+          <div className="mb-4">
+            <label className="flex items-start gap-2.5 text-sm text-neutral-700">
+              <input
+                type="checkbox"
+                checked={agreed}
+                onChange={(e) => {
+                  setAgreed(e.target.checked);
+                  setAgreedTouched(true);
+                }}
+                aria-invalid={agreedTouched && !agreed}
+                className="mt-0.5 h-4 w-4 accent-red-600"
+              />
+              I have read and agree to the Lease Purchase Agreement, Early Purchase Option terms, and AutoPay Payment
+              Authorization.
+            </label>
+            {agreedTouched && !agreed && (
+              <p className="mt-1.5 text-xs text-red-600">You must agree to the terms before signing.</p>
+            )}
+          </div>
 
           <div className="rounded-md border border-dashed border-neutral-300 p-6 text-center">
             <input
@@ -154,7 +169,7 @@ export default function SignLeaseAgreementPage() {
 
           <button
             onClick={handleSign}
-            disabled={!canSign}
+            disabled={signing}
             className="font-heading mt-4 w-full rounded-md bg-red-600 py-3 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {signing ? "Signing…" : "Sign & Complete →"}

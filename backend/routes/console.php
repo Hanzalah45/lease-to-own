@@ -9,3 +9,6 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('risk:flag-missed-payments')->daily();
+Schedule::command('lease:process-renewals')->daily();
+Schedule::command('payments:send-autopay-reminders')->daily();
+Schedule::command('deposits:forfeit-expired-holds')->daily();

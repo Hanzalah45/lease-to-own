@@ -3,16 +3,19 @@
 namespace App\Notifications;
 
 use App\Models\Application;
+use App\Notifications\Concerns\BuildsMailFromArray;
 use Illuminate\Notifications\Notification;
 
 /** Sent to every admin/super admin with application-review access when a new lease application is submitted. */
 class NewApplicationSubmittedNotification extends Notification
 {
+    use BuildsMailFromArray;
+
     public function __construct(private readonly Application $application) {}
 
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['database', 'mail'];
     }
 
     public function toArray(object $notifiable): array

@@ -1,6 +1,7 @@
 import { Field, FileInput, SelectInput, TextInput } from "@/components/applications/wizard/fields";
 import { fieldError, type WizardState } from "@/components/applications/wizard/types";
 import { SectionHeading } from "@/components/dashboard/SectionHeading";
+import { isoDateDaysAgo } from "@/lib/validation";
 import type { AuthUser } from "@/types/auth";
 
 export function CustomerInfoStep({
@@ -8,6 +9,7 @@ export function CustomerInfoStep({
   set,
   customers,
   applyingAs,
+  guestMode,
   fieldErrors,
 }: {
   state: WizardState;
@@ -15,6 +17,8 @@ export function CustomerInfoStep({
   customers: AuthUser[];
   /** Customer self-service mode: hides the "pick a customer" selector and shows this name/email instead. */
   applyingAs?: { name: string; email: string };
+  /** Guest (no-login) application: no existing account to pick or read from — collect name/email directly. */
+  guestMode?: boolean;
   fieldErrors?: Record<string, string[]>;
 }) {
   const err = (key: string) => fieldError(fieldErrors, key);
@@ -23,25 +27,36 @@ export function CustomerInfoStep({
     <div className="rounded-xl border border-neutral-200 bg-white p-6">
       <SectionHeading title="Renter contact information" />
       <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          {applyingAs ? (
-            <Field label="Applying As">
-              <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm text-neutral-700">
-                {applyingAs.name} · {applyingAs.email}
-              </div>
+        {guestMode ? (
+          <>
+            <Field label="Full Name" required error={err("name")}>
+              <TextInput value={state.name} onChange={(v) => set("name", v)} hasError={!!err("name")} />
             </Field>
-          ) : (
-            <Field label="Registered Customer" required error={err("registered_customer_id")}>
-              <SelectInput
-                value={state.registeredCustomerId}
-                onChange={(v) => set("registeredCustomerId", v)}
-                placeholder="Select a registered customer…"
-                options={customers.map((c) => ({ value: String(c.id), label: `${c.name} · ${c.email}` }))}
-                hasError={!!err("registered_customer_id")}
-              />
+            <Field label="Email" required error={err("email")}>
+              <TextInput value={state.email} onChange={(v) => set("email", v)} type="email" hasError={!!err("email")} />
             </Field>
-          )}
-        </div>
+          </>
+        ) : (
+          <div className="sm:col-span-2">
+            {applyingAs ? (
+              <Field label="Applying As">
+                <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm text-neutral-700">
+                  {applyingAs.name} · {applyingAs.email}
+                </div>
+              </Field>
+            ) : (
+              <Field label="Registered Customer" required error={err("registered_customer_id")}>
+                <SelectInput
+                  value={state.registeredCustomerId}
+                  onChange={(v) => set("registeredCustomerId", v)}
+                  placeholder="Select a registered customer…"
+                  options={customers.map((c) => ({ value: String(c.id), label: `${c.name} · ${c.email}` }))}
+                  hasError={!!err("registered_customer_id")}
+                />
+              </Field>
+            )}
+          </div>
+        )}
 
         <Field label="Cell Phone" required error={err("cell_phone")}>
           <TextInput
@@ -74,7 +89,14 @@ export function CustomerInfoStep({
           <TextInput value={state.zip} onChange={(v) => set("zip", v)} hasError={!!err("zip")} />
         </Field>
         <Field label="Date of Birth" required error={err("date_of_birth")}>
-          <TextInput value={state.dob} onChange={(v) => set("dob", v)} type="date" hasError={!!err("date_of_birth")} />
+          <TextInput
+            value={state.dob}
+            onChange={(v) => set("dob", v)}
+            type="date"
+            min={isoDateDaysAgo(365 * 120)}
+            max={isoDateDaysAgo(0)}
+            hasError={!!err("date_of_birth")}
+          />
         </Field>
 
         <div className="sm:col-span-2">

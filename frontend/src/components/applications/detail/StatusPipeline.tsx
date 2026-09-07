@@ -1,21 +1,17 @@
-import { CheckCircleIcon, CheckIcon, ClockIcon, DocumentIcon, ThumbsUpIcon } from "@/components/icons";
+import { CheckCircleIcon, ClockIcon, CreditCardIcon, DocumentIcon, ShieldIcon, ThumbsUpIcon } from "@/components/icons";
 import type { AppStatus } from "@/components/applications/detail/types";
 
 const STEPS = [
-  { key: "submitted", label: "Submitted", icon: DocumentIcon },
-  { key: "under_review", label: "Under review", icon: ClockIcon },
-  { key: "approved", label: "Approved", icon: ThumbsUpIcon },
-  { key: "completed", label: "Completed", icon: CheckCircleIcon },
-  { key: "processed", label: "Processed", icon: CheckIcon },
-  { key: "funded_paid", label: "Funded", icon: DollarGlyph },
+  { key: "waiting_review", label: "Waiting review", icon: DocumentIcon },
+  { key: "waiting_approval", label: "Waiting on approval", icon: ClockIcon },
+  { key: "in_verification", label: "In verification", icon: ShieldIcon },
+  { key: "waiting_deposit", label: "Waiting on deposit", icon: CreditCardIcon },
+  { key: "waiting_delivery", label: "Waiting on delivery", icon: ThumbsUpIcon },
+  { key: "finished", label: "Finished", icon: CheckCircleIcon },
 ] as const;
 
-function DollarGlyph({ className }: { className?: string }) {
-  return <span className={`text-[13px] font-black leading-none ${className ?? ""}`}>$</span>;
-}
-
 export function StatusPipeline({ status }: { status: AppStatus }) {
-  const effective = status === "needs_info" ? "under_review" : status;
+  const effective = status === "needs_info" ? "waiting_review" : status;
   const activeIndex = STEPS.findIndex((s) => s.key === effective);
 
   return (

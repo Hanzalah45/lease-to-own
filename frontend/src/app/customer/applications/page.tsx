@@ -11,13 +11,13 @@ import { ApiError } from "@/lib/api";
 import type { Application, ApplicationStatus } from "@/types/application";
 
 const STATUS_STYLE: Record<ApplicationStatus, { color: string; label: string }> = {
-  submitted: { color: "#404040", label: "Submitted" },
-  under_review: { color: "#D97706", label: "Under review" },
-  needs_info: { color: "#D97706", label: "Needs info" },
-  approved: { color: "#2563EB", label: "Approved" },
-  completed: { color: "#0D9488", label: "Completed" },
-  processed: { color: "#7C3AED", label: "Processed" },
-  funded_paid: { color: "#16A34A", label: "Funded" },
+  waiting_review: { color: "#404040", label: "Waiting Review" },
+  needs_info: { color: "#D97706", label: "Needs Info" },
+  waiting_approval: { color: "#D97706", label: "Waiting on Approval Call" },
+  in_verification: { color: "#2563EB", label: "In Verification" },
+  waiting_deposit: { color: "#0D9488", label: "Waiting on Deposit" },
+  waiting_delivery: { color: "#7C3AED", label: "Waiting on Delivery" },
+  finished: { color: "#16A34A", label: "Finished" },
   declined: { color: "#DC2626", label: "Declined" },
   withdrawn: { color: "#A3A3A3", label: "Withdrawn" },
 };
@@ -72,7 +72,7 @@ export default function CustomerApplicationsPage() {
               ) : applications.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-sm text-neutral-400">
-                    No applications yet — click &ldquo;New Application&rdquo; to get started.
+                    No applications yet. Click &ldquo;New Application&rdquo; to get started.
                   </td>
                 </tr>
               ) : (

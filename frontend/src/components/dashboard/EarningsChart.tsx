@@ -56,7 +56,7 @@ export function EarningsChart({
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <SectionHeading
           title="Earnings overview"
-          subtitle="Monthly revenue vs last year — hover the curve for detail."
+          subtitle="Monthly revenue vs last year. Hover the curve for detail."
         />
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-3 text-xs font-semibold text-neutral-500">

@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\RiskProfile;
+use App\Models\RiskRedFlag;
 use App\Models\User;
+use App\Notifications\BankVerifiedNotification;
 
 /**
  * Milestone 3 — Risk Assessment Engine. There is no live identity/employment
@@ -73,7 +75,7 @@ class RiskScoringService
                 'risk_score' => self::score($identityStatus, $employmentStatus, $bankStatus, $backgroundStatus),
                 'landlord_contact_required' => $landlordContactRequired,
                 'landlord_contact_reason' => $landlordContactRequired
-                    ? 'Renting less than 3 years at current residence — landlord verification not yet on file.'
+                    ? 'Renting less than 3 years at current residence; landlord verification not yet on file.'
                     : null,
             ]
         );
@@ -98,6 +100,56 @@ class RiskScoringService
                 $profile->background_check_status,
             ),
         ]);
+    }
+
+    /**
+     * Records a successful Plaid connection and everything that follows from
+     * it — shared by the authenticated customer flow (PlaidController) and
+     * the signed-link flow (PublicPlaidVerificationController) an admin's
+     * "Request bank verification" action sends, since a guest-originated
+     * customer may not have a working login yet to reach the authenticated
+     * one.
+     */
+    public static function recordBankVerification(User $customer, string $itemId, string $accessToken, array $accounts): array
+    {
+        $profile = $customer->customerProfile()->firstOrCreate([]);
+        $isReconnectToDifferentAccount = $profile->bank_verified_at
+            && $profile->plaid_item_id
+            && $profile->plaid_item_id !== $itemId;
+
+        $profile->update([
+            'plaid_item_id' => $itemId,
+            'plaid_access_token' => $accessToken,
+            'bank_verified_at' => now(),
+        ]);
+
+        if ($isReconnectToDifferentAccount) {
+            RiskRedFlagger::flag(
+                $customer->id,
+                RiskRedFlag::TYPE_BANK_ACCOUNT_CHANGE,
+                'Customer reconnected Plaid to a different bank account than the one previously verified.',
+            );
+        }
+
+        // Bank verification happens standalone from the application wizard,
+        // so risk_score/bank_verification_status would otherwise stay stale
+        // (last computed elsewhere) even after the connection succeeds.
+        $latestMonthlyRental = $customer->leaseAgreements()->latest()->value('monthly_rental_payment');
+        self::evaluate($customer, $latestMonthlyRental ? (float) $latestMonthlyRental : null);
+
+        $customer->notify(new BankVerifiedNotification());
+
+        return [
+            'verified_at' => $profile->bank_verified_at,
+            'accounts' => array_map(
+                fn ($account) => [
+                    'name' => $account['name'],
+                    'mask' => $account['mask'],
+                    'subtype' => $account['subtype'],
+                ],
+                $accounts,
+            ),
+        ];
     }
 
     private static function assessAffordability(?string $monthlyIncome, ?float $monthlyRentalPayment): array

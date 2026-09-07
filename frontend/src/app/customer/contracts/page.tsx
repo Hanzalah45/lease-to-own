@@ -49,7 +49,7 @@ export default function CustomerContractsPage() {
               <div className="mb-1 flex items-center gap-2">
                 <span className="h-4 w-1 shrink-0 rounded-full bg-red-600" />
                 <h2 className="font-heading text-base font-bold uppercase tracking-wide text-neutral-900">
-                  Lease Purchase Agreement — {lease.equipment_unit?.model ?? "Equipment"}
+                  Lease Purchase Agreement: {lease.equipment_unit?.model ?? "Equipment"}
                 </h2>
               </div>
               <p className="text-sm text-neutral-500">

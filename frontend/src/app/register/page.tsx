@@ -1,17 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { AuthCard, AuthField, AuthSubmitButton } from "@/components/auth/AuthCard";
-import { useAuth } from "@/context/AuthContext";
 import { ApiError } from "@/lib/api";
-import { dashboardPathForRole, register } from "@/lib/auth";
+import { register } from "@/lib/auth";
 import { validateEmail, validateName, validatePassword, validatePhone } from "@/lib/validation";
 
 export default function RegisterPage() {
-  const router = useRouter();
-  const { refresh } = useAuth();
+  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -72,15 +69,14 @@ export default function RegisterPage() {
     setSubmitting(true);
 
     try {
-      const { user } = await register({
+      await register({
         name,
         email,
         phone: phone || undefined,
         password,
         password_confirmation: passwordConfirmation,
       });
-      await refresh();
-      router.push(dashboardPathForRole(user.role));
+      setRegisteredEmail(email);
     } catch (err) {
       if (err instanceof ApiError && err.errors) {
         // Each message is already shown inline under its field — no need
@@ -94,6 +90,26 @@ export default function RegisterPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (registeredEmail) {
+    return (
+      <AuthCard
+        eyebrow="Outdoor Fix · Get the equipment. Get to work."
+        title="Check your email"
+        subtitle={`We sent a verification link to ${registeredEmail}.`}
+        footer={
+          <Link href="/login" className="font-semibold text-neutral-900 underline">
+            Back to sign in
+          </Link>
+        }
+      >
+        <p className="text-center text-sm text-neutral-600">
+          Click the link in that email to activate your account before signing in. Didn&apos;t get it?
+          Check spam, or use the resend link on the sign-in page.
+        </p>
+      </AuthCard>
+    );
   }
 
   return (
@@ -187,7 +203,7 @@ export default function RegisterPage() {
           />
         </div>
 
-        <AuthSubmitButton disabled={submitting || !isValid}>
+        <AuthSubmitButton disabled={submitting}>
           {submitting ? "Creating account…" : "Create account →"}
         </AuthSubmitButton>
 

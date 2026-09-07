@@ -29,7 +29,7 @@ const OPTIONS: { value: EquipmentReleaseStatus; label: string; hint: string }[] 
   {
     value: "owned_by_customer",
     label: "Owned by customer",
-    hint: "Paid off — the unit leaves the fleet and stays linked to the lease for history.",
+    hint: "Paid off. The unit leaves the fleet and stays linked to the lease for history.",
   },
 ];
 
@@ -156,7 +156,7 @@ export function ReleaseUnitModal({
           </button>
           <button
             type="submit"
-            disabled={submitting || !isValid}
+            disabled={submitting}
             className="font-heading flex-1 rounded-md bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? "Releasing…" : "Release Unit"}

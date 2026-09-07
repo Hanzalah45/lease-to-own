@@ -67,7 +67,7 @@ function ResetPasswordForm() {
           </Link>
         }
       >
-        <p className="text-sm text-red-600">
+        <p className="text-center text-sm text-red-600">
           This reset link is incomplete. Please request a new one.
         </p>
       </AuthCard>
@@ -86,7 +86,7 @@ function ResetPasswordForm() {
       }
     >
       {done ? (
-        <p className="text-sm text-green-700">Your password has been reset. Redirecting to sign in…</p>
+        <p className="text-center text-sm text-green-700">Your password has been reset. Redirecting to sign in…</p>
       ) : (
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -115,7 +115,7 @@ function ResetPasswordForm() {
             error={touched ? confirmErr : undefined}
           />
 
-          <AuthSubmitButton disabled={submitting || !isValid}>
+          <AuthSubmitButton disabled={submitting}>
             {submitting ? "Saving…" : "Reset password →"}
           </AuthSubmitButton>
         </form>

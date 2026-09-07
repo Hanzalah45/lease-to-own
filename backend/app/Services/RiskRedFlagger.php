@@ -2,9 +2,13 @@
 
 namespace App\Services;
 
+use App\Models\AdminPermission;
 use App\Models\Payment;
 use App\Models\RiskProfile;
 use App\Models\RiskRedFlag;
+use App\Models\User;
+use App\Notifications\RedFlagDetectedNotification;
+use Illuminate\Support\Facades\Notification;
 
 /**
  * Milestone 3's continuous post-approval monitoring: writes to the
@@ -21,11 +25,23 @@ class RiskRedFlagger
     {
         $riskProfile = RiskProfile::firstOrCreate(['customer_id' => $customerId]);
 
-        return $riskProfile->redFlags()->create([
+        $redFlag = $riskProfile->redFlags()->create([
             'payment_id' => $payment?->id,
             'type' => $type,
             'description' => $description,
             'flagged_at' => now(),
         ]);
+
+        $recipients = User::where('role', User::ROLE_SUPER_ADMIN)
+            ->orWhere(function ($query) {
+                $query->where('role', User::ROLE_ADMIN)
+                    ->where(function ($inner) {
+                        $inner->whereDoesntHave('adminPermissions')
+                            ->orWhereHas('adminPermissions', fn ($p) => $p->where('permission', AdminPermission::RISK_ASSESSMENT));
+                    });
+            })->get();
+        Notification::send($recipients, new RedFlagDetectedNotification($redFlag));
+
+        return $redFlag;
     }
 }

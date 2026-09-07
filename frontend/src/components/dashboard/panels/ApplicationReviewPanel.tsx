@@ -11,10 +11,10 @@ import { ApiError } from "@/lib/api";
 import type { Application, ApplicationStatus } from "@/types/application";
 
 const STATUS_STYLE: Partial<Record<ApplicationStatus, { color: string; label: string }>> = {
-  submitted: { color: "#171717", label: "Submitted" },
-  under_review: { color: "#2563EB", label: "Under review" },
+  waiting_review: { color: "#171717", label: "Waiting review" },
   needs_info: { color: "#D97706", label: "Needs info" },
-  approved: { color: "#16A34A", label: "Approved" },
+  waiting_approval: { color: "#2563EB", label: "Waiting approval" },
+  in_verification: { color: "#16A34A", label: "In verification" },
 };
 
 function pct(value: number, total: number): number {
@@ -43,11 +43,11 @@ export function ApplicationReviewPanel() {
   if (error) return <p className="py-6 text-sm text-neutral-500">{error}</p>;
 
   const needsInfo = applications.filter((a) => a.status === "needs_info");
-  const underReview = applications.filter((a) => a.status === "under_review");
-  const approved = applications.filter((a) => a.status === "approved");
+  const waitingReview = applications.filter((a) => a.status === "waiting_review");
+  const waitingApproval = applications.filter((a) => a.status === "waiting_approval");
   const total = applications.length;
 
-  const queue = [...needsInfo, ...underReview]
+  const queue = [...needsInfo, ...waitingReview]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 6);
 
@@ -98,8 +98,8 @@ export function ApplicationReviewPanel() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <MetricCard value={needsInfo.length} label="Needs info" barColor="#D97706" barPercent={pct(needsInfo.length, total)} />
-        <MetricCard value={underReview.length} label="Under review" barColor="#2563EB" barPercent={pct(underReview.length, total)} />
-        <MetricCard value={approved.length} label="Approved" barColor="#16A34A" barPercent={pct(approved.length, total)} />
+        <MetricCard value={waitingReview.length} label="Waiting review" barColor="#2563EB" barPercent={pct(waitingReview.length, total)} />
+        <MetricCard value={waitingApproval.length} label="Waiting approval" barColor="#16A34A" barPercent={pct(waitingApproval.length, total)} />
       </div>
       <DataTable
         title="Applications awaiting review"

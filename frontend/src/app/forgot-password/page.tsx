@@ -51,7 +51,7 @@ export default function ForgotPasswordPage() {
       }
     >
       {sent ? (
-        <p className="text-sm text-neutral-600">
+        <p className="text-center text-sm text-neutral-600">
           If an account exists for <span className="font-semibold">{email}</span>, a password reset link has been
           sent. Check your inbox.
         </p>
@@ -71,7 +71,7 @@ export default function ForgotPasswordPage() {
             error={touched ? emailError : undefined}
           />
 
-          <AuthSubmitButton disabled={submitting || !isValid}>
+          <AuthSubmitButton disabled={submitting}>
             {submitting ? "Sending…" : "Send reset link →"}
           </AuthSubmitButton>
         </form>

@@ -10,12 +10,15 @@ use App\Http\Controllers\Api\Admin\EquipmentUnitController as AdminEquipmentUnit
 use App\Http\Controllers\Api\Admin\LeaseAgreementController as AdminLeaseAgreementController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\Api\Admin\RiskProfileController;
+use App\Http\Controllers\Api\Auth\AccountSetupController;
 use App\Http\Controllers\Api\Auth\ForgotPasswordController;
 use App\Http\Controllers\Api\Auth\LoginController;
 use App\Http\Controllers\Api\Auth\LogoutController;
 use App\Http\Controllers\Api\Auth\MeController;
 use App\Http\Controllers\Api\Auth\RegisterController;
+use App\Http\Controllers\Api\Auth\ResendVerificationEmailController;
 use App\Http\Controllers\Api\Auth\ResetPasswordController;
+use App\Http\Controllers\Api\Auth\VerifyEmailController;
 use App\Http\Controllers\Api\AvatarController;
 use App\Http\Controllers\Api\Customer\ApplicationController;
 use App\Http\Controllers\Api\Customer\ContractController;
@@ -24,8 +27,11 @@ use App\Http\Controllers\Api\Customer\LeaseAgreementController;
 use App\Http\Controllers\Api\Customer\NotificationPreferencesController;
 use App\Http\Controllers\Api\Customer\PaymentController;
 use App\Http\Controllers\Api\Customer\PlaidController;
+use App\Http\Controllers\Api\GuestApplicationController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\PublicContractController;
+use App\Http\Controllers\Api\PublicPlaidVerificationController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -40,6 +46,34 @@ Route::post('/auth/register', RegisterController::class)->middleware('throttle:1
 Route::post('/auth/login', LoginController::class)->middleware('throttle:10,1');
 Route::post('/auth/forgot-password', ForgotPasswordController::class)->middleware('throttle:10,1');
 Route::post('/auth/reset-password', ResetPasswordController::class)->middleware('throttle:10,1');
+Route::post('/auth/email/verify', VerifyEmailController::class)->middleware('throttle:10,1');
+Route::post('/auth/email/resend', ResendVerificationEmailController::class)->middleware('throttle:10,1');
+
+// Pickup/first-payment account setup (client, 2026-09-04): a guest-originated
+// customer's shadow account has an unusable password until they set a real
+// one here — reached from ActivateAccountNotification's signed link. See
+// AccountSetupSigner.
+Route::post('/auth/account-setup', AccountSetupController::class)->middleware('throttle:10,1');
+
+// No-login application (client, 2026-09-04): one generic shared link, no
+// account required until the customer's first payment/pickup — see
+// ApplicationCreationService::createGuestApplication().
+Route::post('/guest-applications', [GuestApplicationController::class, 'store'])->middleware('throttle:10,1');
+
+// Signed-link bank verification (client, 2026-09-04): reached from the
+// "Request bank verification" admin action's emailed link — a
+// guest-originated customer has no working login yet, so this can't sit
+// behind auth:sanctum like Customer\PlaidController. See BankVerificationSigner.
+Route::post('/plaid/verify-link-token', [PublicPlaidVerificationController::class, 'linkToken'])->middleware('throttle:10,1');
+Route::post('/plaid/verify-exchange', [PublicPlaidVerificationController::class, 'exchange'])->middleware('throttle:10,1');
+
+// Signed-link contract signing (2026-09-04 fix): a guest-originated customer
+// has no working login until first payment, which is supposed to happen
+// AFTER the contract is signed — Customer\ContractController can't be
+// reached yet, so this exists the same way the Plaid routes above do. See
+// ContractSigner / RequestContractSignatureNotification.
+Route::post('/contracts/verify-lease', [PublicContractController::class, 'show'])->middleware('throttle:10,1');
+Route::post('/contracts/verify-sign', [PublicContractController::class, 'store'])->middleware('throttle:10,1');
 
 /*
 |--------------------------------------------------------------------------
@@ -91,7 +125,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::middleware('permission:application_review')->group(function () {
             Route::apiResource('applications', AdminApplicationController::class);
+            Route::post('/applications/{application}/lease', [AdminApplicationController::class, 'attachLease']);
             Route::get('/applications/{application}/id-document', [AdminApplicationController::class, 'idDocument']);
+            Route::get('/applications/{application}/utility-bill', [AdminApplicationController::class, 'utilityBill']);
             Route::get('/applications/{application}/info-requests/{infoRequest}/document', [AdminApplicationController::class, 'infoRequestDocument']);
             Route::post('/applications/{application}/dealer-notes', [DealerNoteController::class, 'store']);
             Route::apiResource('customers', AdminCustomerController::class);
@@ -101,6 +137,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::apiResource('risk-profiles', RiskProfileController::class)
                 ->parameters(['risk-profiles' => 'riskProfile']);
             Route::patch('/risk-profiles/{riskProfile}/red-flags/{redFlag}/resolve', [RiskProfileController::class, 'resolveRedFlag']);
+            Route::post('/applications/{application}/run-background-check', [RiskProfileController::class, 'runBackgroundCheck']);
+            Route::post('/applications/{application}/request-bank-verification', [RiskProfileController::class, 'requestBankVerification']);
         });
 
         Route::middleware('permission:contract_generation')->group(function () {

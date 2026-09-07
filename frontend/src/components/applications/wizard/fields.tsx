@@ -74,6 +74,8 @@ export function TextInput({
   type = "text",
   hasError,
   id,
+  min,
+  max,
   ...a11y
 }: {
   value: string;
@@ -81,6 +83,9 @@ export function TextInput({
   placeholder?: string;
   type?: string;
   hasError?: boolean;
+  /** Only meaningful for type="date"/"number" — e.g. capping a date-of-birth picker at today. */
+  min?: string;
+  max?: string;
 } & A11yProps) {
   return (
     <input
@@ -89,6 +94,8 @@ export function TextInput({
       className={`${inputBaseClass} ${hasError ? inputErrorClass : inputNormalClass}`}
       placeholder={placeholder}
       value={value}
+      min={min}
+      max={max}
       onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
       {...a11y}
     />

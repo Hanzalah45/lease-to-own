@@ -8,6 +8,7 @@ use App\Models\Payment;
 use App\Services\LeaseEngine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class LeaseAgreementController extends Controller
 {
@@ -36,7 +37,10 @@ class LeaseAgreementController extends Controller
         );
 
         $data = $request->validate([
-            'term_months' => ['sometimes', 'integer', 'min:1', 'max:120'],
+            // Only 12/24/36 have a defined monthly-payment divisor (see
+            // ApplicationValidationRules::equipmentAndLease / the official
+            // terms sheet) — this update path must match the creation path.
+            'term_months' => ['sometimes', 'integer', Rule::in([12, 24, 36])],
             'monthly_rental_payment' => ['sometimes', 'numeric', 'min:0'],
             'sales_tax_rate' => ['sometimes', 'numeric', 'min:0', 'max:1'],
             'security_deposit' => ['sometimes', 'numeric', 'min:0'],

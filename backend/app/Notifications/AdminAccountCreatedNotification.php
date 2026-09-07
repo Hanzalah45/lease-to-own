@@ -4,7 +4,13 @@ namespace App\Notifications;
 
 use Illuminate\Notifications\Notification;
 
-/** In-app companion to the welcome email — shows up in the new admin's own notification feed. */
+/**
+ * In-app companion to the welcome email — shows up in the new admin's own
+ * notification feed. Database-only, deliberately: AdminUserController
+ * already sends the real credentials via a dedicated AdminAccountCreatedMail;
+ * a second "check your email" *email* referring to that first one would be
+ * a confusing, redundant inbox message.
+ */
 class AdminAccountCreatedNotification extends Notification
 {
     public function via(object $notifiable): array

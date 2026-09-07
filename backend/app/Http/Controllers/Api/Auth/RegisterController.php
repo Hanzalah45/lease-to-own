@@ -7,6 +7,9 @@ use App\Models\AdminPermission;
 use App\Models\CustomerProfile;
 use App\Models\User;
 use App\Notifications\NewCustomerRegisteredNotification;
+use App\Notifications\VerifyEmailNotification;
+use App\Services\CommonValidationRules;
+use App\Services\EmailVerificationSigner;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -22,10 +25,10 @@ class RegisterController extends Controller
     public function __invoke(Request $request)
     {
         $data = Validator::make($request->all(), [
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
-            'phone' => ['nullable', 'string', 'max:30'],
-            'password' => ['required', 'string', 'min:8', 'max:72', 'confirmed'],
+            'name' => CommonValidationRules::name(),
+            'email' => CommonValidationRules::email('unique:users,email'),
+            'phone' => CommonValidationRules::phone(),
+            'password' => array_merge(CommonValidationRules::password(), ['confirmed']),
         ])->validate();
 
         $user = User::create([
@@ -34,10 +37,14 @@ class RegisterController extends Controller
             'phone' => $data['phone'] ?? null,
             'password' => Hash::make($data['password']),
             'role' => User::ROLE_CUSTOMER,
-            'status' => 'active',
+            // Stays "pending" (LoginController already rejects any non-active status)
+            // until the verification link below is clicked — see VerifyEmailController.
+            'status' => 'pending',
         ]);
 
         CustomerProfile::create(['user_id' => $user->id]);
+
+        $user->notify(new VerifyEmailNotification(EmailVerificationSigner::urlFor($user)));
 
         // Its action_url points at /admin/customers/{id}, which is gated by
         // application_review — so only admins who can actually open it get notified.
@@ -51,11 +58,11 @@ class RegisterController extends Controller
             })->get();
         Notification::send($staff, new NewCustomerRegisteredNotification($user));
 
-        $token = $user->createToken('auth_token')->plainTextToken;
-
+        // No token: the account isn't active until the email is verified, so
+        // there's nothing useful to authenticate with yet — see /auth/login.
         return response()->json([
+            'message' => 'Account created. Check your email to verify and activate it before logging in.',
             'user' => $user,
-            'token' => $token,
         ], 201);
     }
 }

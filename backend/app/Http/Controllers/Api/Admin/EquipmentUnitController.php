@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\EquipmentUnit;
 use App\Models\LeaseAgreement;
 use App\Notifications\EquipmentStatusChangedNotification;
+use App\Services\CommonValidationRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +29,7 @@ class EquipmentUnitController extends Controller
     {
         $filters = $request->validate([
             'status' => ['nullable', Rule::in(EquipmentUnit::STATUSES)],
-            'search' => ['nullable', 'string', 'max:255'],
+            'search' => ['nullable', 'string', 'max:'.CommonValidationRules::SEARCH_QUERY_MAX],
             'assignable' => ['nullable', 'boolean'],
         ]);
 
@@ -108,11 +109,11 @@ class EquipmentUnitController extends Controller
         $data = $request->validate([
             'lease_agreement_id' => ['required', 'integer', 'exists:lease_agreements,id'],
             'delivery_date' => ['nullable', 'date'],
-            'condition_notes' => ['nullable', 'string'],
+            'condition_notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
         if (! $equipmentUnit->isAssignable()) {
-            abort(422, 'This unit is not available — release it from its current lease first.');
+            abort(422, 'This unit is not available. Release it from its current lease first.');
         }
 
         $lease = LeaseAgreement::findOrFail($data['lease_agreement_id']);
@@ -146,7 +147,6 @@ class EquipmentUnitController extends Controller
         // notification instead, since that's the only one that exists.
         if ($lease->customer && ($lease->customer->customerProfile?->status_change_emails ?? true)) {
             $lease->customer->notify(new EquipmentStatusChangedNotification(
-                $equipmentUnit,
                 "Your {$equipmentUnit->model} is scheduled for delivery on {$deliveryDate}.",
             ));
         }
@@ -167,7 +167,7 @@ class EquipmentUnitController extends Controller
                 EquipmentUnit::STATUS_IN_STOCK,
                 EquipmentUnit::STATUS_OWNED_BY_CUSTOMER,
             ])],
-            'condition_notes' => ['nullable', 'string'],
+            'condition_notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
         // Captured before the transaction detaches the lease link (for
@@ -190,12 +190,12 @@ class EquipmentUnitController extends Controller
         $equipmentUnit->refresh()->load(['currentLease.customer:id,name,email', 'serviceRecords.performedBy:id,name', 'updatedBy:id,name']);
 
         $message = match ($data['status']) {
-            EquipmentUnit::STATUS_OWNED_BY_CUSTOMER => "Congratulations — you now own your {$equipmentUnit->model}!",
+            EquipmentUnit::STATUS_OWNED_BY_CUSTOMER => "Congratulations! You now own your {$equipmentUnit->model}!",
             EquipmentUnit::STATUS_RETURNED => "Your {$equipmentUnit->model} has been marked returned.",
             default => "Your {$equipmentUnit->model} is no longer on your lease.",
         };
         if ($customer && ($customer->customerProfile?->status_change_emails ?? true)) {
-            $customer->notify(new EquipmentStatusChangedNotification($equipmentUnit, $message));
+            $customer->notify(new EquipmentStatusChangedNotification($message));
         }
 
         return response()->json(['data' => $this->present($equipmentUnit, includeHistory: true)]);
@@ -232,20 +232,24 @@ class EquipmentUnitController extends Controller
     private function rules(?EquipmentUnit $unit = null): array
     {
         return [
-            'model' => [$unit ? 'sometimes' : 'required', 'string', 'max:255'],
+            'model' => [
+                $unit ? 'sometimes' : 'required', 'string',
+                'min:'.CommonValidationRules::EQUIPMENT_MODEL_MIN, 'max:'.CommonValidationRules::EQUIPMENT_MODEL_MAX,
+            ],
             'serial_number' => [
                 $unit ? 'sometimes' : 'required',
                 'string',
-                'max:255',
+                'min:'.CommonValidationRules::SERIAL_MIN,
+                'max:'.CommonValidationRules::SERIAL_MAX,
                 Rule::unique('equipment_units', 'serial_number')->ignore($unit?->id),
             ],
-            'vin' => ['nullable', 'string', 'max:255'],
-            'condition_notes' => ['nullable', 'string'],
+            'vin' => ['nullable', 'string', 'min:'.CommonValidationRules::VIN_MIN, 'max:'.CommonValidationRules::VIN_MAX],
+            'condition_notes' => ['nullable', 'string', 'max:1000'],
             'delivery_date' => ['nullable', 'date'],
             'expected_return_or_ownership_date' => ['nullable', 'date'],
             'status' => ['sometimes', Rule::in(EquipmentUnit::STATUSES)],
             // Phase 2 hook: storable now so units can be pre-tagged, but nothing reads it yet.
-            'gps_device_id' => ['nullable', 'string', 'max:255'],
+            'gps_device_id' => ['nullable', 'string', 'min:'.CommonValidationRules::GPS_DEVICE_ID_MIN, 'max:'.CommonValidationRules::GPS_DEVICE_ID_MAX],
         ];
     }
 

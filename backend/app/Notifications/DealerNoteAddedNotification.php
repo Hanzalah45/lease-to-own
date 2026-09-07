@@ -3,16 +3,19 @@
 namespace App\Notifications;
 
 use App\Models\DealerNote;
+use App\Notifications\Concerns\BuildsMailFromArray;
 use Illuminate\Notifications\Notification;
 
 /** Sent to other admins with application_review access when a note is posted on an application. */
 class DealerNoteAddedNotification extends Notification
 {
+    use BuildsMailFromArray;
+
     public function __construct(private readonly DealerNote $note) {}
 
     public function via(object $notifiable): array
     {
-        return ['database'];
+        return ['database', 'mail'];
     }
 
     public function toArray(object $notifiable): array

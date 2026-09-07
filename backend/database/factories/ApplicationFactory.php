@@ -15,12 +15,7 @@ class ApplicationFactory extends Factory
     {
         return [
             'customer_id' => User::factory(),
-            'status' => Application::STATUS_SUBMITTED,
+            'status' => Application::STATUS_WAITING_REVIEW,
         ];
-    }
-
-    public function approved(): static
-    {
-        return $this->state(['status' => Application::STATUS_APPROVED]);
     }
 }
