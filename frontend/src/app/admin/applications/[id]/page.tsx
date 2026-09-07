@@ -758,7 +758,7 @@ export default function ApplicationDetailPage() {
           <p className="text-sm font-bold text-green-700">
             {paidPayment ? `Payment received: ${money(num(paidPayment.amount))}` : "Lease active. Delivered and first payment made"}
           </p>
-          {paidPayment && <p className="text-xs text-neutral-500">{new Date(paidPayment.paid_date).toLocaleDateString()}</p>}
+          {paidPayment?.paid_date && <p className="text-xs text-neutral-500">{new Date(paidPayment.paid_date).toLocaleDateString()}</p>}
           {equipment?.delivery_date && <p className="text-xs text-neutral-500">Delivered {new Date(equipment.delivery_date).toLocaleDateString()}</p>}
         </div>
       )}
