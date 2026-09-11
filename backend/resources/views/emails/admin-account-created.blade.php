@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Your Outdoor Fix admin account is ready</title>
+<title>Your Prostart Leasing admin account is ready</title>
 </head>
 <body style="margin:0; padding:0; background-color:#f4f4f5; font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5; padding:32px 16px;">
@@ -30,7 +30,7 @@
               Welcome, {{ $name }}
             </h1>
             <p style="margin:0 0 24px; font-size:14px; line-height:1.6; color:#525252;">
-              The Outdoor Fix super admin has set up an admin account for you. Use the credentials
+              The Prostart Leasing super admin has set up an admin account for you. Use the credentials
               below to sign in, and change your password once you're in.
             </p>
 
@@ -66,7 +66,7 @@
         {{-- Footer --}}
         <tr>
           <td style="padding:20px 32px; border-top:1px solid #f0f0f0;">
-            <p style="margin:0; font-size:11px; color:#a3a3a3;">Outdoor Fix · Equipment lease-to-own</p>
+            <p style="margin:0; font-size:11px; color:#a3a3a3;">Prostart Leasing · Equipment lease-to-own</p>
           </td>
         </tr>
 

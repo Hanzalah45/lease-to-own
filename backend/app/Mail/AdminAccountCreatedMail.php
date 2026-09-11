@@ -26,7 +26,7 @@ class AdminAccountCreatedMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Your Outdoor Fix admin account is ready',
+            subject: 'Your Prostart Leasing admin account is ready',
         );
     }
 

@@ -443,7 +443,7 @@ function epoAtMonth(cashPrice: number, monthlyRental: number, term: number, mont
 }
 
 /**
- * Official payment divisors from Outdoor Fix's own customer-facing lease
+ * Official payment divisors from Prostart Leasing's own customer-facing lease
  * terms sheet (2026-09-04): "Divide the cash price (excluding tax) by 19.8
  * for 36-months, 16.0 for 24-months, or 10.0 for 12-months." These are NOT
  * proportional to term (10/12, 16/24, 19.8/36 are all different ratios —

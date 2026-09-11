@@ -77,7 +77,7 @@ export default function CustomerAccountPage() {
 
         <p className="mt-4 text-sm text-neutral-600">
           Address and identity details were entered by your dealer at signup. They&apos;re tied to your signed lease
-          paperwork, so contact Outdoor Fix to update them.
+          paperwork, so contact Prostart Leasing to update them.
         </p>
       </div>
 

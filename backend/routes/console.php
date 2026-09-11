@@ -11,4 +11,5 @@ Artisan::command('inspire', function () {
 Schedule::command('risk:flag-missed-payments')->daily();
 Schedule::command('lease:process-renewals')->daily();
 Schedule::command('payments:send-autopay-reminders')->daily();
+Schedule::command('payments:charge-late-fees')->daily();
 Schedule::command('deposits:forfeit-expired-holds')->daily();

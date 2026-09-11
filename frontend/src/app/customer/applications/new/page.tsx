@@ -145,7 +145,7 @@ export default function NewCustomerApplicationPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeroHeader title="New lease application" subtitle="Tell us about the equipment you'd like to lease. An Outdoor Fix rep will review it.">
+      <PageHeroHeader title="New lease application" subtitle="Tell us about the equipment you'd like to lease. A Prostart Leasing rep will review it.">
         <WizardSteps active={step} onSelect={handleSelectStep} />
       </PageHeroHeader>
 

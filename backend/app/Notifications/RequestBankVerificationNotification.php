@@ -20,7 +20,7 @@ class RequestBankVerificationNotification extends Notification
         return [
             'type' => 'bank_verification_requested',
             'title' => 'Connect your bank to finish verification',
-            'body' => 'Outdoor Fix is ready to verify your bank account. Connect it via Plaid to continue.',
+            'body' => 'Prostart Leasing is ready to verify your bank account. Connect it via Plaid to continue.',
             'action_url' => '/verify-bank',
         ];
     }
@@ -30,7 +30,7 @@ class RequestBankVerificationNotification extends Notification
         return (new MailMessage)
             ->subject('Connect your bank')
             ->greeting("Hi {$notifiable->name},")
-            ->line('Outdoor Fix needs to verify your bank account to continue processing your lease application.')
+            ->line('Prostart Leasing needs to verify your bank account to continue processing your lease application.')
             ->action('Connect bank account', $this->verifyUrl)
             ->line('This link expires in 72 hours. If you weren\'t expecting this, you can ignore it.');
     }

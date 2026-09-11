@@ -108,7 +108,7 @@ class GuestApplicationTest extends TestCase
     }
 
     /**
-     * The official divisor table from Outdoor Fix's own customer-facing
+     * The official divisor table from Prostart Leasing's own customer-facing
      * lease terms sheet (2026-09-04): "Divide the cash price (excluding
      * tax) by 19.8 for 36-months, 16.0 for 24-months, or 10.0 for
      * 12-months." Not proportional to term — a lookup, not a formula. The

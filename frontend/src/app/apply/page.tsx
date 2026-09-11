@@ -128,10 +128,10 @@ export default function GuestApplicationPage() {
     >
       <div className="w-full max-w-3xl py-8">
         <div className="mb-6 flex flex-col items-center text-center">
-          <Image src="/logo.png" alt="Outdoor Fix" width={159} height={103} className="mb-3 h-16 w-auto" priority />
+          <Image src="/logo.png" alt="Prostart Leasing" width={159} height={103} className="mb-3 h-16 w-auto" priority />
           <h1 className="text-2xl font-bold uppercase tracking-tight text-neutral-900">Lease Application</h1>
           <p className="mt-1 text-sm text-neutral-500">
-            Tell us a bit about yourself. An Outdoor Fix rep will follow up to finish setting up your lease.
+            Tell us a bit about yourself. A Prostart Leasing rep will follow up to finish setting up your lease.
           </p>
         </div>
 
@@ -139,7 +139,7 @@ export default function GuestApplicationPage() {
           <div className="rounded-2xl bg-white p-8 text-center shadow-xl shadow-black/5">
             <p className="text-lg font-bold text-neutral-900">Application submitted</p>
             <p className="mt-2 text-sm text-neutral-500">
-              Thanks! Someone from Outdoor Fix will reach out shortly to go over pricing and next steps.
+              Thanks! Someone from Prostart Leasing will reach out shortly to go over pricing and next steps.
             </p>
             <Link href="/login" className="mt-6 inline-block font-heading text-sm font-bold text-red-600 hover:underline">
               Already have an account? Sign in →

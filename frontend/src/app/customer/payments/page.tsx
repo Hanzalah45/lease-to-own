@@ -115,7 +115,14 @@ export default function CustomerPaymentsPage() {
                 payments.map((row) => (
                   <tr key={row.id} className="border-b border-neutral-100 last:border-0">
                     <td className="py-3 text-neutral-700">{new Date(row.due_date).toLocaleDateString()}</td>
-                    <td className="py-3 font-semibold text-neutral-900">{money(num(row.amount))}</td>
+                    <td className="py-3 font-semibold text-neutral-900">
+                      {money(num(row.amount))}
+                      {row.type === "late_fee" && (
+                        <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                          Late fee
+                        </span>
+                      )}
+                    </td>
                     <td className="py-3 text-neutral-600">{row.method ?? "—"}</td>
                     <td className="py-3">
                       <span className={`inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide ${STATUS_COLOR[row.status]}`}>

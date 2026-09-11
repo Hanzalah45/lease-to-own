@@ -225,7 +225,7 @@ export function RiskVerificationStep({
                 onChange={(e) => set("moveNotificationAgreed", e.target.checked)}
                 className="h-4 w-4 accent-red-600"
               />
-              Customer agrees to notify Outdoor Fix if they move, per lease terms. <span className="font-bold text-red-600">*</span>
+              Customer agrees to notify Prostart Leasing if they move, per lease terms. <span className="font-bold text-red-600">*</span>
             </label>
             {err("move_notification_agreed") && (
               <p className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-red-600">

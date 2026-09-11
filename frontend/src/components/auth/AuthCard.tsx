@@ -25,7 +25,7 @@ export function AuthCard({
     >
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl shadow-black/5">
         <div className="mb-6 flex flex-col items-center text-center">
-          <Image src="/logo.png" alt="Outdoor Fix" width={159} height={103} className="mb-3 h-20 w-auto" priority />
+          <Image src="/logo.png" alt="Prostart Leasing" width={159} height={103} className="mb-3 h-20 w-auto" priority />
           <p className="font-heading text-xs font-semibold uppercase tracking-widest text-neutral-400">
             {eyebrow}
           </p>

@@ -79,7 +79,7 @@ export default function AdminCustomersPage() {
     <div className="space-y-6">
       <PageHeroHeader
         title="Customer List"
-        subtitle={`Outdoor Fix · Willis · ${total} total`}
+        subtitle={`Prostart Leasing · Willis · ${total} total`}
         action={
           canReview ? (
             <button

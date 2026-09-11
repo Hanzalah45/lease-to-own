@@ -89,7 +89,9 @@ export default function CustomerLeaseDocumentPage() {
       {loading && <p className="text-sm text-neutral-500">Loading…</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
       {downloadError && <p className="text-sm text-red-600 print:hidden">{downloadError}</p>}
-      {lease && user && <LeaseAgreementDocument lease={lease} customerName={user.name} customerAddress={address} />}
+      {lease && user && (
+        <LeaseAgreementDocument lease={lease} customerName={user.name} customerAddress={address} profile={profile} />
+      )}
     </div>
   );
 }

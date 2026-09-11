@@ -95,7 +95,7 @@ export default function RegisterPage() {
   if (registeredEmail) {
     return (
       <AuthCard
-        eyebrow="Outdoor Fix · Get the equipment. Get to work."
+        eyebrow="Prostart Leasing · Get the equipment. Get to work."
         title="Check your email"
         subtitle={`We sent a verification link to ${registeredEmail}.`}
         footer={
@@ -114,7 +114,7 @@ export default function RegisterPage() {
 
   return (
     <AuthCard
-      eyebrow="Outdoor Fix · Get the equipment. Get to work."
+      eyebrow="Prostart Leasing · Get the equipment. Get to work."
       title="Create account"
       subtitle="Set up your customer account."
       footer={

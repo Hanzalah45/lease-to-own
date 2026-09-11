@@ -106,7 +106,7 @@ function LoginForm() {
 
   return (
     <AuthCard
-      eyebrow="Outdoor Fix"
+      eyebrow="Prostart Leasing"
       title="Sign in"
       subtitle="Access your customer or admin portal."
       footer={

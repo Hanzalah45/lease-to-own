@@ -39,7 +39,7 @@ class DatabaseSeeder extends Seeder
 
         // Admin with no restriction rows — full access by default.
         User::create([
-            'name' => 'Outdoor Fix Admin',
+            'name' => 'Prostart Leasing Admin',
             'email' => 'admin@outdoorfix.test',
             'password' => Hash::make('password123'),
             'role' => User::ROLE_ADMIN,

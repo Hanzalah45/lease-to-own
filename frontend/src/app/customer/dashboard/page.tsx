@@ -43,7 +43,7 @@ export default function CustomerDashboardPage() {
               {user?.name ?? "—"}
             </h1>
             <p className="text-sm text-neutral-400">
-              {loading ? "Loading your leases…" : `You have ${leases.length} lease${leases.length === 1 ? "" : "s"} with Outdoor Fix.`}
+              {loading ? "Loading your leases…" : `You have ${leases.length} lease${leases.length === 1 ? "" : "s"} with Prostart Leasing.`}
             </p>
           </div>
           <Link
@@ -62,7 +62,7 @@ export default function CustomerDashboardPage() {
         <div className="rounded-xl border border-neutral-200 bg-white p-8 text-center">
           <p className="text-sm font-semibold text-neutral-700">No leases yet</p>
           <p className="mt-1 text-sm text-neutral-400">
-            Start a new application above, or wait for an Outdoor Fix representative to submit one for you.
+            Start a new application above, or wait for a Prostart Leasing representative to submit one for you.
           </p>
         </div>
       )}

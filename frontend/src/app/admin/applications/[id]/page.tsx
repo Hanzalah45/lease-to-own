@@ -570,7 +570,7 @@ export default function ApplicationDetailPage() {
           <span className={`font-heading rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${badge.color}`}>{badge.label}</span>
         </div>
         <p className="text-sm text-neutral-400">
-          Outdoor Fix · Application #{application.id} · {new Date(application.created_at).toLocaleDateString()}
+          Prostart Leasing · Application #{application.id} · {new Date(application.created_at).toLocaleDateString()}
         </p>
       </div>
 
@@ -999,7 +999,7 @@ export default function ApplicationDetailPage() {
             )
           )}
           <AssignmentCard
-            salesperson={application.internal_notes?.replace("Sales person: ", "") || "Outdoor Fix"}
+            salesperson={application.internal_notes?.replace("Sales person: ", "") || "Prostart Leasing"}
             reviewedBy={application.reviewed_by?.name ?? "—"}
             createdBy={application.created_by?.name}
           />

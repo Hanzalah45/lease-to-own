@@ -141,7 +141,20 @@ export function PaymentTrackingPanel() {
         </Link>
       ),
     },
-    { key: "amount", header: "Amount", render: (r) => <span className="text-neutral-700">{money(Number(r.amount))}</span> },
+    {
+      key: "amount",
+      header: "Amount",
+      render: (r) => (
+        <span className="text-neutral-700">
+          {money(Number(r.amount))}
+          {r.type === "late_fee" && (
+            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+              Late fee
+            </span>
+          )}
+        </span>
+      ),
+    },
     { key: "due", header: "Due", render: (r) => <span className="text-neutral-500">{new Date(r.due_date).toLocaleDateString()}</span> },
     {
       key: "action",

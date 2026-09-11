@@ -124,7 +124,7 @@ export function EquipmentStep({
         rows={[
           { label: "Customer ZIP", value: state.zip || "—" },
           { label: "State", value: state.state || "—" },
-          { label: "Dealer", value: "Outdoor Fix" },
+          { label: "Dealer", value: "Prostart Leasing" },
           { label: "Product type", value: "Mower" },
           { label: "Cash price", value: money(num(state.cashPrice)) },
           { label: "Tax rate", value: `${state.taxRate || "0"}%` },

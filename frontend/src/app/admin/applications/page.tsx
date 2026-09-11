@@ -137,7 +137,7 @@ export default function AdminApplicationsPage() {
     <div className="space-y-6">
       <PageHeroHeader
         title="Applications"
-        subtitle={`Outdoor Fix · ${rows.length} total`}
+        subtitle={`Prostart Leasing · ${rows.length} total`}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <button

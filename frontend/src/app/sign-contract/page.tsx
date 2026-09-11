@@ -102,8 +102,8 @@ function SignContractFlow() {
     >
       <div className="w-full max-w-xl py-8">
         <div className="mb-6 flex flex-col items-center text-center">
-          <Image src="/logo.png" alt="Outdoor Fix" width={159} height={103} className="mb-3 h-16 w-auto" priority />
-          <p className="font-heading text-xs font-semibold uppercase tracking-widest text-neutral-400">Outdoor Fix</p>
+          <Image src="/logo.png" alt="Prostart Leasing" width={159} height={103} className="mb-3 h-16 w-auto" priority />
+          <p className="font-heading text-xs font-semibold uppercase tracking-widest text-neutral-400">Prostart Leasing</p>
           <h1 className="mt-1 text-xl font-bold uppercase tracking-tight text-neutral-900">Sign your lease agreement</h1>
           <p className="mt-1 text-sm text-neutral-500">Review the terms below, then sign to complete your lease.</p>
         </div>
@@ -158,7 +158,7 @@ function SignContractFlow() {
                     Signed on {new Date(leaseAgreement.contract!.signed_at).toLocaleString()}.
                   </p>
                   <p className="mt-3 text-xs text-neutral-400">
-                    You&rsquo;re all set. Outdoor Fix will be in touch with next steps for pickup.
+                    You&rsquo;re all set. Prostart Leasing will be in touch with next steps for pickup.
                   </p>
                 </div>
               </div>

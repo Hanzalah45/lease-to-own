@@ -165,7 +165,7 @@ export default function AdminDashboardPage() {
           <div>
             <p className="font-heading text-sm font-bold uppercase tracking-wide text-red-600">{greeting()}</p>
             <h1 className="mt-1 text-3xl font-black uppercase tracking-tight text-neutral-900 sm:text-4xl">
-              Outdoor Fix Admin
+              Prostart Leasing Admin
             </h1>
             <p className="text-sm text-neutral-400">
               Signed in as <span className="font-semibold text-neutral-600">{user?.name}</span> · {accessLabel}

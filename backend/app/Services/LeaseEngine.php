@@ -18,6 +18,15 @@ class LeaseEngine
 {
     private const EPO_NINETY_DAY_MONTH_CUTOFF = 3;
 
+    /** Contract Section 8, "Late Fee": 10% of the missed Rental Payment, floored at $5, capped at $30. */
+    public const LATE_FEE_RATE = 0.10;
+
+    public const LATE_FEE_MIN = 5.0;
+
+    public const LATE_FEE_MAX = 30.0;
+
+    public const LATE_FEE_GRACE_DAYS = 10;
+
     /**
      * Early Purchase Option payoff at a given month of the term.
      *
@@ -100,6 +109,14 @@ class LeaseEngine
     public static function totalRentalPurchasePrice(float $monthlyRental, int $termMonths): float
     {
         return round($monthlyRental * $termMonths, 2);
+    }
+
+    /** Late fee owed on a single overdue rental payment (contract Section 8, "Late Fee"). */
+    public static function lateFeeFor(Payment $payment): float
+    {
+        $raw = (float) $payment->amount * self::LATE_FEE_RATE;
+
+        return round(min(self::LATE_FEE_MAX, max(self::LATE_FEE_MIN, $raw)), 2);
     }
 
     /**

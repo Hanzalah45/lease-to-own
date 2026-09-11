@@ -41,7 +41,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthCard
-      eyebrow="Outdoor Fix"
+      eyebrow="Prostart Leasing"
       title="Reset your password"
       subtitle="We'll email you a link to set a new one."
       footer={

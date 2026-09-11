@@ -30,7 +30,7 @@ class GuestApplicationController extends Controller
         // unauthenticated, and there's no session yet to scope a follow-up
         // lookup to, so nothing about the created record is returned.
         return response()->json([
-            'message' => 'Thanks! Your application has been submitted. Someone from Outdoor Fix will reach out shortly.',
+            'message' => 'Thanks! Your application has been submitted. Someone from Prostart Leasing will reach out shortly.',
         ], 201);
     }
 }

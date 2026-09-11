@@ -45,7 +45,7 @@ function VerifyEmailStatus() {
 
   return (
     <AuthCard
-      eyebrow="Outdoor Fix"
+      eyebrow="Prostart Leasing"
       title="Verify your email"
       subtitle={status === "checking" ? "One moment…" : "Account activation"}
       footer={

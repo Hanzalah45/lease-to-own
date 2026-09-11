@@ -108,7 +108,7 @@ export default function CustomerEquipmentPage() {
       )}
 
       <p className="text-center text-xs text-neutral-400">
-        Condition and service details are maintained by Outdoor Fix. If something here looks wrong, contact your
+        Condition and service details are maintained by Prostart Leasing. If something here looks wrong, contact your
         account manager.
       </p>
     </div>

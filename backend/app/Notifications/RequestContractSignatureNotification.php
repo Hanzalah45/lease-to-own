@@ -26,7 +26,7 @@ class RequestContractSignatureNotification extends Notification
         return [
             'type' => 'contract_signature_requested',
             'title' => 'Your lease agreement is ready to sign',
-            'body' => 'Review and sign your Outdoor Fix lease agreement to continue.',
+            'body' => 'Review and sign your Prostart Leasing lease agreement to continue.',
             'action_url' => '/sign-contract',
         ];
     }
@@ -36,7 +36,7 @@ class RequestContractSignatureNotification extends Notification
         return (new MailMessage)
             ->subject('Sign your lease agreement')
             ->greeting("Hi {$notifiable->name},")
-            ->line('Your Outdoor Fix lease agreement is ready to review and sign.')
+            ->line('Your Prostart Leasing lease agreement is ready to review and sign.')
             ->action('Review & sign', $this->signUrl)
             ->line('This link expires in 72 hours. If you weren\'t expecting this, you can ignore it.');
     }

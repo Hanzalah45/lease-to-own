@@ -35,7 +35,7 @@ class PlaidClient
     {
         $response = $this->post('/link/token/create', [
             'user' => ['client_user_id' => (string) $userId],
-            'client_name' => 'Outdoor Fix',
+            'client_name' => 'Prostart Leasing',
             'products' => ['auth', 'transactions'],
             'country_codes' => ['US'],
             'language' => 'en',

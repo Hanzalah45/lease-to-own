@@ -95,14 +95,14 @@ export default function CustomerApplicationDetailPage() {
       {application.status === "declined" && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4">
           <p className="text-sm font-bold text-red-700">Application Declined</p>
-          <p className="text-xs text-neutral-500">{application.status_notes ?? "Contact Outdoor Fix for details."}</p>
+          <p className="text-xs text-neutral-500">{application.status_notes ?? "Contact Prostart Leasing for details."}</p>
         </div>
       )}
 
       {responded && application.status !== "needs_info" && (
         <div className="rounded-xl border border-green-200 bg-green-50 px-5 py-4">
           <p className="text-sm font-bold text-green-700">Response sent</p>
-          <p className="text-xs text-neutral-600">Your response was sent back to Outdoor Fix for review.</p>
+          <p className="text-xs text-neutral-600">Your response was sent back to Prostart Leasing for review.</p>
         </div>
       )}
 
@@ -117,7 +117,7 @@ export default function CustomerApplicationDetailPage() {
                 onChange={(e) => setReplyText(e.target.value)}
                 rows={3}
                 placeholder="Type a reply (optional if you're attaching a document below)..."
-                aria-label="Reply to Outdoor Fix"
+                aria-label="Reply to Prostart Leasing"
                 className={`w-full rounded-md border bg-white px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none ${
                   replyTextError ? "border-red-400 focus:border-red-500" : "border-neutral-200 focus:border-amber-300"
                 }`}
@@ -149,7 +149,7 @@ export default function CustomerApplicationDetailPage() {
             {answeredInfoRequests.map((r) => (
               <div key={r.id} className="rounded-lg border border-neutral-100 bg-neutral-50 p-3">
                 <p className="text-sm text-neutral-700">
-                  <span className="font-semibold text-neutral-500">Outdoor Fix asked:</span> {r.request_text}
+                  <span className="font-semibold text-neutral-500">Prostart Leasing asked:</span> {r.request_text}
                 </p>
                 {r.reply_text && (
                   <p className="mt-1.5 text-sm text-neutral-700">
@@ -193,7 +193,7 @@ export default function CustomerApplicationDetailPage() {
       )}
 
       <p className="text-sm text-neutral-400">
-        An Outdoor Fix representative will reach out as your application moves through review. Once it&rsquo;s funded, it will appear on your{" "}
+        A Prostart Leasing representative will reach out as your application moves through review. Once it&rsquo;s funded, it will appear on your{" "}
         <Link href="/customer/dashboard" className="font-semibold text-red-600 hover:underline">My Lease</Link> page.
       </p>
     </div>

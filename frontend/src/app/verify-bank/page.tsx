@@ -85,8 +85,8 @@ function VerifyBankFlow() {
     >
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl shadow-black/5">
         <div className="mb-6 flex flex-col items-center text-center">
-          <Image src="/logo.png" alt="Outdoor Fix" width={159} height={103} className="mb-3 h-20 w-auto" priority />
-          <p className="font-heading text-xs font-semibold uppercase tracking-widest text-neutral-400">Outdoor Fix</p>
+          <Image src="/logo.png" alt="Prostart Leasing" width={159} height={103} className="mb-3 h-20 w-auto" priority />
+          <p className="font-heading text-xs font-semibold uppercase tracking-widest text-neutral-400">Prostart Leasing</p>
           <h1 className="mt-1 text-xl font-bold uppercase tracking-tight text-neutral-900">Connect your bank</h1>
           <p className="mt-1 text-sm text-neutral-500">Verify your bank account to continue processing your lease application.</p>
         </div>
@@ -112,7 +112,7 @@ function VerifyBankFlow() {
                   ))}
                 </ul>
               )}
-              <p className="mt-3 text-xs text-neutral-400">You&rsquo;re all set. Outdoor Fix will be in touch with next steps.</p>
+              <p className="mt-3 text-xs text-neutral-400">You&rsquo;re all set. Prostart Leasing will be in touch with next steps.</p>
             </div>
           </div>
         ) : loading ? (

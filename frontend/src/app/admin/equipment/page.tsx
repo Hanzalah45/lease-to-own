@@ -114,7 +114,7 @@ export default function AdminEquipmentPage() {
     <div className="space-y-6">
       <PageHeroHeader
         title="Equipment Tracking"
-        subtitle={`Outdoor Fix · ${counts.total} unit${counts.total === 1 ? "" : "s"} in the fleet`}
+        subtitle={`Prostart Leasing · ${counts.total} unit${counts.total === 1 ? "" : "s"} in the fleet`}
         action={
           <button
             onClick={() => setCreating(true)}

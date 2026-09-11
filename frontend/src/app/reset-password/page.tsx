@@ -58,7 +58,7 @@ function ResetPasswordForm() {
   if (!token || !email) {
     return (
       <AuthCard
-        eyebrow="Outdoor Fix"
+        eyebrow="Prostart Leasing"
         title="Reset your password"
         subtitle="This link is missing information."
         footer={
@@ -76,7 +76,7 @@ function ResetPasswordForm() {
 
   return (
     <AuthCard
-      eyebrow="Outdoor Fix"
+      eyebrow="Prostart Leasing"
       title="Set a new password"
       subtitle={`For ${email}`}
       footer={

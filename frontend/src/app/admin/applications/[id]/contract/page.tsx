@@ -108,7 +108,7 @@ export default function LeaseContractPage() {
               Lease Purchase Agreement
             </h1>
             <p className="text-sm text-neutral-400">
-              {customer?.name ?? "…"} · Outdoor Fix{profile?.city ? ` · ${profile.city}` : ""}
+              {customer?.name ?? "…"} · Prostart Leasing{profile?.city ? ` · ${profile.city}` : ""}
             </p>
           </div>
           <div className="flex shrink-0 gap-2">
@@ -153,7 +153,7 @@ export default function LeaseContractPage() {
         </p>
       )}
       {lease && customer && (
-        <LeaseAgreementDocument lease={lease} customerName={customer.name} customerAddress={address} />
+        <LeaseAgreementDocument lease={lease} customerName={customer.name} customerAddress={address} profile={profile} />
       )}
 
       {lease?.contracts && lease.contracts.length > 0 && (

@@ -67,7 +67,7 @@ function AccountSetupForm() {
   if (!hasAllParams) {
     return (
       <AuthCard
-        eyebrow="Outdoor Fix"
+        eyebrow="Prostart Leasing"
         title="Set up your account"
         subtitle="This link is missing information."
         footer={
@@ -83,7 +83,7 @@ function AccountSetupForm() {
 
   return (
     <AuthCard
-      eyebrow="Outdoor Fix"
+      eyebrow="Prostart Leasing"
       title="Set up your account"
       subtitle="Your first payment is in. Set a password to access your lease portal."
       footer={

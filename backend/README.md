@@ -1,4 +1,4 @@
-# Outdoor Fix — Backend (Laravel API)
+# Prostart Leasing — Backend (Laravel API)
 
 Milestone 1 scope: environment setup, database schema, role-based authentication
 for customer / admin / super admin accounts, and the base REST API structure. No
@@ -38,7 +38,7 @@ Three account types, stored on `users.role`: `customer`, `admin`, `super_admin`.
 - **Customer** — the renter. Has a `customer_profiles` row (identity, address,
   landlord info, employment, bank verification). Self-registers via
   `POST /api/auth/register`.
-- **Admin** — Outdoor Fix staff. **Full access by default** — an admin can do
+- **Admin** — Prostart Leasing staff. **Full access by default** — an admin can do
   everything a customer can do on that customer's behalf, and view/edit all
   customer data. Never self-registered; created only by a super admin via
   `POST /api/admin/admin-users`.

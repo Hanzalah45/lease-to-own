@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Contract;
 use App\Models\LeaseAgreement;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Dompdf\Dompdf;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
 
@@ -31,6 +32,8 @@ class ContractPdfService
         }
 
         $pdf = Pdf::loadHTML($html);
+        $pdf->render();
+        self::addPageNumbers($pdf->getDomPDF());
 
         $path = "contracts/{$contract->id}.pdf";
         Storage::disk('local')->put($path, $pdf->output());
@@ -54,6 +57,9 @@ class ContractPdfService
             'equipment' => $lease->equipmentUnit,
             'customerName' => $customer->name,
             'customerAddress' => $address,
+            'profile' => $profile,
+            'companyPhone' => config('company.phone'),
+            'companyAddress' => config('company.address'),
             'cashPrice' => (float) $lease->cash_price,
             'monthlyRental' => (float) $lease->monthly_rental_payment,
             'salesTax' => $lease->salesTaxAmount(),
@@ -63,6 +69,27 @@ class ContractPdfService
             'totalDueToday' => (float) $lease->security_deposit + LeaseAgreement::TRACKING_DEVICE_FEE + $lease->totalMonthlyPayment(),
             'totalRentalPurchasePrice' => (float) $lease->total_rental_purchase_price,
         ])->render();
+    }
+
+    /**
+     * Stamps "Page X of Y" on every page's footer using DomPDF's native Canvas
+     * text API. Deliberately avoids the `<script type="text/php">` trick some
+     * DomPDF guides use for this, since that requires flipping the `enable_php`
+     * config on (off by default for security) — calling the canvas directly
+     * from our own PHP needs no such change.
+     */
+    private static function addPageNumbers(Dompdf $dompdf): void
+    {
+        $canvas = $dompdf->getCanvas();
+        $fontMetrics = $dompdf->getFontMetrics();
+        $font = $fontMetrics->getFont('DejaVu Sans', 'normal');
+        $size = 8;
+        $text = 'Prostart Leasing  ·  Lease Purchase Agreement  ·  Page {PAGE_NUM} of {PAGE_COUNT}';
+        $width = $fontMetrics->getTextWidth($text, $font, $size);
+        $x = ($canvas->get_width() - $width) / 2;
+        $y = $canvas->get_height() - 28;
+
+        $canvas->page_text($x, $y, $text, $font, $size, [0.64, 0.64, 0.64]);
     }
 
     /** Generates the PDF only if it doesn't already exist on disk, returning the stored path either way. */

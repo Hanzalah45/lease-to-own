@@ -149,7 +149,7 @@ class ApplicationCreationService
 
         // Monthly payment auto-calculates from cash price and term — never
         // admin-typed (client requirement, 2026-09-04) — using the official
-        // divisor table from Outdoor Fix's own customer-facing lease terms
+        // divisor table from Prostart Leasing's own customer-facing lease terms
         // sheet: "Divide the cash price (excluding tax) by 19.8 for
         // 36-months, 16.0 for 24-months, or 10.0 for 12-months." These are
         // NOT proportional to term (10/12, 16/24, 19.8/36 are different
@@ -207,7 +207,7 @@ class ApplicationCreationService
     }
 
     /**
-     * Official divisor table from Outdoor Fix's customer-facing lease terms
+     * Official divisor table from Prostart Leasing's customer-facing lease terms
      * sheet (2026-09-04) — only 12/24/36-month terms are priced.
      */
     private static function monthlyPaymentDivisor(int $termMonths): float

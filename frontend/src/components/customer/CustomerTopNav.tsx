@@ -59,7 +59,7 @@ export function CustomerTopNav() {
         <Link href="/customer/dashboard">
           <Image
             src="/prostartLeasing.png"
-            alt="Outdoor Fix"
+            alt="Prostart Leasing"
             width={159}
             height={103}
             className="h-8 w-auto sm:h-11"
