@@ -23,11 +23,12 @@ return [
      * Comma-separated, so one deployment can serve several front ends — e.g.
      * local development plus the live site:
      *
-     *   FRONTEND_URL=http://localhost:3000,https://frontend-dusky-theta-28.vercel.app
+     *   FRONTEND_URL=http://localhost:3000,https://prostartleasing.com
      *
-     * Use Vercel's STABLE alias here, not the per-deployment URL: every
-     * `vercel --prod` mints a fresh frontend-<hash>-....vercel.app, so pinning
-     * one of those breaks CORS again on the very next deploy.
+     * In production, frontend and backend run side by side on the same
+     * server behind Nginx, so the browser only ever calls prostartleasing.com
+     * and this allow-list doesn't come into play there — it matters for
+     * local development and any future setup where they're split again.
      */
     'allowed_origins' => array_values(array_filter(array_map(
         'trim',
@@ -35,10 +36,10 @@ return [
     ))),
 
     /*
-     * Optional regex list (also comma-separated) for origins whose host is not
-     * fixed — Vercel preview deployments being the case this exists for. Keep
-     * any pattern anchored and scoped to your own project prefix; a bare
-     * `.*\.vercel\.app` would let anybody's Vercel site call this API.
+     * Optional regex list (also comma-separated) for origins whose host is
+     * not fixed — e.g. preview/staging deployments on a shared subdomain
+     * pattern. Keep any pattern anchored and scoped to your own project
+     * prefix, never a bare wildcard host.
      */
     'allowed_origins_patterns' => array_values(array_filter(array_map(
         'trim',
