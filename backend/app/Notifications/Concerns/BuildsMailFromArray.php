@@ -21,7 +21,6 @@ trait BuildsMailFromArray
     protected function buildBaseMail(object $notifiable): MailMessage
     {
         $data = $this->toArray($notifiable);
-        $url = rtrim((string) config('app.frontend_url'), '/').$data['action_url'];
 
         $mail = (new MailMessage)->subject($data['title']);
 
@@ -43,6 +42,16 @@ trait BuildsMailFromArray
         if ($data['body'] && $data['body'] !== $data['title']) {
             $mail->line($data['body']);
         }
+
+        // A null action_url means the recipient has no usable portal login
+        // yet (e.g. a guest-originated customer before account setup) — a
+        // "View in portal" button they can't get past is worse than no
+        // button at all.
+        if (! $data['action_url']) {
+            return $mail;
+        }
+
+        $url = rtrim((string) config('app.frontend_url'), '/').$data['action_url'];
 
         return $mail->action('View in portal', $url);
     }

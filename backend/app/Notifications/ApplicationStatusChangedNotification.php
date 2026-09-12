@@ -34,11 +34,20 @@ class ApplicationStatusChangedNotification extends Notification
     {
         $label = self::LABELS[$this->application->status] ?? "changed to {$this->application->status}";
 
+        // A guest-originated customer's account is unusable until Phase 6's
+        // account-setup link (see ApplicationCreationService) — sending them
+        // a "View in portal" button before then would just dead-end at a
+        // login they can't complete, so the portal link only appears once
+        // there's a real account to log into.
+        $hasUsableAccount = $notifiable->status !== 'pending';
+
         return [
             'type' => 'application',
             'title' => "Your application #{$this->application->id} {$label}",
-            'body' => $this->application->status_notes ?? 'Tap to view the full details.',
-            'action_url' => "/customer/applications",
+            'body' => $this->application->status_notes ?? ($hasUsableAccount
+                ? 'Tap to view the full details.'
+                : "We'll email you again with next steps — no action needed from you right now."),
+            'action_url' => $hasUsableAccount ? '/customer/applications' : null,
         ];
     }
 }
