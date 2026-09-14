@@ -458,13 +458,14 @@ export const TRACKING_DEVICE_FEE = 150;
 
 /**
  * Lease pricing math — the client's official pricing blueprint (2026-09-04),
- * verified against its own worked example (Cash Price $4,899 / 36mo -> LDW:
- * $284.16/mo + $342.93 deposit + $777.09 total; no-LDW: $264.57/mo + $793.71
- * deposit + $1,208.28 total — both match to the cent):
+ * verified against its own worked example for the LDW case (Cash Price
+ * $4,899 / 36mo -> $284.16/mo + $342.93 deposit + $777.09 total, matches to
+ * the cent):
  *   Base Monthly = Cash Price / divisor (12/24/36mo -> 10.0/16.0/19.8)
  *   Taking LDW:    +0.75%/mo of cash price; deposit = 7% of cash price
- *   Declining LDW: +0.35%/mo "no-LDW surcharge" instead; deposit = 3x the
- *                  (base + surcharge) monthly payment
+ *   Declining LDW: no surcharge (client, 2026-09-15: the blueprint's original
+ *                  0.35%/mo "no-LDW surcharge" was a typo, not an intended
+ *                  charge); deposit = 3x the base monthly payment
  *   Tracking device fee: flat $150, always — due alongside the deposit but
  *   NOT part of it (kept as a separate addend everywhere "total due today"
  *   is computed).
@@ -480,8 +481,10 @@ export function computeLeasePricing(state: WizardState): LeasePricing {
   const divisor = MONTHLY_PAYMENT_DIVISORS[term];
   const monthlyRental = divisor ? round2(cashPrice / divisor) : 0;
   // Exactly one of these applies — ldwAmount holds whichever does, matching
-  // how the backend stores both in the same ldw_amount column.
-  const ldwAmount = round2(cashPrice * (ldwSelected ? 0.0075 : 0.0035));
+  // how the backend stores both in the same ldw_amount column. Declining LDW
+  // no longer adds a surcharge (client, 2026-09-15: the 0.35%/mo figure in
+  // the original blueprint was a typo, not an intended charge).
+  const ldwAmount = round2(cashPrice * (ldwSelected ? 0.0075 : 0));
   const securityDeposit = ldwSelected
     ? round2(cashPrice * 0.07)
     : round2((monthlyRental + ldwAmount) * 3);

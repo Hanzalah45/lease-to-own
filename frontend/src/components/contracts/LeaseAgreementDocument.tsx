@@ -225,7 +225,7 @@ export function LeaseAgreementDocument({
             <Row label="Months to Ownership" value={String(lease.term_months)} />
             <Row label="Payment Due Day" value={lease.payment_due_day ?? "—"} />
             <Row label="Rental Payment" value={money(monthlyRental)} />
-            <Row label={lease.ldw_selected ? "LDW (monthly)" : "No-LDW Surcharge (monthly)"} value={`${money(ldwAmount)} / mo`} />
+            <Row label={lease.ldw_selected ? "LDW (monthly)" : "LDW Declined (monthly)"} value={`${money(ldwAmount)} / mo`} />
             <Row label="Sales Tax" value={money(salesTax)} />
             <Row label="Total Monthly Payment" value={money(totalMonthly)} />
             <Row label="Security Deposit" value={money(securityDeposit)} />

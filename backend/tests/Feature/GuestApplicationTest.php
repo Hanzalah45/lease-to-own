@@ -146,8 +146,9 @@ class GuestApplicationTest extends TestCase
      * its own worked example (Cash Price $4,899, 36 months):
      *   Base monthly = 4899 / 19.8 = 247.42
      *   With LDW: +0.75%/mo (36.74) -> monthly 284.16; deposit = 7% (342.93)
-     *   No LDW:   +0.35%/mo surcharge (17.15) -> monthly 264.57;
-     *             deposit = 3x that monthly (793.71)
+     *   No LDW: no surcharge (client, 2026-09-15: the blueprint's original
+     *           0.35%/mo figure was a typo) -> monthly stays 247.42;
+     *           deposit = 3x that monthly (742.26)
      * The $150 tracking device fee is a separate line item, not folded into
      * the deposit (checked wherever "total due today" is computed, not
      * here). Submitted monthly_rental/security_deposit are both ignored.
@@ -190,9 +191,9 @@ class GuestApplicationTest extends TestCase
 
         $lease = LeaseAgreement::where('application_id', $application->id)->first();
         $this->assertEquals(247.42, (float) $lease->monthly_rental_payment);
-        $this->assertEquals(17.15, (float) $lease->ldw_amount); // the no-LDW surcharge, same column
-        $this->assertEquals(793.71, (float) $lease->security_deposit);
-        $this->assertEquals(264.57, $lease->totalMonthlyPayment() - $lease->salesTaxAmount());
+        $this->assertEquals(0, (float) $lease->ldw_amount); // no surcharge for declining LDW
+        $this->assertEquals(742.26, (float) $lease->security_deposit);
+        $this->assertEquals(247.42, $lease->totalMonthlyPayment() - $lease->salesTaxAmount());
     }
 
     public function test_an_unsupported_lease_term_is_rejected(): void

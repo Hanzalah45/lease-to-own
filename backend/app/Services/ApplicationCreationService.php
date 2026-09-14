@@ -159,22 +159,22 @@ class ApplicationCreationService
         $monthlyRental = round($cashPrice / self::monthlyPaymentDivisor($termMonths), 2);
 
         // Official pricing blueprint (client, 2026-09-04): taking LDW adds a
-        // recurring 0.75%/month charge; DECLINING it isn't free either — it
-        // adds a smaller 0.35%/month "no-LDW surcharge" instead. Both live in
-        // the same ldw_amount column (nullable decimal, no schema change
-        // needed) since exactly one ever applies per lease — ldw_selected
-        // says which — and both get billed monthly the same way via
+        // recurring 0.75%/month charge. Declining LDW does NOT add a
+        // surcharge — the blueprint's original 0.35%/month "no-LDW
+        // surcharge" was a typo, not an intended charge (client, 2026-09-15).
+        // $ldwAmount stays the one column that holds the LDW charge when it
+        // applies (nullable decimal; 0/null when LDW is declined) — see
         // LeaseAgreement::ldwMonthlyAmount()/totalMonthlyPayment().
         $ldwAmount = $ldwSelected
             ? round($cashPrice * 0.0075, 2)
-            : round($cashPrice * 0.0035, 2);
+            : 0.0;
 
         // Security deposit (blueprint, 2026-09-04): 7% of cash price when LDW
-        // is taken, or 3x the (base + surcharge) monthly payment when
-        // declined. The $150 tracking device fee is a SEPARATE line item —
-        // due alongside the deposit, but not part of it (see
-        // LeaseAgreement::TRACKING_DEVICE_FEE, added wherever "total due
-        // today" is shown, not here).
+        // is taken, or 3x the base monthly payment when declined (no
+        // surcharge to add now — see $ldwAmount above). The $150 tracking
+        // device fee is a SEPARATE line item — due alongside the deposit,
+        // but not part of it (see LeaseAgreement::TRACKING_DEVICE_FEE, added
+        // wherever "total due today" is shown, not here).
         $securityDeposit = $ldwSelected
             ? round($cashPrice * 0.07, 2)
             : round(($monthlyRental + $ldwAmount) * 3, 2);

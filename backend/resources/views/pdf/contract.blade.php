@@ -123,7 +123,7 @@
     <tr><td class="label">Payment Due Day</td><td class="value">{{ $lease->payment_due_day ?? '—' }}</td></tr>
     <tr><td class="label">Rental Payment</td><td class="value">${{ number_format($monthlyRental, 2) }}</td></tr>
     <tr>
-        <td class="label">{{ $lease->ldw_selected ? 'LDW (monthly)' : 'No-LDW Surcharge (monthly)' }}</td>
+        <td class="label">{{ $lease->ldw_selected ? 'LDW (monthly)' : 'LDW Declined (monthly)' }}</td>
         <td class="value">${{ number_format($lease->ldwMonthlyAmount(), 2) }} / mo</td>
     </tr>
     <tr><td class="label">Sales Tax</td><td class="value">${{ number_format($salesTax, 2) }}</td></tr>

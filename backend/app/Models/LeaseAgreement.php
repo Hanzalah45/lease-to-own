@@ -119,9 +119,9 @@ class LeaseAgreement extends Model
     }
 
     /**
-     * The recurring LDW charge (ldw_selected true) or the no-LDW surcharge
-     * (ldw_selected false) — exactly one applies, both stored in the same
-     * column (see ApplicationCreationService::buildEquipmentAndLease).
+     * The recurring LDW charge when ldw_selected is true, or 0 when it's
+     * false — declining LDW carries no surcharge (see
+     * ApplicationCreationService::buildEquipmentAndLease).
      */
     public function ldwMonthlyAmount(): float
     {

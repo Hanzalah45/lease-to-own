@@ -53,7 +53,7 @@ export function LeaseDetailsStep({
               <TextInput value={money(pricing.salesTax)} onChange={() => {}} />
             </Field>
 
-            <Field label={pricing.ldwSelected ? "LDW (Loss Damage Waiver)" : "No-LDW Surcharge"}>
+            <Field label={pricing.ldwSelected ? "LDW (Loss Damage Waiver)" : "LDW Declined"}>
               <TextInput value={`${money(pricing.ldwAmount)} / mo`} onChange={() => {}} />
             </Field>
             <Field label="Total Monthly Payment">
@@ -94,9 +94,9 @@ export function LeaseDetailsStep({
           <p className="mt-5 text-xs text-neutral-400">
             Monthly rental is cash price ÷ 10.0, 16.0, or 19.8 (per the official 12/24/36-month terms sheet) —
             auto-calculated, not admin-editable. Taking LDW adds 0.75% of cash price per month and sets the deposit
-            to 7% of cash price; declining it adds a smaller 0.35%/month surcharge instead and sets the deposit to
-            3× the monthly payment. The $150 tracking device fee is separate from the deposit, due at the same
-            time. Full-term ownership transfers once Total Rental Purchase Price (monthly rental × term, excl. tax)
+            to 7% of cash price; declining it adds no monthly surcharge, but sets the deposit to 3× the monthly
+            payment instead. The $150 tracking device fee is separate from the deposit, due at the same time.
+            Full-term ownership transfers once Total Rental Purchase Price (monthly rental × term, excl. tax)
             is paid. Early Purchase Option recalculates live per payment, see chart →
           </p>
         </div>
