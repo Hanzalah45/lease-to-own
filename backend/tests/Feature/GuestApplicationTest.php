@@ -289,6 +289,15 @@ class GuestApplicationTest extends TestCase
         $this->assertSame(Payment::STATUS_PAID, $firstPayment->status);
         $this->assertNotNull($firstPayment->paid_date);
 
+        // Real gap found 2026-09-15: the equipment unit's delivery_date was
+        // never set anywhere, which silently blocked any later admin edit to
+        // an already-leased unit (e.g. adding a GPS serial) — Equipment
+        // Tracking's own form requires it the moment status is "leased".
+        // "Mark Delivered & Paid" is the actual delivery event, so that's
+        // where it gets filled in now.
+        $this->assertNotNull($lease->equipmentUnit->delivery_date);
+        $this->assertTrue($lease->equipmentUnit->delivery_date->isToday());
+
         Notification::assertSentTo($customer, ActivateAccountNotification::class);
         Notification::assertSentTo($admin, PaymentStatusChangedNotification::class);
     }

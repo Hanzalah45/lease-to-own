@@ -101,10 +101,18 @@ export function EquipmentFormModal({
   if (notesErr) clientErrors.condition_notes = notesErr;
   // A unit still sitting in stock has not gone anywhere, so its dates are
   // genuinely unknown — demanding them would force the admin to invent a
-  // value. The moment the status says the machine has been out to a customer,
+  // value. The moment an admin actively picks a non-in-stock status here,
   // both dates are required and get the same treatment date of birth gets on
   // the customer form: a red asterisk, an inline error, and a blocked save.
-  const hasLeftTheYard = form.status !== "in_stock";
+  //
+  // But when the status is locked to a lease (see the Status field below),
+  // nothing here is setting that status — it's just a fact about a unit the
+  // application wizard already leased out, whose actual delivery_date is
+  // unknown until "Mark Delivered & Paid" fills it in on its own (real gap
+  // found 2026-09-15: an admin trying to add a GPS serial to an already-
+  // leased unit got silently blocked by these two unrelated required dates).
+  // So the requirement only applies while this form itself controls status.
+  const hasLeftTheYard = !lockedToLease && form.status !== "in_stock";
 
   const deliveryErr = validateTrackingDate(form.delivery_date, "Delivery date", {
     required: hasLeftTheYard,

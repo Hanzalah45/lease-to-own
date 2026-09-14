@@ -245,6 +245,23 @@ class ApplicationController extends Controller
             if ($data['status'] === Application::STATUS_FINISHED) {
                 $lease = $application->leaseAgreement;
                 if ($lease) {
+                    // Real gap found 2026-09-15: the equipment unit's delivery_date
+                    // was never set anywhere, but Equipment Tracking's edit form
+                    // requires it (and expected_return_or_ownership_date) the
+                    // moment a unit's status is "leased" — so any admin edit to an
+                    // already-leased unit (e.g. adding a GPS serial later) silently
+                    // failed validation on a date field nobody had a reason to fill
+                    // in yet. Delivery is exactly what's happening right here, so
+                    // this is the correct, and only, place to set it — also
+                    // reanchors the ownership-date estimate to the real pickup date
+                    // instead of whenever the lease was first created.
+                    if ($lease->equipmentUnit && ! $lease->equipmentUnit->delivery_date) {
+                        $lease->equipmentUnit->update([
+                            'delivery_date' => now()->toDateString(),
+                            'expected_return_or_ownership_date' => now()->addMonthsNoOverflow($lease->term_months)->toDateString(),
+                        ]);
+                    }
+
                     $payment = LeaseEngine::markFirstPaymentPaid($lease, Auth::id());
                     if ($payment) {
                         $recipients = User::where('role', User::ROLE_SUPER_ADMIN)
