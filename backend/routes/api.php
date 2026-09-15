@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\GuestApplicationController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\PublicContractController;
+use App\Http\Controllers\Api\PublicInfoRequestController;
 use App\Http\Controllers\Api\PublicPlaidVerificationController;
 use Illuminate\Support\Facades\Route;
 
@@ -74,6 +75,14 @@ Route::post('/plaid/verify-exchange', [PublicPlaidVerificationController::class,
 // ContractSigner / RequestContractSignatureNotification.
 Route::post('/contracts/verify-lease', [PublicContractController::class, 'show'])->middleware('throttle:10,1');
 Route::post('/contracts/verify-sign', [PublicContractController::class, 'store'])->middleware('throttle:10,1');
+
+// Signed-link info-request responses (2026-09-16 fix): a guest-originated
+// customer has no working login yet, so Customer\ApplicationController's
+// authenticated respondToInfoRequest() is unreachable for them — this exists
+// the same way the contract-signing routes above do. See InfoRequestSigner /
+// ApplicationInfoRequestedNotification.
+Route::post('/info-requests/verify', [PublicInfoRequestController::class, 'show'])->middleware('throttle:10,1');
+Route::post('/info-requests/verify-respond', [PublicInfoRequestController::class, 'store'])->middleware('throttle:10,1');
 
 /*
 |--------------------------------------------------------------------------

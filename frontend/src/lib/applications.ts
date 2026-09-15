@@ -202,6 +202,46 @@ export async function respondToInfoRequest(
   return data.data;
 }
 
+/** The signed params carried by a "respond to this request" email link — see InfoRequestSigner on the backend. */
+export interface SignedInfoRequestLinkParams {
+  id: string;
+  application: string;
+  hash: string;
+  expires: string;
+  signature: string;
+}
+
+export interface SignedInfoRequestState {
+  application_id: number;
+  status: ApplicationStatus;
+  open_request_text: string | null;
+}
+
+/** Unauthenticated counterpart to getMyApplication() — used by /respond-info-request, reached from the emailed signed link (guest customers have no working login yet). */
+export async function getInfoRequestViaLink(params: SignedInfoRequestLinkParams): Promise<SignedInfoRequestState> {
+  const data = await apiFetch<{ data: SignedInfoRequestState }>("/info-requests/verify", {
+    method: "POST",
+    body: params,
+  });
+  return data.data;
+}
+
+/** Unauthenticated counterpart to respondToInfoRequest() — used by /respond-info-request. */
+export async function respondToInfoRequestViaLink(
+  params: SignedInfoRequestLinkParams,
+  { replyText, file }: { replyText?: string; file?: File | null },
+): Promise<SignedInfoRequestState> {
+  const form = new FormData();
+  Object.entries(params).forEach(([key, value]) => form.set(key, value));
+  if (replyText) form.set("reply_text", replyText);
+  if (file) form.set("id_document", file);
+  const data = await apiFetch<{ data: SignedInfoRequestState }>("/info-requests/verify-respond", {
+    method: "POST",
+    body: form,
+  });
+  return data.data;
+}
+
 /** Lets the customer download exactly what they themselves attached to one of their own info-request replies. */
 export async function downloadMyInfoRequestDocument(
   applicationId: number | string,

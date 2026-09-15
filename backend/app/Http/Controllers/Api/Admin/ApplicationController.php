@@ -9,6 +9,7 @@ use App\Models\ApplicationInfoRequest;
 use App\Models\Payment;
 use App\Models\RiskProfile;
 use App\Models\User;
+use App\Notifications\ApplicationInfoRequestedNotification;
 use App\Notifications\ApplicationStatusChangedNotification;
 use App\Notifications\PaymentStatusChangedNotification;
 use App\Notifications\RequestContractSignatureNotification;
@@ -192,8 +193,9 @@ class ApplicationController extends Controller
             // admins (or a double-submit) hitting this endpoint at once — the
             // customer's reply only ever closes the newest one, so an older
             // duplicate would otherwise stay open forever.
+            $newInfoRequest = null;
             if ($isNeedsInfo && ! $application->infoRequests()->whereNull('replied_at')->exists()) {
-                $application->infoRequests()->create([
+                $newInfoRequest = $application->infoRequests()->create([
                     'requested_by_user_id' => Auth::id(),
                     'request_text' => $data['status_notes'] ?? '',
                 ]);
@@ -283,7 +285,16 @@ class ApplicationController extends Controller
             // app has no email channel wired up yet — the toggle controls the in-app
             // notification instead, since that's the only one that exists.
             if ($application->customer->customerProfile?->status_change_emails ?? true) {
-                $application->customer->notify(new ApplicationStatusChangedNotification($application->fresh()));
+                // needs_info gets its own notification carrying the actual
+                // question (and a signed reply link for a guest-originated
+                // customer, real gap found 2026-09-16) instead of the generic
+                // status-changed message, which has no way to know what was
+                // asked.
+                if ($newInfoRequest) {
+                    $application->customer->notify(new ApplicationInfoRequestedNotification($application->fresh(), $newInfoRequest));
+                } else {
+                    $application->customer->notify(new ApplicationStatusChangedNotification($application->fresh()));
+                }
             }
         }
 

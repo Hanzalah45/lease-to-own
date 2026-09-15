@@ -3,16 +3,13 @@
 namespace App\Http\Controllers\Api\Customer;
 
 use App\Http\Controllers\Controller;
-use App\Models\AdminPermission;
 use App\Models\Application;
 use App\Models\ApplicationInfoRequest;
-use App\Models\User;
-use App\Notifications\ApplicationInfoProvidedNotification;
 use App\Services\ApplicationCreationService;
 use App\Services\ApplicationValidationRules;
+use App\Services\InfoRequestResponder;
 use App\Services\LeaseEngine;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 
 class ApplicationController extends Controller
@@ -63,45 +60,14 @@ class ApplicationController extends Controller
         abort_unless($application->customer_id === $request->user()->id, 404);
         abort_unless($application->status === Application::STATUS_NEEDS_INFO, 422, 'This application is not awaiting information.');
 
-        $infoRequest = $application->infoRequests()->whereNull('replied_at')->latest()->first();
-        abort_unless($infoRequest, 422, 'There is no open request to respond to.');
-
         $data = $request->validate([
             'reply_text' => ['required_without:id_document', 'nullable', 'string', 'max:1000'],
             'id_document' => ['required_without:reply_text', 'nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240'],
         ]);
 
-        $replyDocumentPath = null;
-        if (isset($data['id_document'])) {
-            // Intentionally not deleting the customer's previous ID document
-            // here — every version submitted stays on file, tied to the
-            // request it answered, instead of being overwritten.
-            $replyDocumentPath = $data['id_document']->store('id-documents', 'local');
-            $request->user()->customerProfile()->updateOrCreate(
-                ['user_id' => $request->user()->id],
-                ['government_id_document_path' => $replyDocumentPath, 'updated_by' => $request->user()->id],
-            );
-        }
+        $application = InfoRequestResponder::respond($application, $request->user(), $data['reply_text'] ?? null, $data['id_document'] ?? null);
 
-        $infoRequest->update([
-            'replied_at' => now(),
-            'reply_text' => $data['reply_text'] ?? null,
-            'reply_document_path' => $replyDocumentPath,
-        ]);
-
-        $application->update(['status' => Application::STATUS_WAITING_REVIEW]);
-
-        $recipients = User::where('role', User::ROLE_SUPER_ADMIN)
-            ->orWhere(function ($query) {
-                $query->where('role', User::ROLE_ADMIN)
-                    ->where(function ($inner) {
-                        $inner->whereDoesntHave('adminPermissions')
-                            ->orWhereHas('adminPermissions', fn ($p) => $p->where('permission', AdminPermission::APPLICATION_REVIEW));
-                    });
-            })->get();
-        Notification::send($recipients, new ApplicationInfoProvidedNotification($infoRequest->fresh()));
-
-        return response()->json(['data' => $this->present($application->fresh())]);
+        return response()->json(['data' => $this->present($application)]);
     }
 
     /** Lets the customer download exactly what they themselves attached to one of their own replies. */
