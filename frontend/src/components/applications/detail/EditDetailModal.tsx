@@ -8,7 +8,7 @@ export interface EditField {
   key: string;
   label: string;
   value: string;
-  type?: "text" | "select" | "textarea";
+  type?: "text" | "select" | "textarea" | "date";
   options?: string[];
   /**
    * Rule from @/lib/validation. Returns a message when the value is invalid,
@@ -19,6 +19,8 @@ export interface EditField {
   /** Shows a live character counter and is enforced by the rule above. */
   maxLength?: number;
   placeholder?: string;
+  /** type: "date" only — the input's max attribute, e.g. isoDateDaysAgo(0) to block future dates. */
+  max?: string;
 }
 
 function inputClass(hasError: boolean) {
@@ -110,6 +112,17 @@ export function EditDetailModal({
                     </option>
                   ))}
                 </select>
+              ) : f.type === "date" ? (
+                <input
+                  id={`edit-${f.key}`}
+                  type="date"
+                  max={f.max}
+                  className={inputClass(!!error)}
+                  value={value}
+                  onChange={(e) => set(f.key, e.target.value)}
+                  onBlur={() => touch(f.key)}
+                  aria-invalid={!!error}
+                />
               ) : f.type === "textarea" ? (
                 <textarea
                   id={`edit-${f.key}`}

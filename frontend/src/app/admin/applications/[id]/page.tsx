@@ -14,6 +14,7 @@ import { ChecklistCard } from "@/components/applications/detail/ChecklistCard";
 import { AssignmentCard } from "@/components/applications/detail/AssignmentCard";
 import { EditDetailModal, type EditField } from "@/components/applications/detail/EditDetailModal";
 import { AddLeaseModal } from "@/components/applications/detail/AddLeaseModal";
+import { FileInput } from "@/components/applications/wizard/fields";
 import { EpoChart } from "@/components/applications/wizard/EpoChart";
 import { Modal } from "@/components/ui/Modal";
 import type { AppStatus } from "@/components/applications/detail/types";
@@ -27,6 +28,7 @@ import {
   getApplication,
   requestBankVerification,
   resolveRiskRedFlag,
+  respondToInfoRequestAsAdmin,
   runBackgroundCheck,
   updateApplication,
 } from "@/lib/applications";
@@ -35,9 +37,11 @@ import { ApiError } from "@/lib/api";
 import {
   NOTES_MAX,
   PROMO_CODE_MAX,
+  isoDateDaysAgo,
   optional,
   validateCity,
   validateConditionNotes,
+  validateDob,
   validateEquipmentModel,
   validateIntegerInRange,
   validateMoney,
@@ -245,6 +249,35 @@ export default function ApplicationDetailPage() {
     }
   }
 
+  // needs_info has no forward edge through updateApplication() — the
+  // customer often answers by phone/text/email instead of through the
+  // portal, so this records that answer on their behalf via the same path
+  // their own reply would take.
+  const [onBehalfReplyText, setOnBehalfReplyText] = useState("");
+  const [onBehalfDocument, setOnBehalfDocument] = useState<File | null>(null);
+  const [onBehalfSending, setOnBehalfSending] = useState(false);
+  const [onBehalfError, setOnBehalfError] = useState<string | null>(null);
+
+  const onBehalfReplyTextError = onBehalfReplyText.trim() ? validateNotes(onBehalfReplyText) : undefined;
+  const canRecordOnBehalf = (!!onBehalfReplyText.trim() || !!onBehalfDocument) && !onBehalfReplyTextError && !onBehalfSending;
+
+  async function recordCustomerReplyOnBehalf() {
+    if (!application || !canRecordOnBehalf) return;
+    setOnBehalfSending(true);
+    setOnBehalfError(null);
+    try {
+      setApplication(
+        await respondToInfoRequestAsAdmin(application.id, { replyText: onBehalfReplyText.trim() || undefined, file: onBehalfDocument }),
+      );
+      setOnBehalfReplyText("");
+      setOnBehalfDocument(null);
+    } catch (err) {
+      setOnBehalfError(err instanceof ApiError ? err.message : "Could not record this response.");
+    } finally {
+      setOnBehalfSending(false);
+    }
+  }
+
   const [resolvingFlagId, setResolvingFlagId] = useState<number | null>(null);
 
   async function resolveFlag(riskProfileId: number, redFlagId: number) {
@@ -353,12 +386,29 @@ export default function ApplicationDetailPage() {
     if (!application) return;
     setApplication(
       await updateApplication(application.id, {
+        // Real gap found 2026-09-16: this only ever sent 5 of CUSTOMER_FIELDS'
+        // ~18 keys, so editing e.g. landlord/employer/alternate-contact
+        // fields silently did nothing — the modal closed as if it saved.
         customer: {
           address_line_1: values.address_line_1 || null,
           city: values.city || null,
           state: values.state || null,
           zip: values.zip || null,
+          date_of_birth: values.date_of_birth || null,
           residence_type: values.residence_type || null,
+          previous_address: values.previous_address || null,
+          landlord_name: values.landlord_name || null,
+          landlord_phone: values.landlord_phone || null,
+          monthly_rent: values.monthly_rent || null,
+          mortgage_amount: values.mortgage_amount || null,
+          mortgage_years: values.mortgage_years || null,
+          employer_name: values.employer_name || null,
+          employer_phone: values.employer_phone || null,
+          employer_position: values.employer_position || null,
+          alternate_contact_1_name: values.alternate_contact_1_name || null,
+          alternate_contact_1_phone: values.alternate_contact_1_phone || null,
+          alternate_contact_2_name: values.alternate_contact_2_name || null,
+          alternate_contact_2_phone: values.alternate_contact_2_phone || null,
         },
       }),
     );
@@ -433,6 +483,17 @@ export default function ApplicationDetailPage() {
       validate: optional(validateStreet),
     },
     { key: "city", label: "City", value: profile?.city ?? "", validate: optional(validateCity) },
+    {
+      key: "date_of_birth",
+      label: "Date of birth",
+      // The API serializes this as a full ISO datetime; <input type="date">
+      // only accepts a bare "YYYY-MM-DD" and silently renders blank on
+      // anything else — same fix as the Admin > Customers edit modal.
+      value: profile?.date_of_birth ? profile.date_of_birth.slice(0, 10) : "",
+      type: "date",
+      max: isoDateDaysAgo(0),
+      validate: optional(validateDob),
+    },
     {
       key: "state",
       label: "State",
@@ -663,6 +724,43 @@ export default function ApplicationDetailPage() {
             title="Action required"
             description={openInfoRequest?.request_text ?? "Missing information. See the info requests below."}
           />
+          {can("application_review") && (
+            <div className="rounded-xl border border-neutral-200 bg-white p-5">
+              <p className="font-heading text-xs font-bold uppercase tracking-wide text-neutral-400">
+                Customer answered by phone, text, or email?
+              </p>
+              <p className="mt-1 text-xs text-neutral-500">Record their answer here to move this back to Waiting Review.</p>
+              <div className="mt-3 space-y-3">
+                <div>
+                  <textarea
+                    value={onBehalfReplyText}
+                    onChange={(e) => setOnBehalfReplyText(e.target.value)}
+                    rows={3}
+                    placeholder="What did the customer say? (optional if you're attaching a document below)..."
+                    aria-label="Customer's answer"
+                    className={`w-full rounded-md border bg-white px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none ${
+                      onBehalfReplyTextError ? "border-red-400 focus:border-red-500" : "border-neutral-200 focus:border-red-300"
+                    }`}
+                  />
+                  <div className="mt-1 flex items-start justify-between gap-2">
+                    {onBehalfReplyTextError ? <p className="text-xs text-red-600">{onBehalfReplyTextError}</p> : <span />}
+                    <p className={`shrink-0 text-xs ${onBehalfReplyText.length > NOTES_MAX ? "text-red-600" : "text-neutral-400"}`}>
+                      {onBehalfReplyText.length}/{NOTES_MAX}
+                    </p>
+                  </div>
+                </div>
+                <FileInput value={onBehalfDocument} onChange={setOnBehalfDocument} />
+                {onBehalfError && <p className="text-xs text-red-600">{onBehalfError}</p>}
+                <button
+                  onClick={recordCustomerReplyOnBehalf}
+                  disabled={!canRecordOnBehalf}
+                  className="font-heading rounded-md bg-neutral-800 px-4 py-2 text-xs font-bold text-white hover:bg-neutral-900 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {onBehalfSending ? "Recording…" : "Record Customer's Reply"}
+                </button>
+              </div>
+            </div>
+          )}
         </>
       )}
 

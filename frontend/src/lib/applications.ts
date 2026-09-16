@@ -292,7 +292,21 @@ export interface ApplicationUpdatePayload {
     city: string | null;
     state: string | null;
     zip: string | null;
+    date_of_birth: string | null;
     residence_type: string | null;
+    previous_address: string | null;
+    landlord_name: string | null;
+    landlord_phone: string | null;
+    monthly_rent: string | null;
+    mortgage_amount: string | null;
+    mortgage_years: string | null;
+    employer_name: string | null;
+    employer_phone: string | null;
+    employer_position: string | null;
+    alternate_contact_1_name: string | null;
+    alternate_contact_1_phone: string | null;
+    alternate_contact_2_name: string | null;
+    alternate_contact_2_phone: string | null;
   }>;
   risk?: Partial<{
     identity_verification_status: string;
@@ -361,4 +375,26 @@ export async function downloadInfoRequestDocument(
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Records a customer's answer to an open "needs info" request on their
+ * behalf — for when they replied by phone, text, or email instead of
+ * through the portal. needs_info deliberately has no forward edge through
+ * updateApplication(), so this is the only way an admin can move the
+ * application on without the customer using the link themselves.
+ */
+export async function respondToInfoRequestAsAdmin(
+  applicationId: number | string,
+  { replyText, file }: { replyText?: string; file?: File | null },
+): Promise<Application> {
+  const form = new FormData();
+  if (replyText) form.set("reply_text", replyText);
+  if (file) form.set("id_document", file);
+  const data = await apiFetch<{ data: Application }>(`/admin/applications/${applicationId}/info-requests/respond`, {
+    method: "POST",
+    token: getToken(),
+    body: form,
+  });
+  return data.data;
 }

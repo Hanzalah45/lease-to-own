@@ -138,6 +138,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/applications/{application}/id-document', [AdminApplicationController::class, 'idDocument']);
             Route::get('/applications/{application}/utility-bill', [AdminApplicationController::class, 'utilityBill']);
             Route::get('/applications/{application}/info-requests/{infoRequest}/document', [AdminApplicationController::class, 'infoRequestDocument']);
+            Route::post('/applications/{application}/info-requests/respond', [AdminApplicationController::class, 'respondToInfoRequestOnBehalf']);
             Route::post('/applications/{application}/dealer-notes', [DealerNoteController::class, 'store']);
             Route::apiResource('customers', AdminCustomerController::class);
         });

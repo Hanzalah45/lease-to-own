@@ -16,6 +16,7 @@ use App\Notifications\RequestContractSignatureNotification;
 use App\Services\ApplicationCreationService;
 use App\Services\ApplicationValidationRules;
 use App\Services\ContractSigner;
+use App\Services\InfoRequestResponder;
 use App\Services\LeaseEngine;
 use App\Services\RiskScoringService;
 use Illuminate\Http\Request;
@@ -118,7 +119,20 @@ class ApplicationController extends Controller
             'customer.city' => ['sometimes', 'nullable', 'string', 'max:50'],
             'customer.state' => ['sometimes', 'nullable', 'string', 'max:2'],
             'customer.zip' => ['sometimes', 'nullable', 'string', 'max:10'],
-            'customer.residence_type' => ['sometimes', 'nullable', Rule::in(['rent_apartment', 'own_single', 'own_multi', 'rent_house', 'other'])],
+            // Same bounds as ApplicationValidationRules' own date_of_birth
+            // rule at submission time — an admin correction shouldn't be
+            // looser than what the applicant themselves was held to.
+            'customer.date_of_birth' => ['sometimes', 'nullable', 'date', 'before_or_equal:today', 'after_or_equal:'.now()->subDays(365 * 120)->toDateString()],
+            // Real gap found 2026-09-16: this validated against the wizard's
+            // raw pre-mapping values, but customer_profiles.residence_type
+            // only ever stores RiskScoringService::mapResidenceType()'s
+            // coarser output (house/apartment/other — see
+            // ApplicationCreationService::upsertCustomerProfile). Every edit
+            // through this endpoint sends the mapped value (CUSTOMER_FIELDS'
+            // own select options), so the old rule rejected 2 of its 3
+            // options and blocked saving ANY customer field whenever
+            // residence_type held its default.
+            'customer.residence_type' => ['sometimes', 'nullable', Rule::in(['house', 'apartment', 'other'])],
             'customer.years_at_residence' => ['sometimes', 'nullable', 'string', 'max:10'],
             'customer.previous_address' => ['sometimes', 'nullable', 'string', 'max:100'],
             'customer.landlord_name' => ['sometimes', 'nullable', 'string', 'max:80'],
@@ -358,6 +372,31 @@ class ApplicationController extends Controller
         }
 
         return response()->json(['data' => $this->present($application->fresh())]);
+    }
+
+    /**
+     * Closes an open "needs info" request on the customer's behalf — real
+     * gap found live 2026-09-16: needs_info deliberately has no forward
+     * edge through the normal status update (an admin can't advance past a
+     * request they themselves opened until the customer replies), but a
+     * customer very often answers by phone, text, or email instead of
+     * through the portal, and there was no way for an admin to record that
+     * and move the application on. Reuses the exact same path a customer's
+     * own reply takes (InfoRequestResponder), so behavior stays identical
+     * either way — same status transition, same admin notification.
+     */
+    public function respondToInfoRequestOnBehalf(Request $request, Application $application)
+    {
+        abort_unless($application->status === Application::STATUS_NEEDS_INFO, 422, 'This application is not awaiting information.');
+
+        $data = $request->validate([
+            'reply_text' => ['required_without:id_document', 'nullable', 'string', 'max:1000'],
+            'id_document' => ['required_without:reply_text', 'nullable', 'file', 'mimes:jpg,jpeg,png,pdf', 'max:10240'],
+        ]);
+
+        $application = InfoRequestResponder::respond($application, $application->customer, $data['reply_text'] ?? null, $data['id_document'] ?? null);
+
+        return response()->json(['data' => $this->present($application)]);
     }
 
     public function destroy(Application $application)
