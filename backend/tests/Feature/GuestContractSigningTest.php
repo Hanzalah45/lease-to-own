@@ -178,4 +178,77 @@ class GuestContractSigningTest extends TestCase
 
         Notification::assertNotSentTo($customer, RequestContractSignatureNotification::class);
     }
+
+    /**
+     * Real gap found live 2026-09-16: nothing requires a lease to exist
+     * before an application reaches waiting_deposit, so an admin who
+     * advances an application first and attaches equipment/pricing
+     * afterward skipped the signing-link send above entirely — the
+     * customer was left with no way to sign, and the application got stuck
+     * (waiting_delivery requires a signed contract). Reproduces exactly
+     * that ordering, live on production application #5.
+     */
+    public function test_attaching_a_lease_after_the_application_already_reached_waiting_deposit_still_sends_the_signing_link(): void
+    {
+        Notification::fake();
+
+        $customer = User::factory()->create(['role' => User::ROLE_CUSTOMER, 'status' => 'pending']);
+        $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
+        $application = Application::factory()->create([
+            'customer_id' => $customer->id,
+            'status' => Application::STATUS_WAITING_REVIEW,
+        ]);
+
+        foreach ([Application::STATUS_WAITING_APPROVAL, Application::STATUS_IN_VERIFICATION, Application::STATUS_WAITING_DEPOSIT] as $status) {
+            $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", ['status' => $status])->assertOk();
+        }
+        Notification::assertNotSentTo($customer, RequestContractSignatureNotification::class);
+
+        $this->actingAs($admin, 'sanctum')->postJson("/api/admin/applications/{$application->id}/lease", [
+            'make' => 'Worldlawn',
+            'model' => 'Zero-Turn 52',
+            'cash_price' => 5000,
+            'term_months' => 36,
+            'monthly_rental' => 200,
+        ])->assertOk();
+
+        Notification::assertSentTo($customer, RequestContractSignatureNotification::class);
+    }
+
+    public function test_admin_can_manually_resend_the_signing_link(): void
+    {
+        Notification::fake();
+
+        $admin = User::factory()->create(['role' => User::ROLE_ADMIN]);
+        $lease = $this->guestLease();
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/admin/applications/{$lease->application_id}/resend-signing-link")
+            ->assertOk();
+
+        Notification::assertSentTo($lease->customer, RequestContractSignatureNotification::class);
+    }
+
+    public function test_resend_is_rejected_once_the_contract_is_signed(): void
+    {
+        $admin = User::factory()->create(['role' => User::ROLE_ADMIN]);
+        $lease = $this->guestLease();
+        Contract::factory()->create(['lease_agreement_id' => $lease->id, 'signer_user_id' => $lease->customer_id]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/admin/applications/{$lease->application_id}/resend-signing-link")
+            ->assertStatus(422);
+    }
+
+    public function test_resend_is_rejected_for_a_customer_with_a_real_account(): void
+    {
+        $admin = User::factory()->create(['role' => User::ROLE_ADMIN]);
+        $customer = User::factory()->create(['role' => User::ROLE_CUSTOMER, 'status' => 'active']);
+        $application = Application::factory()->create(['customer_id' => $customer->id, 'status' => Application::STATUS_WAITING_DEPOSIT]);
+        LeaseAgreement::factory()->create(['application_id' => $application->id, 'customer_id' => $customer->id]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->postJson("/api/admin/applications/{$application->id}/resend-signing-link")
+            ->assertStatus(422);
+    }
 }

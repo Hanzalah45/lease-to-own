@@ -135,6 +135,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware('permission:application_review')->group(function () {
             Route::apiResource('applications', AdminApplicationController::class);
             Route::post('/applications/{application}/lease', [AdminApplicationController::class, 'attachLease']);
+            Route::post('/applications/{application}/resend-signing-link', [AdminApplicationController::class, 'resendContractSigningLink']);
             Route::get('/applications/{application}/id-document', [AdminApplicationController::class, 'idDocument']);
             Route::get('/applications/{application}/utility-bill', [AdminApplicationController::class, 'utilityBill']);
             Route::get('/applications/{application}/info-requests/{infoRequest}/document', [AdminApplicationController::class, 'infoRequestDocument']);

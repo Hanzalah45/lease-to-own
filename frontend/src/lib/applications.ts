@@ -378,6 +378,20 @@ export async function downloadInfoRequestDocument(
 }
 
 /**
+ * Manually resends the guest signing-link email — a safety net for when the
+ * automatic send at the waiting_deposit transition was skipped (e.g. the
+ * lease was attached after the application already advanced) or simply
+ * never reached the customer's inbox.
+ */
+export async function resendContractSigningLink(applicationId: number | string): Promise<Application> {
+  const data = await apiFetch<{ data: Application }>(`/admin/applications/${applicationId}/resend-signing-link`, {
+    method: "POST",
+    token: getToken(),
+  });
+  return data.data;
+}
+
+/**
  * Records a customer's answer to an open "needs info" request on their
  * behalf — for when they replied by phone, text, or email instead of
  * through the portal. needs_info deliberately has no forward edge through

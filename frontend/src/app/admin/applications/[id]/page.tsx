@@ -27,6 +27,7 @@ import {
   downloadUtilityBill,
   getApplication,
   requestBankVerification,
+  resendContractSigningLink,
   resolveRiskRedFlag,
   respondToInfoRequestAsAdmin,
   runBackgroundCheck,
@@ -275,6 +276,24 @@ export default function ApplicationDetailPage() {
       setOnBehalfError(err instanceof ApiError ? err.message : "Could not record this response.");
     } finally {
       setOnBehalfSending(false);
+    }
+  }
+
+  const [resendingSigningLink, setResendingSigningLink] = useState(false);
+  const [resendSigningLinkError, setResendSigningLinkError] = useState<string | null>(null);
+  const [resendSigningLinkSent, setResendSigningLinkSent] = useState(false);
+
+  async function resendSigningLink() {
+    if (!application) return;
+    setResendingSigningLink(true);
+    setResendSigningLinkError(null);
+    try {
+      setApplication(await resendContractSigningLink(application.id));
+      setResendSigningLinkSent(true);
+    } catch (err) {
+      setResendSigningLinkError(err instanceof ApiError ? err.message : "Could not resend the signing link.");
+    } finally {
+      setResendingSigningLink(false);
     }
   }
 
@@ -825,6 +844,21 @@ export default function ApplicationDetailPage() {
             noPermission={!can("application_review")}
           />
           <InfoCallout tone="blue" icon={CheckCircleIcon} title="Verified: next step" description="Application passed verification. Payment schedule generated." items={["Contract ready to send for signature", "Security deposit not yet collected"]} />
+          {application.customer?.status === "pending" && !lease?.contract && can("application_review") && (
+            <div className="rounded-xl border border-neutral-200 bg-white p-5">
+              <p className="font-heading text-xs font-bold uppercase tracking-wide text-neutral-400">Customer says they never got the signing email?</p>
+              <p className="mt-1 text-xs text-neutral-500">Resend the same signed link they&rsquo;d get automatically — safe to click as many times as needed.</p>
+              {resendSigningLinkSent && <p className="mt-2 text-xs font-semibold text-green-700">Signing link resent.</p>}
+              {resendSigningLinkError && <p className="mt-2 text-xs text-red-600">{resendSigningLinkError}</p>}
+              <button
+                onClick={resendSigningLink}
+                disabled={resendingSigningLink}
+                className="font-heading mt-3 rounded-md bg-neutral-800 px-4 py-2 text-xs font-bold text-white hover:bg-neutral-900 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {resendingSigningLink ? "Sending…" : "Resend Signing Link"}
+              </button>
+            </div>
+          )}
         </>
       )}
 

@@ -85,7 +85,49 @@ class ApplicationController extends Controller
     {
         $data = $request->validate(ApplicationValidationRules::equipmentAndLease());
 
-        ApplicationCreationService::attachLease($application, $data, Auth::id());
+        $application = ApplicationCreationService::attachLease($application, $data, Auth::id());
+        $lease = $application->leaseAgreement;
+
+        // Real gap found live 2026-09-16: nothing requires a lease to exist
+        // before an application reaches waiting_deposit, so an admin who
+        // attaches equipment/pricing out of order (after already advancing
+        // the application) skipped the one-time signing-link send in
+        // update()'s WAITING_DEPOSIT block entirely — the customer never got
+        // a way to sign, and the application silently got stuck there since
+        // waiting_delivery requires a signed contract. Covers that case here
+        // too, the same guest-only way update() does.
+        if ($application->status === Application::STATUS_WAITING_DEPOSIT
+            && $application->customer->status === 'pending'
+            && ! $lease->contract()->exists()) {
+            try {
+                $application->customer->notify(
+                    new RequestContractSignatureNotification(ContractSigner::urlFor($application->customer, $lease)),
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return response()->json(['data' => $this->present($application->fresh())]);
+    }
+
+    /**
+     * Manually resends the guest signing-link email — a safety net for when
+     * the automatic send at the waiting_deposit transition was skipped (e.g.
+     * the lease was attached out of order — see attachLease()) or simply
+     * never reached the customer's inbox.
+     */
+    public function resendContractSigningLink(Application $application)
+    {
+        abort_unless($application->status === Application::STATUS_WAITING_DEPOSIT, 422, 'This application is not waiting on a signature yet.');
+        $lease = $application->leaseAgreement;
+        abort_unless($lease, 422, 'This application has no lease agreement yet.');
+        abort_if($lease->contract()->exists(), 422, 'This lease agreement has already been signed.');
+        abort_unless($application->customer->status === 'pending', 422, 'This customer has a portal login and can sign in directly.');
+
+        $application->customer->notify(
+            new RequestContractSignatureNotification(ContractSigner::urlFor($application->customer, $lease)),
+        );
 
         return response()->json(['data' => $this->present($application->fresh())]);
     }
