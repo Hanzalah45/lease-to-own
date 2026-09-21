@@ -53,6 +53,18 @@ export async function updateCustomer(id: number, payload: Partial<CustomerPayloa
   return data.data;
 }
 
+/**
+ * Resends the "Set up your account" link to a guest customer who has made their
+ * first payment but never set a password (or whose 14-day link expired).
+ */
+export async function resendAccountSetup(id: number): Promise<string> {
+  const data = await apiFetch<{ message: string }>(`/admin/customers/${id}/resend-account-setup`, {
+    method: "POST",
+    token: getToken(),
+  });
+  return data.message;
+}
+
 export async function deleteCustomer(id: number): Promise<void> {
   await apiFetch<void>(`/admin/customers/${id}`, {
     method: "DELETE",

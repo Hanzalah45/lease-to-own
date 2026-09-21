@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Payment;
 use App\Models\User;
 use App\Notifications\AccountSecurityUpdatedNotification;
+use App\Notifications\ActivateAccountNotification;
+use App\Services\AccountSetupSigner;
 use App\Services\CommonValidationRules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -139,6 +142,31 @@ class CustomerController extends Controller
         $customer->delete();
 
         return response()->json(null, 204);
+    }
+
+    /**
+     * Resends the "Set up your account" link. Real gap found 2026-09-21: it
+     * is only ever sent once, when the first payment lands, and it expires
+     * after 14 days — and there was no other way in for a guest customer,
+     * since "Forgot password" only changes the password without activating
+     * the account, so they'd still be told to verify their email at login.
+     * Mirrors the rule that starts setup in the first place: only a guest
+     * (still pending) who has actually made a first payment.
+     */
+    public function resendAccountSetup(User $customer)
+    {
+        $this->assertIsCustomer($customer);
+
+        abort_unless($customer->status === 'pending', 422, 'This customer has already set up their account.');
+        abort_unless(
+            $customer->leaseAgreements()->whereHas('payments', fn ($q) => $q->where('status', Payment::STATUS_PAID))->exists(),
+            422,
+            'Account setup opens once the customer\'s first payment is recorded.',
+        );
+
+        $customer->notify(new ActivateAccountNotification(AccountSetupSigner::urlFor($customer)));
+
+        return response()->json(['message' => "Account setup link sent to {$customer->email}."]);
     }
 
     /**

@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { deleteCustomer, listCustomers } from "@/lib/customers";
+import { deleteCustomer, listCustomers, resendAccountSetup } from "@/lib/customers";
 import { ApiError } from "@/lib/api";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeroHeader } from "@/components/layout/PageHeroHeader";
 import { EditCustomerModal } from "@/components/customers/EditCustomerModal";
-import { PencilIcon, PlusIcon, SearchIcon, TrashIcon } from "@/components/icons";
+import { PencilIcon, PlusIcon, RefreshCwIcon, SearchIcon, TrashIcon } from "@/components/icons";
 import type { AuthUser } from "@/types/auth";
 
 function pct(value: number, total: number): number {
@@ -28,6 +28,21 @@ export default function AdminCustomersPage() {
   const [editing, setEditing] = useState<AuthUser | null>(null);
   const [creating, setCreating] = useState(false);
   const [deletingCustomer, setDeletingCustomer] = useState<AuthUser | null>(null);
+  const [resendingId, setResendingId] = useState<number | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function handleResendSetup(customer: AuthUser) {
+    setResendingId(customer.id);
+    setNotice(null);
+    setError(null);
+    try {
+      setNotice(await resendAccountSetup(customer.id));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not resend the setup link.");
+    } finally {
+      setResendingId(null);
+    }
+  }
 
   useEffect(() => {
     if (!canReview) return;
@@ -154,6 +169,7 @@ export default function AdminCustomersPage() {
         </div>
 
         {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+        {notice && <p className="mb-4 text-sm font-semibold text-green-700">{notice}</p>}
 
         {loading ? (
           <p className="py-6 text-sm text-neutral-500">Loading…</p>
@@ -210,6 +226,17 @@ export default function AdminCustomersPage() {
                           >
                             <PencilIcon className="h-4 w-4" />
                           </button>
+                          {customer.status === "pending" && (
+                            <button
+                              onClick={() => handleResendSetup(customer)}
+                              disabled={resendingId === customer.id}
+                              title="Resend account setup link"
+                              aria-label={`Resend account setup link to ${customer.name}`}
+                              className="rounded p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <RefreshCwIcon className={`h-4 w-4 ${resendingId === customer.id ? "animate-spin" : ""}`} />
+                            </button>
+                          )}
                           {canReview && (
                             <button
                               onClick={() => setDeletingCustomer(customer)}

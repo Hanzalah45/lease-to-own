@@ -141,6 +141,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/applications/{application}/info-requests/{infoRequest}/document', [AdminApplicationController::class, 'infoRequestDocument']);
             Route::post('/applications/{application}/info-requests/respond', [AdminApplicationController::class, 'respondToInfoRequestOnBehalf']);
             Route::post('/applications/{application}/dealer-notes', [DealerNoteController::class, 'store']);
+            Route::post('/customers/{customer}/resend-account-setup', [AdminCustomerController::class, 'resendAccountSetup']);
             Route::apiResource('customers', AdminCustomerController::class);
         });
 
