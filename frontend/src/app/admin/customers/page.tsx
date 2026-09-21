@@ -165,6 +165,7 @@ export default function AdminCustomersPage() {
                   <th className="pb-2 font-medium">Customer</th>
                   <th className="pb-2 font-medium">Email</th>
                   <th className="pb-2 font-medium">Joined</th>
+                  <th className="pb-2 font-medium">Account</th>
                   <th className="pb-2 font-medium">Status</th>
                   <th className="pb-2 font-medium">Actions</th>
                 </tr>
@@ -178,6 +179,21 @@ export default function AdminCustomersPage() {
                       <td className="py-3 text-neutral-500">{customer.email}</td>
                       <td className="py-3 text-neutral-500">
                         {customer.created_at ? new Date(customer.created_at).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="py-3">
+                        {/* "Joined" is when the record was created, which for a guest applicant is the day they applied,
+                            not the day they set a password. This is the column that says whether they actually did. */}
+                        <span
+                          title={customer.status === "pending" ? "Hasn't used the account-setup link yet" : undefined}
+                          className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-neutral-700"
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              customer.status === "active" ? "bg-green-500" : customer.status === "suspended" ? "bg-red-500" : "bg-amber-500"
+                            }`}
+                          />
+                          {customer.status === "active" ? "Active" : customer.status === "suspended" ? "Suspended" : "Not set up yet"}
+                        </span>
                       </td>
                       <td className="py-3">
                         <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-neutral-700">
@@ -210,7 +226,7 @@ export default function AdminCustomersPage() {
                 })}
                 {filteredCustomers.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-6 text-center text-sm text-neutral-400">
+                    <td colSpan={6} className="py-6 text-center text-sm text-neutral-400">
                       No customers match this search.
                     </td>
                   </tr>

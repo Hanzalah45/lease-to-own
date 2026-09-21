@@ -88,6 +88,18 @@ class ApplicationController extends Controller
         $application = ApplicationCreationService::attachLease($application, $data, Auth::id());
         $lease = $application->leaseAgreement;
 
+        // Same out-of-order gap, second half (found 2026-09-21 on production
+        // application #5, which reached "finished" with zero payments): the
+        // schedule is otherwise only generated at the waiting_deposit
+        // transition itself, which a late-attached lease already missed.
+        if (in_array($application->status, [
+            Application::STATUS_WAITING_DEPOSIT,
+            Application::STATUS_WAITING_DELIVERY,
+            Application::STATUS_FINISHED,
+        ], true)) {
+            LeaseEngine::generatePaymentSchedule($lease);
+        }
+
         // Real gap found live 2026-09-16: nothing requires a lease to exist
         // before an application reaches waiting_deposit, so an admin who
         // attaches equipment/pricing out of order (after already advancing
@@ -319,6 +331,14 @@ class ApplicationController extends Controller
                             'expected_return_or_ownership_date' => now()->addMonthsNoOverflow($lease->term_months)->toDateString(),
                         ]);
                     }
+
+                    // Idempotent no-op when the schedule already exists. Without
+                    // it, a lease with no schedule (attached out of order, see
+                    // attachLease()) made markFirstPaymentPaid() silently find
+                    // nothing: application "finished" with zero payments, no
+                    // admin notification, and the guest's account-setup email
+                    // never sent.
+                    LeaseEngine::generatePaymentSchedule($lease);
 
                     $payment = LeaseEngine::markFirstPaymentPaid($lease, Auth::id());
                     if ($payment) {
