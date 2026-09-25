@@ -36,6 +36,7 @@ class EquipmentUnitController extends Controller
         $units = EquipmentUnit::query()
             ->with(['currentLease.customer:id,name,email', 'updatedBy:id,name'])
             ->withCount('serviceRecords')
+            ->releasedToFleet()
             ->when($filters['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($filters['search'] ?? null, fn ($q, $search) => $q->search($search))
             ->when($request->boolean('assignable'), fn ($q) => $q->whereIn('status', EquipmentUnit::ASSIGNABLE_STATUSES))
@@ -257,6 +258,7 @@ class EquipmentUnitController extends Controller
     private function statusCounts(): array
     {
         $counts = EquipmentUnit::query()
+            ->releasedToFleet()
             ->selectRaw('status, count(*) as total')
             ->groupBy('status')
             ->pluck('total', 'status');

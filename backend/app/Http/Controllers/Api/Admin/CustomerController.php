@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Application;
+use App\Models\ApplicationInfoRequest;
 use App\Models\Payment;
 use App\Models\User;
 use App\Notifications\AccountSecurityUpdatedNotification;
 use App\Notifications\ActivateAccountNotification;
 use App\Services\AccountSetupSigner;
 use App\Services\CommonValidationRules;
+use App\Services\LeaseEngine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -68,13 +71,58 @@ class CustomerController extends Controller
         return response()->json(['data' => $customer->load('customerProfile')], 201);
     }
 
+    /**
+     * Real gap found live 2026-09-25 (call with Joel): this only ever
+     * returned bare application/lease rows with counts shown on the page —
+     * to actually see a customer's ID, bill, lease terms, or contract, an
+     * admin had to leave here, find the matching application in the
+     * Applications list, and open it there. Now eager-loads and presents
+     * each application the same way Admin\ApplicationController::show()
+     * does, so the customer page is a real one-stop lookup instead of a
+     * detour back through Applications.
+     */
     public function show(User $customer)
     {
         $this->assertIsCustomer($customer);
 
-        return response()->json([
-            'data' => $customer->load(['customerProfile.updatedBy:id,name', 'applications', 'leaseAgreements', 'riskProfile']),
+        $customer->load([
+            'customerProfile.updatedBy:id,name',
+            'applications' => fn ($query) => $query->latest(),
+            'applications.createdBy:id,name',
+            'applications.reviewedBy:id,name',
+            'applications.leaseAgreement.equipmentUnit' => fn ($query) => $query->withCount('serviceRecords'),
+            'applications.leaseAgreement.contract',
+            'applications.leaseAgreement.payments',
+            'applications.infoRequests.requestedBy:id,name',
+            'riskProfile.redFlags.resolvedBy:id,name',
+            'riskProfile.updatedBy:id,name',
         ]);
+
+        $payload = $customer->toArray();
+        $payload['applications'] = $customer->applications->map(function (Application $application) {
+            $data = $application->toArray();
+
+            $data['info_requests'] = $application->infoRequests->map(fn (ApplicationInfoRequest $r) => [
+                'id' => $r->id,
+                'requested_by' => $r->requestedBy?->name,
+                'request_text' => $r->request_text,
+                'requested_at' => $r->created_at,
+                'reply_text' => $r->reply_text,
+                'reply_has_document' => (bool) $r->reply_document_path,
+                'replied_at' => $r->replied_at,
+            ])->values();
+
+            if ($lease = $application->leaseAgreement) {
+                $data['lease_agreement']['sales_tax_amount'] = $lease->salesTaxAmount();
+                $data['lease_agreement']['total_monthly_payment'] = $lease->totalMonthlyPayment();
+                $data['lease_agreement']['payments_made'] = $lease->paymentsMadeCount();
+                $data['lease_agreement']['epo_today'] = LeaseEngine::epoToday($lease);
+            }
+
+            return $data;
+        })->values();
+
+        return response()->json(['data' => $payload]);
     }
 
     public function update(Request $request, User $customer)

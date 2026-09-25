@@ -26,7 +26,7 @@ const STATUS_STYLE: Record<ApplicationStatus, { color: string; label: string }> 
 };
 
 const FILTERS: { key: "all" | ApplicationStatus; label: string }[] = [
-  { key: "all", label: "All" },
+  { key: "all", label: "Active" },
   { key: "needs_info", label: "Needs Info" },
   { key: "waiting_approval", label: "Waiting Approval" },
   { key: "in_verification", label: "In Verification" },
@@ -78,8 +78,19 @@ export default function AdminApplicationsPage() {
   // Every hook must run above this line, in the same order, on every render —
   // an early return placed between hook calls throws "Rendered fewer hooks
   // than expected" the moment canReview flips (Rules of Hooks).
+  //
+  // Real gap found live 2026-09-25 (call with Joel): a finished application
+  // just accumulates here forever, even though everything worth looking up
+  // afterward (ID, contract, payments) lives on the customer's account page
+  // now — "All" is meant to be the active work queue, so it excludes
+  // finished the same way it always excluded declined/withdrawn from view
+  // by default. The "Finished" chip still opens it explicitly, nothing is
+  // hidden for good.
+  const activeRows = useMemo(() => rows.filter((row) => row.status !== "finished"), [rows]);
+
   const filtered = useMemo(() => {
-    return rows.filter((row) => {
+    const base = activeFilter === "all" ? activeRows : rows;
+    return base.filter((row) => {
       const matchesFilter = activeFilter === "all" || row.status === activeFilter;
       const q = search.trim().toLowerCase();
       const detail = row.lease_agreement?.equipment_unit?.model ?? "";
@@ -87,7 +98,7 @@ export default function AdminApplicationsPage() {
         !q || (row.customer?.name ?? "").toLowerCase().includes(q) || detail.toLowerCase().includes(q);
       return matchesFilter && matchesSearch;
     });
-  }, [rows, activeFilter, search]);
+  }, [rows, activeRows, activeFilter, search]);
 
   if (!canReview) {
     return (
@@ -170,7 +181,7 @@ export default function AdminApplicationsPage() {
 
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => {
-          const count = f.key === "all" ? rows.length : rows.filter((r) => r.status === f.key).length;
+          const count = f.key === "all" ? activeRows.length : rows.filter((r) => r.status === f.key).length;
           return (
             <button
               key={f.key}

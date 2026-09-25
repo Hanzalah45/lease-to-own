@@ -2,12 +2,13 @@ import { apiFetch } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import type { Application } from "@/types/application";
 import type { AuthUser } from "@/types/auth";
-import type { LeaseAgreement } from "@/types/lease-agreement";
 import type { RiskProfile } from "@/types/risk-profile";
 
 export interface CustomerDetail extends AuthUser {
+  // Each entry carries its own lease_agreement (with equipment, contract,
+  // payments) and info_requests — the same shape the application detail
+  // page renders, so this page can show it inline without a second fetch.
   applications?: Application[];
-  lease_agreements?: LeaseAgreement[];
   risk_profile?: RiskProfile | null;
 }
 

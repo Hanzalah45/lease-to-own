@@ -14,8 +14,11 @@ class EquipmentUnit extends Model
     use HasFactory;
 
     public const STATUS_IN_STOCK = 'in_stock';
+
     public const STATUS_LEASED = 'leased';
+
     public const STATUS_RETURNED = 'returned';
+
     public const STATUS_OWNED_BY_CUSTOMER = 'owned_by_customer';
 
     /** Every status a unit can hold — drives validation and the admin filter bar. */
@@ -90,6 +93,25 @@ class EquipmentUnit extends Model
     public function isAssignable(): bool
     {
         return in_array($this->status, self::ASSIGNABLE_STATUSES, true);
+    }
+
+    /**
+     * Excludes a unit that's only "leased" because an admin attached
+     * equipment/pricing to an application that's still in progress —
+     * ApplicationCreationService::buildEquipmentAndLease creates the row with
+     * status=leased immediately, before there's a real customer commitment,
+     * and delivery_date only gets set once the unit is actually handed over
+     * (the "Mark Delivered & Paid" transition, or a manual Assign from
+     * stock, which always stamps a date). Real gap found live 2026-09-25:
+     * Joel saw mowers still tied to a not-yet-approved application show up
+     * in Equipment Tracking as if they'd already gone out the door.
+     */
+    public function scopeReleasedToFleet(Builder $query): Builder
+    {
+        return $query->where(function (Builder $q) {
+            $q->where('status', '!=', self::STATUS_LEASED)
+                ->orWhereNotNull('delivery_date');
+        });
     }
 
     /** Serial-number-first lookup: serial is the primary identifier, model and VIN are fallbacks. */

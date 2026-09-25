@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { deleteCustomer, listCustomers, resendAccountSetup } from "@/lib/customers";
@@ -191,7 +192,11 @@ export default function AdminCustomersPage() {
                   const isDeclined = customer.status === "suspended";
                   return (
                     <tr key={customer.id} className="border-b border-neutral-100 last:border-0">
-                      <td className="py-3 font-medium text-neutral-900">{customer.name}</td>
+                      <td className="py-3 font-medium">
+                        <Link href={`/admin/customers/${customer.id}`} className="text-neutral-900 hover:text-red-600 hover:underline">
+                          {customer.name}
+                        </Link>
+                      </td>
                       <td className="py-3 text-neutral-500">{customer.email}</td>
                       <td className="py-3 text-neutral-500">
                         {customer.created_at ? new Date(customer.created_at).toLocaleDateString() : "—"}

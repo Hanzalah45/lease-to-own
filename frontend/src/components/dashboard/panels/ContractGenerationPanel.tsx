@@ -45,9 +45,11 @@ export function ContractGenerationPanel() {
   const totalSigned = leases.filter((l) => l.contract);
   const total = leases.length;
 
-  const rows = [...awaiting, ...totalSigned]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 6);
+  // Real gap found live 2026-09-25 (call with Joel): this padded out to 6
+  // rows with already-signed contracts whenever fewer than 6 were awaiting —
+  // he wants this panel to be just the waiting-on-signature queue; a signed
+  // contract's details belong on the customer's account page instead.
+  const rows = [...awaiting].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 6);
 
   const columns: DataTableColumn<LeaseAgreement>[] = [
     {
@@ -84,7 +86,7 @@ export function ContractGenerationPanel() {
         <MetricCard value={signedThisWeek.length} label="Signed this week" barColor="#16A34A" barPercent={pct(signedThisWeek.length, total)} />
         <MetricCard value={totalSigned.length} label="Total signed on file" barColor="#171717" barPercent={pct(totalSigned.length, total)} />
       </div>
-      <DataTable title="Contracts pending generation / signature" columns={columns} rows={rows} emptyLabel="No lease agreements yet." />
+      <DataTable title="Contracts awaiting signature" columns={columns} rows={rows} emptyLabel="Nothing waiting on a signature." />
     </div>
   );
 }
