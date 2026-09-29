@@ -667,7 +667,9 @@ export default function ApplicationDetailPage() {
         </div>
       )}
 
-      {status !== "declined" && status !== "withdrawn" && <StatusPipeline status={status} />}
+      {status !== "declined" && status !== "withdrawn" && (
+        <StatusPipeline status={status} preNeedsInfoStatus={application.pre_needs_info_status} />
+      )}
 
       <InfoRequestTimeline
         requests={application.info_requests ?? []}
@@ -732,7 +734,9 @@ export default function ApplicationDetailPage() {
         <>
           <TakeActionBanner
             title="Waiting on the customer"
-            description="Approval is unavailable until they reply. This moves to Waiting Review on its own once they respond. You can still decline."
+            description={`Approval is unavailable until they reply. This moves back to ${
+              BADGE_STYLE[application.pre_needs_info_status ?? "waiting_review"].label
+            } on its own once they respond. You can still decline.`}
             onDecline={() => setShowDeclineConfirm(true)}
             disabled={!can("application_review") || acting}
             noPermission={!can("application_review")}
@@ -748,7 +752,9 @@ export default function ApplicationDetailPage() {
               <p className="font-heading text-xs font-bold uppercase tracking-wide text-neutral-400">
                 Customer answered by phone, text, or email?
               </p>
-              <p className="mt-1 text-xs text-neutral-500">Record their answer here to move this back to Waiting Review.</p>
+              <p className="mt-1 text-xs text-neutral-500">
+                Record their answer here to move this back to {BADGE_STYLE[application.pre_needs_info_status ?? "waiting_review"].label}.
+              </p>
               <div className="mt-3 space-y-3">
                 <div>
                   <textarea

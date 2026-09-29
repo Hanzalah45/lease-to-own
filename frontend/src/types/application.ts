@@ -37,6 +37,8 @@ export interface Application {
   id: number;
   customer_id: number;
   status: ApplicationStatus;
+  /** Only set while status is needs_info — which stage to return to once the request is answered. */
+  pre_needs_info_status: ApplicationStatus | null;
   status_notes: string | null;
   signature_received: boolean;
   deposit_received: boolean;

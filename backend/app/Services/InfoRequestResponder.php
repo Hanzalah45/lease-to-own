@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\Notification;
  * signed-link (PublicInfoRequestController) reply endpoints so a guest
  * customer answering before they have a working login behaves identically to
  * one answering from their portal — reply text, an attached document, or
- * both moves the application back to waiting_review and notifies reviewers.
+ * both moves the application back to wherever it was paused (see
+ * pre_needs_info_status) and notifies reviewers.
  */
 class InfoRequestResponder
 {
@@ -41,7 +42,18 @@ class InfoRequestResponder
             'reply_document_path' => $replyDocumentPath,
         ]);
 
-        $application->update(['status' => Application::STATUS_WAITING_REVIEW]);
+        // Real gap found live 2026-09-30: needs_info can now open from
+        // waiting_approval as well as waiting_review, but this used to
+        // always send an answered request back to waiting_review —
+        // silently undoing real progress (e.g. an approval call already
+        // done) whenever the request had been opened from a later stage.
+        // pre_needs_info_status is null for any application that entered
+        // needs_info before this existed, so waiting_review remains the
+        // correct fallback for that in-flight data.
+        $application->update([
+            'status' => $application->pre_needs_info_status ?? Application::STATUS_WAITING_REVIEW,
+            'pre_needs_info_status' => null,
+        ]);
 
         $recipients = User::where('role', User::ROLE_SUPER_ADMIN)
             ->orWhere(function ($query) {

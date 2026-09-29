@@ -10,8 +10,15 @@ const STEPS = [
   { key: "finished", label: "Finished", icon: CheckCircleIcon },
 ] as const;
 
-export function StatusPipeline({ status }: { status: AppStatus }) {
-  const effective = status === "needs_info" ? "waiting_review" : status;
+export function StatusPipeline({
+  status,
+  preNeedsInfoStatus,
+}: {
+  status: AppStatus;
+  /** Which stage a needs_info request was opened from — see Application.pre_needs_info_status on the backend. */
+  preNeedsInfoStatus?: AppStatus | null;
+}) {
+  const effective = status === "needs_info" ? (preNeedsInfoStatus ?? "waiting_review") : status;
   const activeIndex = STEPS.findIndex((s) => s.key === effective);
 
   return (

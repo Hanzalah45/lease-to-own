@@ -19,13 +19,21 @@ class Application extends Model
     // as a side-branch off the review stage; declined/withdrawn are unchanged
     // end states.
     public const STATUS_WAITING_REVIEW = 'waiting_review';
+
     public const STATUS_NEEDS_INFO = 'needs_info';
+
     public const STATUS_WAITING_APPROVAL = 'waiting_approval';
+
     public const STATUS_IN_VERIFICATION = 'in_verification';
+
     public const STATUS_WAITING_DEPOSIT = 'waiting_deposit';
+
     public const STATUS_WAITING_DELIVERY = 'waiting_delivery';
+
     public const STATUS_FINISHED = 'finished';
+
     public const STATUS_DECLINED = 'declined';
+
     public const STATUS_WITHDRAWN = 'withdrawn';
 
     public const ALL_STATUSES = [
@@ -51,11 +59,17 @@ class Application extends Model
      */
     public const LEGAL_STATUS_TRANSITIONS = [
         self::STATUS_WAITING_REVIEW => [self::STATUS_WAITING_APPROVAL, self::STATUS_NEEDS_INFO, self::STATUS_DECLINED],
-        self::STATUS_NEEDS_INFO => [self::STATUS_WAITING_REVIEW, self::STATUS_DECLINED],
+        // Real gap found live 2026-09-30 (Joel, application #9): the
+        // "Request Info" button has always been shown on waiting_approval
+        // too (an admin can easily realize mid-call that a document is
+        // missing), but this map never allowed the transition — every click
+        // was rejected. needs_info's own return destination isn't hardcoded
+        // here; see pre_needs_info_status / InfoRequestResponder.
+        self::STATUS_NEEDS_INFO => [self::STATUS_WAITING_REVIEW, self::STATUS_WAITING_APPROVAL, self::STATUS_DECLINED],
         // The phone call: customer agrees to price/term/deposit before any
         // verification is triggered (client was explicit this must not be
         // automatic — see RiskProfileController's manual trigger actions).
-        self::STATUS_WAITING_APPROVAL => [self::STATUS_IN_VERIFICATION, self::STATUS_DECLINED],
+        self::STATUS_WAITING_APPROVAL => [self::STATUS_IN_VERIFICATION, self::STATUS_NEEDS_INFO, self::STATUS_DECLINED],
         self::STATUS_IN_VERIFICATION => [self::STATUS_WAITING_DEPOSIT, self::STATUS_DECLINED],
         self::STATUS_WAITING_DEPOSIT => [self::STATUS_WAITING_DELIVERY, self::STATUS_DECLINED],
         self::STATUS_WAITING_DELIVERY => [self::STATUS_FINISHED, self::STATUS_DECLINED],
@@ -68,6 +82,10 @@ class Application extends Model
         'customer_id',
         'created_by',
         'status',
+        // Set only while status is needs_info — where to return the
+        // application once the request is answered, since it can now open
+        // from more than one stage (see InfoRequestResponder).
+        'pre_needs_info_status',
         'status_notes',
         'signature_received',
         'deposit_received',

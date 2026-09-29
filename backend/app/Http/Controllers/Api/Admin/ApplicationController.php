@@ -243,6 +243,12 @@ class ApplicationController extends Controller
                 // (see below) — status_notes stays reserved for every other
                 // status change (decline reasons, etc.).
                 'status_notes' => $isNeedsInfo ? $application->status_notes : ($data['status_notes'] ?? $application->status_notes),
+                // Remembers where to return once the request is answered —
+                // needs_info can now open from more than one stage (real gap
+                // found live 2026-09-30). $application->status here is still
+                // the pre-update value; cleared once InfoRequestResponder
+                // actually uses it.
+                'pre_needs_info_status' => $isNeedsInfo ? $application->status : $application->pre_needs_info_status,
                 'reviewed_by' => Auth::id(),
                 // A manual decline (any reason — this is distinct from the
                 // automatic deposits:forfeit-expired-holds job, which never
