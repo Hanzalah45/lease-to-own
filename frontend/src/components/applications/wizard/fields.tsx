@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { CheckCircleIcon, UploadIcon, XIcon } from "@/components/icons";
+import { compressImageIfNeeded } from "@/lib/image-compression";
 
 const inputBaseClass =
   "w-full rounded-md border px-3 py-2.5 text-sm transition-colors focus:outline-none";
@@ -152,10 +153,34 @@ export function FileInput({
 } & A11yProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [compressing, setCompressing] = useState(false);
 
-  function pick(files: FileList | null) {
+  async function pick(files: FileList | null) {
     const file = files?.[0];
-    if (file) onChange(file);
+    if (!file) return;
+    // Large phone-camera photos routinely pushed guest applications over the
+    // server's request-size limit — real gap found live 2026-09-30. Shrinking
+    // oversized images client-side (never touches PDFs, and falls back to the
+    // original on any failure) fixes that at the source instead of just
+    // raising the ceiling for the next oversized photo to hit.
+    setCompressing(true);
+    try {
+      onChange(await compressImageIfNeeded(file));
+    } finally {
+      setCompressing(false);
+    }
+  }
+
+  if (compressing) {
+    return (
+      <div
+        id={id}
+        {...a11y}
+        className="flex items-center gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-500"
+      >
+        Preparing file…
+      </div>
+    );
   }
 
   if (value) {
