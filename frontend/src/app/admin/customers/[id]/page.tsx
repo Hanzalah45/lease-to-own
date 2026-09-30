@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getCustomer, type CustomerDetail } from "@/lib/customers";
 import { downloadIdDocument, downloadInfoRequestDocument, downloadUtilityBill } from "@/lib/applications";
+import { adminClearPaymentMethod } from "@/lib/payment-methods";
 import { ApiError } from "@/lib/api";
 import { SectionHeading } from "@/components/dashboard/SectionHeading";
 import { DetailCard } from "@/components/applications/detail/DetailCard";
@@ -12,6 +13,7 @@ import { StatusTag } from "@/components/dashboard/StatusTag";
 import { InfoRequestTimeline } from "@/components/applications/detail/InfoRequestTimeline";
 import { money } from "@/components/applications/wizard/types";
 import type { Application, ApplicationStatus } from "@/types/application";
+import type { LeaseAgreement } from "@/types/lease-agreement";
 
 const RESIDENCE_LABEL: Record<string, string> = { house: "House", apartment: "Apartment", other: "Other" };
 const VERIFICATION_LABEL: Record<string, string> = { pending: "Pending", verified: "Verified", failed: "Failed" };
@@ -211,10 +213,82 @@ function ApplicationBlock({ application }: { application: Application }) {
         </div>
       )}
 
+      {lease && <PaymentMethodsCard lease={lease} />}
+
       <InfoRequestTimeline
         requests={application.info_requests ?? []}
         onDownloadDocument={(infoRequestId) => downloadInfoRequestDocument(application.id, infoRequestId, `application-${application.id}-id-r${infoRequestId}`)}
       />
     </div>
+  );
+}
+
+const PRIMARY_METHOD_LABEL: Record<string, string> = { ach: "Bank account", card: "Card" };
+
+/** AutoPay payment methods (client, 2026-10-01) — lets an admin see what's on file and clear either one so the customer gets a fresh link to re-add it (e.g. an expired card or a closed bank account). */
+function PaymentMethodsCard({ lease }: { lease: LeaseAgreement }) {
+  const [bankAdded, setBankAdded] = useState(!!lease.stripe_bank_payment_method_id);
+  const [cardAdded, setCardAdded] = useState(!!lease.stripe_card_payment_method_id);
+  const [primaryMethod, setPrimaryMethod] = useState(lease.autopay_primary_method);
+  const [clearing, setClearing] = useState<"bank" | "card" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function clear(type: "bank" | "card") {
+    setError(null);
+    setClearing(type);
+    try {
+      const status = await adminClearPaymentMethod(lease.id, type);
+      setBankAdded(status.bank_account_added);
+      setCardAdded(status.card_added);
+      setPrimaryMethod(status.autopay_primary_method);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not clear that payment method.");
+    } finally {
+      setClearing(null);
+    }
+  }
+
+  return (
+    <DetailCard
+      title="AutoPay payment methods"
+      rows={[
+        {
+          label: "Bank account",
+          value: bankAdded ? (
+            <button
+              onClick={() => clear("bank")}
+              disabled={clearing === "bank"}
+              className="text-red-600 hover:underline disabled:opacity-50"
+            >
+              {clearing === "bank" ? "Clearing…" : "Added — Clear →"}
+            </button>
+          ) : (
+            "Not added"
+          ),
+        },
+        {
+          label: "Card",
+          value: cardAdded ? (
+            <button
+              onClick={() => clear("card")}
+              disabled={clearing === "card"}
+              className="text-red-600 hover:underline disabled:opacity-50"
+            >
+              {clearing === "card" ? "Clearing…" : "Added — Clear →"}
+            </button>
+          ) : (
+            "Not added"
+          ),
+        },
+        { label: "Customer's chosen primary", value: primaryMethod ? PRIMARY_METHOD_LABEL[primaryMethod] : "Not chosen yet" },
+        ...(lease.payment_methods_override_by
+          ? [{
+              label: "Deposit requirement overridden",
+              value: `By ${lease.payment_methods_override_by.name}${lease.payment_methods_override_at ? ` on ${new Date(lease.payment_methods_override_at).toLocaleDateString()}` : ""}`,
+            }]
+          : []),
+      ]}
+      note={error ? <span className="text-red-600">{error}</span> : "Clearing a method sends the customer a fresh link to re-add it."}
+    />
   );
 }

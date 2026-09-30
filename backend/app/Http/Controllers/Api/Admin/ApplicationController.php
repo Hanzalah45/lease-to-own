@@ -11,6 +11,7 @@ use App\Models\RiskProfile;
 use App\Models\User;
 use App\Notifications\ApplicationInfoRequestedNotification;
 use App\Notifications\ApplicationStatusChangedNotification;
+use App\Notifications\PaymentMethodsRequestedNotification;
 use App\Notifications\PaymentStatusChangedNotification;
 use App\Notifications\RequestContractSignatureNotification;
 use App\Services\ApplicationCreationService;
@@ -18,6 +19,7 @@ use App\Services\ApplicationValidationRules;
 use App\Services\ContractSigner;
 use App\Services\InfoRequestResponder;
 use App\Services\LeaseEngine;
+use App\Services\PaymentMethodSigner;
 use App\Services\RiskScoringService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -153,6 +155,12 @@ class ApplicationController extends Controller
             'status_notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'signature_received' => ['sometimes', 'boolean'],
             'deposit_received' => ['sometimes', 'boolean'],
+            // AutoPay payment methods (client, 2026-10-01): lets an admin
+            // move a lease to waiting_delivery even though the customer
+            // hasn't added both a bank account and a card yet — see the
+            // check below. Deliberately narrow: this bypasses only that one
+            // check, not the signed-contract requirement above it.
+            'override_payment_methods_check' => ['sometimes', 'boolean'],
             'lease' => ['sometimes', 'array'],
             // Only 12/24/36 have a defined monthly-payment divisor (see
             // ApplicationValidationRules::equipmentAndLease / the official
@@ -231,6 +239,25 @@ class ApplicationController extends Controller
                     422,
                     'Cannot mark this ready for delivery until the lease contract is signed.',
                 );
+
+                // AutoPay requires both a bank account and a card on file
+                // (client, 2026-10-01) — required by default, but unlike the
+                // contract check above, an admin can explicitly override it
+                // (e.g. a customer who can't complete Stripe setup yet)
+                // rather than getting permanently stuck. The override is
+                // audited on the lease itself, not just accepted silently.
+                if (! ($data['override_payment_methods_check'] ?? false)) {
+                    abort_unless(
+                        $application->leaseAgreement?->hasBothAutopayMethods(),
+                        422,
+                        'Cannot mark this ready for delivery until both a bank account and a card are added for AutoPay.',
+                    );
+                } elseif (! $application->leaseAgreement?->hasBothAutopayMethods()) {
+                    $application->leaseAgreement?->update([
+                        'payment_methods_override_by' => Auth::id(),
+                        'payment_methods_override_at' => now(),
+                    ]);
+                }
             }
         }
 
@@ -298,6 +325,9 @@ class ApplicationController extends Controller
                     try {
                         $application->customer->notify(
                             new RequestContractSignatureNotification(ContractSigner::urlFor($application->customer, $lease)),
+                        );
+                        $application->customer->notify(
+                            new PaymentMethodsRequestedNotification(PaymentMethodSigner::urlFor($application->customer, $lease)),
                         );
                     } catch (\Throwable $e) {
                         report($e);
@@ -510,6 +540,7 @@ class ApplicationController extends Controller
             'customer.riskProfile.updatedBy:id,name',
             'reviewedBy:id,name',
             'leaseAgreement.updatedBy:id,name',
+            'leaseAgreement.paymentMethodsOverrideBy:id,name',
             'leaseAgreement.equipmentUnit' => fn ($query) => $query->withCount('serviceRecords'),
             'leaseAgreement.equipmentUnit.updatedBy:id,name',
             'leaseAgreement.payments',

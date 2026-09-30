@@ -33,7 +33,11 @@ class LeaseAgreement extends Model
         'renewal_date',
         'payment_due_day',
         'autopay_enabled',
-        'stripe_payment_method_id',
+        'stripe_bank_payment_method_id',
+        'stripe_card_payment_method_id',
+        'autopay_primary_method',
+        'payment_methods_override_by',
+        'payment_methods_override_at',
         'monthly_rental_payment',
         'sales_tax_rate',
         'security_deposit',
@@ -65,6 +69,7 @@ class LeaseAgreement extends Model
             'ldw_amount' => 'decimal:2',
             'promo_discount' => 'decimal:2',
             'autopay_enabled' => 'boolean',
+            'payment_methods_override_at' => 'datetime',
         ];
     }
 
@@ -86,6 +91,17 @@ class LeaseAgreement extends Model
     public function updatedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    public function paymentMethodsOverrideBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'payment_methods_override_by');
+    }
+
+    /** Both a bank account and a card must be on file before AutoPay has anything to fall back on. */
+    public function hasBothAutopayMethods(): bool
+    {
+        return (bool) $this->stripe_bank_payment_method_id && (bool) $this->stripe_card_payment_method_id;
     }
 
     /** The currently active signature, if any — a voided one never counts, which is what clears the way to sign again. */

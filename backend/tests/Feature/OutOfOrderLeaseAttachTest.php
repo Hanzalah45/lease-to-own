@@ -83,8 +83,10 @@ class OutOfOrderLeaseAttachTest extends TestCase
 
         $this->signViaGuestLink($application);
 
+        // Not under test here (AutoPay payment methods are covered by
+        // AutopayPaymentMethodsTest).
         foreach ([Application::STATUS_WAITING_DELIVERY, Application::STATUS_FINISHED] as $status) {
-            $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", ['status' => $status])->assertOk();
+            $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", ['status' => $status, 'override_payment_methods_check' => true])->assertOk();
         }
 
         $lease = LeaseAgreement::where('application_id', $application->id)->firstOrFail();
@@ -113,8 +115,10 @@ class OutOfOrderLeaseAttachTest extends TestCase
         $lease->payments()->delete();
         $this->assertSame(0, $lease->payments()->count());
 
+        // Not under test here (AutoPay payment methods are covered by
+        // AutopayPaymentMethodsTest).
         foreach ([Application::STATUS_WAITING_DELIVERY, Application::STATUS_FINISHED] as $status) {
-            $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", ['status' => $status])->assertOk();
+            $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", ['status' => $status, 'override_payment_methods_check' => true])->assertOk();
         }
 
         $this->assertSame(36, $lease->payments()->count());

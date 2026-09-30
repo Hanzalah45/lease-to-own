@@ -171,16 +171,31 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  async function advance() {
+  const [showPaymentMethodsOverrideConfirm, setShowPaymentMethodsOverrideConfirm] = useState(false);
+
+  async function advance(overridePaymentMethodsCheck?: boolean) {
     if (!application) return;
     const next = FLOW[application.status];
     if (!next) return;
     setActing(true);
     setActionError(null);
     try {
-      setApplication(await updateApplication(application.id, { status: next }));
+      setApplication(
+        await updateApplication(application.id, {
+          status: next,
+          ...(overridePaymentMethodsCheck ? { override_payment_methods_check: true } : {}),
+        }),
+      );
+      setShowPaymentMethodsOverrideConfirm(false);
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Could not update this application.");
+      const message = err instanceof ApiError ? err.message : "Could not update this application.";
+      // Recoverable, unlike every other status-transition guard — offer the
+      // override instead of just showing the dead-end error banner.
+      if (!overridePaymentMethodsCheck && next === "waiting_delivery" && message.includes("AutoPay")) {
+        setShowPaymentMethodsOverrideConfirm(true);
+      } else {
+        setActionError(message);
+      }
     } finally {
       setActing(false);
     }
@@ -701,7 +716,7 @@ export default function ApplicationDetailPage() {
         <>
           <TakeActionBanner
             primaryLabel={PRIMARY_LABEL.waiting_review!}
-            onPrimary={advance}
+            onPrimary={() => advance()}
             onDecline={() => setShowDeclineConfirm(true)}
             onRequestInfo={() => setShowRequestInfoConfirm(true)}
             disabled={!can("application_review") || acting}
@@ -715,7 +730,7 @@ export default function ApplicationDetailPage() {
         <>
           <TakeActionBanner
             primaryLabel={PRIMARY_LABEL.waiting_approval!}
-            onPrimary={advance}
+            onPrimary={() => advance()}
             onDecline={() => setShowDeclineConfirm(true)}
             onRequestInfo={() => setShowRequestInfoConfirm(true)}
             disabled={!can("application_review") || acting}
@@ -793,7 +808,7 @@ export default function ApplicationDetailPage() {
         <>
           <TakeActionBanner
             primaryLabel={PRIMARY_LABEL.in_verification!}
-            onPrimary={advance}
+            onPrimary={() => advance()}
             onDecline={() => setShowDeclineConfirm(true)}
             disabled={!can("application_review") || acting}
             noPermission={!can("application_review")}
@@ -844,7 +859,7 @@ export default function ApplicationDetailPage() {
         <>
           <TakeActionBanner
             primaryLabel={PRIMARY_LABEL.waiting_deposit!}
-            onPrimary={advance}
+            onPrimary={() => advance()}
             onDecline={() => setShowDeclineConfirm(true)}
             disabled={!can("application_review") || acting}
             noPermission={!can("application_review")}
@@ -872,7 +887,7 @@ export default function ApplicationDetailPage() {
         <>
           <TakeActionBanner
             primaryLabel={PRIMARY_LABEL.waiting_delivery!}
-            onPrimary={advance}
+            onPrimary={() => advance()}
             onDecline={() => setShowDeclineConfirm(true)}
             disabled={!can("application_review") || acting}
             noPermission={!can("application_review")}
@@ -1217,6 +1232,37 @@ export default function ApplicationDetailPage() {
                 className="font-heading rounded-md bg-red-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {acting ? "Declining…" : "Decline"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showPaymentMethodsOverrideConfirm && (
+        <Modal
+          title="AutoPay payment methods missing"
+          onClose={() => setShowPaymentMethodsOverrideConfirm(false)}
+          maxWidthClassName="max-w-sm"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-600">
+              This customer hasn&rsquo;t added both a bank account and a card for AutoPay yet. You can still mark
+              the deposit received — this will be recorded as an override on the lease.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowPaymentMethodsOverrideConfirm(false)}
+                disabled={acting}
+                className="font-heading rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => advance(true)}
+                disabled={acting}
+                className="font-heading rounded-md bg-red-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {acting ? "Marking…" : "Mark deposit received anyway"}
               </button>
             </div>
           </div>

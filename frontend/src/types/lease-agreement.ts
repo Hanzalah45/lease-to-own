@@ -72,6 +72,12 @@ export interface LeaseAgreement {
   ldw_amount: string | null;
   promo_code: string | null;
   promo_discount: string | null;
+  /** AutoPay (client, 2026-10-01) — set via /customer/lease-agreements/{id}/payment-methods. */
+  stripe_bank_payment_method_id: string | null;
+  stripe_card_payment_method_id: string | null;
+  autopay_primary_method: "ach" | "card" | null;
+  payment_methods_override_by?: { id: number; name: string } | null;
+  payment_methods_override_at: string | null;
   created_at: string;
   updated_at: string;
   updated_by?: { id: number; name: string } | null;

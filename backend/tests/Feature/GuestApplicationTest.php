@@ -8,6 +8,7 @@ use App\Models\Payment;
 use App\Models\User;
 use App\Notifications\ActivateAccountNotification;
 use App\Notifications\PaymentStatusChangedNotification;
+use App\Services\ContractSigner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
@@ -273,14 +274,17 @@ class GuestApplicationTest extends TestCase
         // found and fixed this session) — sign via the guest signed link,
         // same as a real guest customer would (no usable password yet).
         $lease = LeaseAgreement::where('application_id', $application->id)->first();
-        $signUrl = \App\Services\ContractSigner::urlFor($customer, $lease);
+        $signUrl = ContractSigner::urlFor($customer, $lease);
         parse_str(parse_url($signUrl, PHP_URL_QUERY), $signParams);
         $this->postJson('/api/contracts/verify-sign', [...$signParams, 'signer_name' => 'Guest Applicant'])
             ->assertCreated();
 
+        // Not under test here (AutoPay payment methods are covered by
+        // AutopayPaymentMethodsTest) — override_payment_methods_check is a
+        // no-op for the FINISHED transition.
         foreach ([Application::STATUS_WAITING_DELIVERY, Application::STATUS_FINISHED] as $status) {
             $this->actingAs($admin, 'sanctum')
-                ->putJson("/api/admin/applications/{$application->id}", ['status' => $status])
+                ->putJson("/api/admin/applications/{$application->id}", ['status' => $status, 'override_payment_methods_check' => true])
                 ->assertOk();
         }
 

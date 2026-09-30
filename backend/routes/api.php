@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\Admin\EquipmentServiceRecordController;
 use App\Http\Controllers\Api\Admin\EquipmentUnitController as AdminEquipmentUnitController;
 use App\Http\Controllers\Api\Admin\LeaseAgreementController as AdminLeaseAgreementController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
+use App\Http\Controllers\Api\Admin\PaymentMethodController as AdminPaymentMethodController;
 use App\Http\Controllers\Api\Admin\QuickbooksConnectionController;
 use App\Http\Controllers\Api\Admin\RiskProfileController;
 use App\Http\Controllers\Api\Auth\AccountSetupController;
@@ -27,12 +28,14 @@ use App\Http\Controllers\Api\Customer\EquipmentController as CustomerEquipmentCo
 use App\Http\Controllers\Api\Customer\LeaseAgreementController;
 use App\Http\Controllers\Api\Customer\NotificationPreferencesController;
 use App\Http\Controllers\Api\Customer\PaymentController;
+use App\Http\Controllers\Api\Customer\PaymentMethodController;
 use App\Http\Controllers\Api\Customer\PlaidController;
 use App\Http\Controllers\Api\GuestApplicationController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\PublicContractController;
 use App\Http\Controllers\Api\PublicInfoRequestController;
+use App\Http\Controllers\Api\PublicPaymentMethodController;
 use App\Http\Controllers\Api\PublicPlaidVerificationController;
 use App\Http\Controllers\Api\QuickbooksOAuthCallbackController;
 use App\Http\Controllers\Api\StripeWebhookController;
@@ -79,6 +82,14 @@ Route::post('/plaid/verify-exchange', [PublicPlaidVerificationController::class,
 Route::post('/contracts/verify-lease', [PublicContractController::class, 'show'])->middleware('throttle:10,1');
 Route::post('/contracts/verify-sign', [PublicContractController::class, 'store'])->middleware('throttle:10,1');
 
+// Signed-link AutoPay payment-method setup (client, 2026-10-01): same
+// guest-no-login gap as the contract-signing routes above. See
+// PaymentMethodSigner / PaymentMethodsRequestedNotification.
+Route::post('/payment-methods/verify-show', [PublicPaymentMethodController::class, 'show'])->middleware('throttle:10,1');
+Route::post('/payment-methods/verify-setup-intent', [PublicPaymentMethodController::class, 'setupIntent'])->middleware('throttle:10,1');
+Route::post('/payment-methods/verify-confirm', [PublicPaymentMethodController::class, 'confirm'])->middleware('throttle:10,1');
+Route::post('/payment-methods/verify-primary', [PublicPaymentMethodController::class, 'setPrimary'])->middleware('throttle:10,1');
+
 // Signed-link info-request responses (2026-09-16 fix): a guest-originated
 // customer has no working login yet, so Customer\ApplicationController's
 // authenticated respondToInfoRequest() is unreachable for them — this exists
@@ -122,6 +133,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('lease-agreements', LeaseAgreementController::class)
             ->only(['index', 'show'])
             ->parameters(['lease-agreements' => 'leaseAgreement']);
+        Route::get('/lease-agreements/{leaseAgreement}/payment-methods', [PaymentMethodController::class, 'show']);
+        Route::post('/lease-agreements/{leaseAgreement}/payment-methods/setup-intent', [PaymentMethodController::class, 'setupIntent']);
+        Route::post('/lease-agreements/{leaseAgreement}/payment-methods/confirm', [PaymentMethodController::class, 'confirm']);
+        Route::post('/lease-agreements/{leaseAgreement}/payment-methods/primary', [PaymentMethodController::class, 'setPrimary']);
         Route::apiResource('contracts', ContractController::class)->only(['index', 'show', 'store']);
         Route::get('/contracts/{contract}/download', [ContractController::class, 'download']);
         Route::apiResource('payments', PaymentController::class)->only(['index', 'show']);
@@ -153,6 +168,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::apiResource('applications', AdminApplicationController::class);
             Route::post('/applications/{application}/lease', [AdminApplicationController::class, 'attachLease']);
             Route::post('/applications/{application}/resend-signing-link', [AdminApplicationController::class, 'resendContractSigningLink']);
+            Route::post('/lease-agreements/{leaseAgreement}/payment-methods/clear', [AdminPaymentMethodController::class, 'clear']);
             Route::get('/applications/{application}/id-document', [AdminApplicationController::class, 'idDocument']);
             Route::get('/applications/{application}/utility-bill', [AdminApplicationController::class, 'utilityBill']);
             Route::get('/applications/{application}/info-requests/{infoRequest}/document', [AdminApplicationController::class, 'infoRequestDocument']);

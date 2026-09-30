@@ -277,6 +277,8 @@ export interface ApplicationUpdatePayload {
   status_notes?: string | null;
   signature_received?: boolean;
   deposit_received?: boolean;
+  /** Bypasses the AutoPay bank-account-and-card requirement on the waiting_deposit → waiting_delivery transition — see Admin\ApplicationController::update(). */
+  override_payment_methods_check?: boolean;
   lease?: Partial<{
     term_months: number;
     monthly_rental_payment: number;

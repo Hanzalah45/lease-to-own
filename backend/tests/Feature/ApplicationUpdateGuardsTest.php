@@ -90,6 +90,9 @@ class ApplicationUpdateGuardsTest extends TestCase
 
         $response = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", [
             'status' => Application::STATUS_WAITING_DELIVERY,
+            // Not under test here — AutoPay payment methods are covered by
+            // AutopayPaymentMethodsTest.
+            'override_payment_methods_check' => true,
         ]);
 
         $response->assertOk();

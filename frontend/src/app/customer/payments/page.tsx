@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { money } from "@/components/applications/wizard/types";
 import { listMyPayments } from "@/lib/payments";
 import { ApiError } from "@/lib/api";
@@ -42,6 +43,11 @@ export default function CustomerPaymentsPage() {
     [payments],
   );
 
+  // AutoPay setup is per-lease — most customers only ever have one, so the
+  // soonest pending payment's lease (falling back to the most recent payment
+  // at all) is a reasonable single lease to manage it for from this page.
+  const autopayLeaseId = (nextPayment ?? payments[0])?.lease_agreement_id;
+
   return (
     <div className="space-y-6">
       <div
@@ -72,14 +78,24 @@ export default function CustomerPaymentsPage() {
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
+          {autopayLeaseId ? (
+            <Link
+              href={`/customer/leases/${autopayLeaseId}/autopay`}
+              className="font-heading rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
+            >
+              Manage Autopay
+            </Link>
+          ) : (
+            <button
+              disabled
+              title="No lease on file yet"
+              className="font-heading cursor-not-allowed rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-bold text-neutral-400"
+            >
+              Manage Autopay
+            </button>
+          )}
           <button
-            title="Live payment processing (Stripe/QuickBooks) ships once accounting integration (Milestone 7) is wired up"
-            className="font-heading rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
-          >
-            Manage Autopay
-          </button>
-          <button
-            title="Live payment processing (Stripe/QuickBooks) ships once accounting integration (Milestone 7) is wired up"
+            title="Manual one-off payments ship once accounting integration (Milestone 7) is wired up"
             className="font-heading rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
           >
             Make a Payment

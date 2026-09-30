@@ -121,6 +121,12 @@ class RiskScoringService
             'plaid_item_id' => $itemId,
             'plaid_access_token' => $accessToken,
             'bank_verified_at' => now(),
+            // Persisted (not just returned in the API response) so the bank
+            // account linked later at deposit time, via Stripe, can be
+            // compared against this one and flagged on a mismatch — see
+            // StripePaymentMethodService::flagBankAccountMismatchIfNeeded().
+            'plaid_verified_bank_name' => $accounts[0]['name'] ?? null,
+            'plaid_verified_bank_mask' => $accounts[0]['mask'] ?? null,
         ]);
 
         if ($isReconnectToDifferentAccount) {
@@ -137,7 +143,7 @@ class RiskScoringService
         $latestMonthlyRental = $customer->leaseAgreements()->latest()->value('monthly_rental_payment');
         self::evaluate($customer, $latestMonthlyRental ? (float) $latestMonthlyRental : null);
 
-        $customer->notify(new BankVerifiedNotification());
+        $customer->notify(new BankVerifiedNotification);
 
         return [
             'verified_at' => $profile->bank_verified_at,
