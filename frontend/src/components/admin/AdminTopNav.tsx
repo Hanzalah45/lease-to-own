@@ -17,6 +17,7 @@ import {
   CreditCardIcon,
   DocumentIcon,
   HomeIcon,
+  KeyIcon,
   LogOutIcon,
   MenuIcon,
   SettingsIcon,
@@ -42,6 +43,9 @@ const CONTRACTS_ITEM = { label: "Contracts", href: "/admin/contracts", icon: Che
 
 // Managing admin accounts is super_admin only.
 const SUPER_ADMIN_ONLY_ITEM = { label: "Admin Accounts", href: "/admin/admin-users", icon: SettingsIcon };
+
+// Company-wide integrations (QuickBooks, etc.) — super_admin only, same as admin accounts.
+const SETTINGS_ITEM = { label: "Settings", href: "/admin/settings", icon: KeyIcon };
 
 export function AdminTopNav() {
   const pathname = usePathname();
@@ -78,7 +82,7 @@ export function AdminTopNav() {
     ...(canSeeContracts ? [CONTRACTS_ITEM] : []),
     ...(canSeeEquipment ? [EQUIPMENT_ITEM] : []),
     ...(canSeePayments ? [PAYMENTS_ITEM] : []),
-    ...(isSuperAdmin ? [SUPER_ADMIN_ONLY_ITEM] : []),
+    ...(isSuperAdmin ? [SUPER_ADMIN_ONLY_ITEM, SETTINGS_ITEM] : []),
   ];
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 

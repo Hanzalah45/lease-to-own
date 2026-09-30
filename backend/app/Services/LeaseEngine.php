@@ -2,10 +2,15 @@
 
 namespace App\Services;
 
+use App\Models\AdminPermission;
 use App\Models\LeaseAgreement;
 use App\Models\Payment;
+use App\Models\RiskRedFlag;
+use App\Models\User;
 use App\Notifications\ActivateAccountNotification;
+use App\Notifications\PaymentStatusChangedNotification;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Notification;
 
 /**
  * Milestone 2 — Lease & Ownership Engine. Mirrors the signed contract's
@@ -210,6 +215,76 @@ class LeaseEngine
         self::syncPaymentsPaidToDate($lease);
 
         return $payment;
+    }
+
+    /**
+     * Applies a payment status change with every side effect that has to
+     * follow it — risk flagging on a failure, staff/customer notifications,
+     * paid-to-date sync, and guest account activation on a first payment —
+     * regardless of whether the change was made by an admin
+     * (Admin\PaymentController::update()) or arrived automatically from a
+     * payment processor webhook (StripeWebhookController). $recordedBy is
+     * null for the latter, since no admin performed the action.
+     */
+    public static function applyPaymentStatusChange(Payment $payment, string $status, ?string $method, ?int $recordedBy): Payment
+    {
+        $wasFailed = $payment->status === Payment::STATUS_FAILED;
+        $wasPaid = $payment->status === Payment::STATUS_PAID;
+
+        $payment->update([
+            'status' => $status,
+            'method' => $method ?? $payment->method,
+            'paid_date' => $status === Payment::STATUS_PAID ? now()->toDateString() : $payment->paid_date,
+            'recorded_by' => $recordedBy ?? $payment->recorded_by,
+        ]);
+
+        if ($status === Payment::STATUS_FAILED && ! $wasFailed) {
+            RiskRedFlagger::flag(
+                $payment->leaseAgreement->customer_id,
+                RiskRedFlag::TYPE_FAILED_ACH,
+                sprintf(
+                    '%s payment of $%s (due %s) was marked failed.',
+                    $payment->method ? strtoupper($payment->method) : 'A',
+                    number_format((float) $payment->amount, 2),
+                    $payment->due_date?->toDateString() ?? 'unknown date',
+                ),
+                $payment,
+            );
+        }
+
+        // Staff are notified on both a failure and a successful payment landing —
+        // only on the transition into that status, not on every re-save.
+        $enteredFailed = $status === Payment::STATUS_FAILED && ! $wasFailed;
+        $enteredPaid = $status === Payment::STATUS_PAID && ! $wasPaid;
+        if ($enteredFailed || $enteredPaid) {
+            $recipients = User::where('role', User::ROLE_SUPER_ADMIN)
+                ->orWhere(function ($query) {
+                    $query->where('role', User::ROLE_ADMIN)
+                        ->where(function ($inner) {
+                            $inner->whereDoesntHave('adminPermissions')
+                                ->orWhereHas('adminPermissions', fn ($p) => $p->where('permission', AdminPermission::PAYMENT_TRACKING));
+                        });
+                })->get();
+            Notification::send($recipients, new PaymentStatusChangedNotification($payment));
+        }
+
+        self::syncPaymentsPaidToDate($payment->leaseAgreement);
+
+        // Pickup/first-payment account setup (client, 2026-09-04) — see
+        // activateGuestAccountIfFirstPayment() below, also used by the
+        // "Mark Delivered & Paid" path (ApplicationController::update()).
+        if ($enteredPaid) {
+            self::activateGuestAccountIfFirstPayment($payment->leaseAgreement);
+        }
+
+        if (in_array($status, [Payment::STATUS_PAID, Payment::STATUS_FAILED, Payment::STATUS_REFUNDED], true)) {
+            $customer = $payment->leaseAgreement->customer;
+            if ($customer->customerProfile?->payment_reminder_emails ?? true) {
+                $customer->notify(new PaymentStatusChangedNotification($payment));
+            }
+        }
+
+        return $payment->fresh();
     }
 
     /**

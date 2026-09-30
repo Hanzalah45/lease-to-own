@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\Admin\EquipmentServiceRecordController;
 use App\Http\Controllers\Api\Admin\EquipmentUnitController as AdminEquipmentUnitController;
 use App\Http\Controllers\Api\Admin\LeaseAgreementController as AdminLeaseAgreementController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
+use App\Http\Controllers\Api\Admin\QuickbooksConnectionController;
 use App\Http\Controllers\Api\Admin\RiskProfileController;
 use App\Http\Controllers\Api\Auth\AccountSetupController;
 use App\Http\Controllers\Api\Auth\ForgotPasswordController;
@@ -33,6 +34,8 @@ use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\PublicContractController;
 use App\Http\Controllers\Api\PublicInfoRequestController;
 use App\Http\Controllers\Api\PublicPlaidVerificationController;
+use App\Http\Controllers\Api\QuickbooksOAuthCallbackController;
+use App\Http\Controllers\Api\StripeWebhookController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -84,6 +87,16 @@ Route::post('/contracts/verify-sign', [PublicContractController::class, 'store']
 Route::post('/info-requests/verify', [PublicInfoRequestController::class, 'show'])->middleware('throttle:10,1');
 Route::post('/info-requests/verify-respond', [PublicInfoRequestController::class, 'store'])->middleware('throttle:10,1');
 
+// Stripe's own server calls this directly — never a logged-in user, so it
+// can't sit behind auth:sanctum. Signature verification (against
+// STRIPE_WEBHOOK_SECRET) inside the controller is what proves a request
+// actually came from Stripe. See StripeWebhookController.
+Route::post('/webhooks/stripe', [StripeWebhookController::class, 'handle'])->middleware('throttle:60,1');
+
+// Intuit redirects the admin's browser here after the consent screen — see
+// QuickbooksOAuthCallbackController for why this can't be auth:sanctum.
+Route::get('/quickbooks/callback', QuickbooksOAuthCallbackController::class)->middleware('throttle:20,1');
+
 /*
 |--------------------------------------------------------------------------
 | Authenticated routes, split by role
@@ -130,6 +143,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware('role:super_admin')->group(function () {
             Route::apiResource('admin-users', AdminUserController::class)
                 ->parameters(['admin-users' => 'adminUser']);
+
+            Route::get('/quickbooks/status', [QuickbooksConnectionController::class, 'status']);
+            Route::post('/quickbooks/connect', [QuickbooksConnectionController::class, 'connect']);
+            Route::delete('/quickbooks/disconnect', [QuickbooksConnectionController::class, 'disconnect']);
         });
 
         Route::middleware('permission:application_review')->group(function () {

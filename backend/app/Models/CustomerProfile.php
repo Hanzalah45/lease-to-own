@@ -45,6 +45,7 @@ class CustomerProfile extends Model
         'plaid_item_id',
         'plaid_access_token',
         'bank_verified_at',
+        'stripe_customer_id',
         'payment_reminder_emails',
         'status_change_emails',
         'updated_by',

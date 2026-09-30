@@ -13,6 +13,7 @@ class LeaseAgreement extends Model
     use HasFactory;
 
     public const OWNERSHIP_LEASING = 'leasing';
+
     public const OWNERSHIP_OWNED = 'owned';
 
     /**
@@ -32,6 +33,7 @@ class LeaseAgreement extends Model
         'renewal_date',
         'payment_due_day',
         'autopay_enabled',
+        'stripe_payment_method_id',
         'monthly_rental_payment',
         'sales_tax_rate',
         'security_deposit',

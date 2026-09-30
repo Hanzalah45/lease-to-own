@@ -41,4 +41,24 @@ return [
         'env' => env('PLAID_ENV', 'sandbox'),
     ],
 
+    // Nothing here is ever committed with a real value — see .env.example.
+    // Build and test everything against STRIPE_MODE=test (Stripe's test-mode
+    // keys, e.g. pk_test_.../sk_test_...) until the full flow is verified;
+    // only then does production get switched to live keys.
+    'stripe' => [
+        'key' => env('STRIPE_KEY'),
+        'secret' => env('STRIPE_SECRET'),
+        'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
+    ],
+
+    // OAuth client registered under the developer's own Intuit account — this
+    // is what Joel authorizes against once the connection UI exists, not a
+    // credential of his own.
+    'quickbooks' => [
+        'client_id' => env('QUICKBOOKS_CLIENT_ID'),
+        'client_secret' => env('QUICKBOOKS_CLIENT_SECRET'),
+        'env' => env('QUICKBOOKS_ENV', 'sandbox'),
+        'redirect_uri' => env('QUICKBOOKS_REDIRECT_URI'),
+    ],
+
 ];
