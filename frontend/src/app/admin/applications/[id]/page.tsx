@@ -1140,6 +1140,28 @@ export default function ApplicationDetailPage() {
             onToggle={(i) => toggleChecklistField(i === 0 ? "deposit_received" : "signature_received")}
             disabled={togglingChecklist}
           />
+          {(() => {
+            const depositPayment = lease?.payments?.find((p) => p.type === "deposit");
+            if (!depositPayment) return null;
+            return (
+              <p className="-mt-3 text-xs text-neutral-500">
+                {depositPayment.status === "paid" ? (
+                  <span className="font-medium text-green-700">
+                    Charged via Stripe — {money(Number(depositPayment.amount))} on{" "}
+                    {depositPayment.paid_date ? new Date(depositPayment.paid_date).toLocaleDateString() : "—"}
+                  </span>
+                ) : depositPayment.status === "failed" ? (
+                  <span className="font-medium text-red-600">
+                    Stripe charge declined — {money(Number(depositPayment.amount))}. Don&rsquo;t mark received twice if you also collect this manually.
+                  </span>
+                ) : (
+                  <span className="font-medium text-amber-700">
+                    Stripe charge processing — {money(Number(depositPayment.amount))}
+                  </span>
+                )}
+              </p>
+            );
+          })()}
           {application.deposit_forfeited_at ? (
             <p className="-mt-3 text-xs text-red-600">
               Deposit forfeited {new Date(application.deposit_forfeited_at).toLocaleDateString()} — unit not picked up in time.

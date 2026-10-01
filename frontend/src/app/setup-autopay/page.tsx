@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { AutopaySetupCard } from "@/components/payment-methods/AutopaySetupCard";
+import { DepositPaymentCard } from "@/components/payment-methods/DepositPaymentCard";
 import { ApiError } from "@/lib/api";
 import {
   confirmSignedPaymentMethod,
@@ -14,6 +15,11 @@ import {
   type PaymentMethodsStatus,
   type SignedPaymentMethodLinkParams,
 } from "@/lib/payment-methods";
+import {
+  chargeSignedDepositPayment,
+  getSignedDepositPaymentStatus,
+  type DepositPaymentStatus,
+} from "@/lib/deposit-payment";
 
 /**
  * Public counterpart to the customer portal's AutoPay setup step — reached
@@ -45,6 +51,7 @@ function SetupAutopayFlow() {
     : null;
 
   const [status, setStatus] = useState<PaymentMethodsStatus | null>(null);
+  const [depositStatus, setDepositStatus] = useState<DepositPaymentStatus | null>(null);
   // Held separately from `status` — it never changes after the initial load,
   // while `status` gets replaced wholesale by each confirm()/setPrimary()
   // response (which doesn't carry these two fields back).
@@ -55,11 +62,12 @@ function SetupAutopayFlow() {
 
   useEffect(() => {
     if (!params) return;
-    getSignedPaymentMethodsStatus(params)
-      .then((data) => {
-        setStatus(data);
-        setCustomerName(data.customer_name);
-        setCustomerEmail(data.customer_email);
+    Promise.all([getSignedPaymentMethodsStatus(params), getSignedDepositPaymentStatus(params)])
+      .then(([methodsData, deposit]) => {
+        setStatus(methodsData);
+        setCustomerName(methodsData.customer_name);
+        setCustomerEmail(methodsData.customer_email);
+        setDepositStatus(deposit);
       })
       .catch((err) => setLoadError(err instanceof ApiError ? err.message : "This link is invalid or has expired."))
       .finally(() => setLoading(false));
@@ -68,6 +76,7 @@ function SetupAutopayFlow() {
   }, []);
 
   const bothAdded = status?.bank_account_added && status?.card_added;
+  const atLeastOneMethodAdded = status?.bank_account_added || status?.card_added;
 
   return (
     <main
@@ -115,6 +124,15 @@ function SetupAutopayFlow() {
               <p className="text-center text-sm font-semibold text-green-700">
                 You&rsquo;re all set — AutoPay is ready to go.
               </p>
+            )}
+
+            {atLeastOneMethodAdded && depositStatus && (
+              <DepositPaymentCard
+                status={depositStatus}
+                onStatusChange={setDepositStatus}
+                onCharge={() => chargeSignedDepositPayment(params)}
+                onRefreshStatus={() => getSignedDepositPaymentStatus(params)}
+              />
             )}
           </div>
         )}

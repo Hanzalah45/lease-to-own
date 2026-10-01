@@ -91,7 +91,7 @@ class ContractPdfService
             'totalMonthly' => $lease->totalMonthlyPayment(),
             'securityDeposit' => (float) $lease->security_deposit,
             'trackingDeviceFee' => LeaseAgreement::TRACKING_DEVICE_FEE,
-            'totalDueToday' => (float) $lease->security_deposit + LeaseAgreement::TRACKING_DEVICE_FEE + $lease->totalMonthlyPayment(),
+            'totalDueToday' => $lease->totalDueAtSigning(),
             'totalRentalPurchasePrice' => (float) $lease->total_rental_purchase_price,
         ])->render();
     }

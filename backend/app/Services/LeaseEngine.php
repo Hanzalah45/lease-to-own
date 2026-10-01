@@ -102,11 +102,17 @@ class LeaseEngine
         // request into an extra query per row (real regression, caught by
         // ApplicationListQueryCountTest).
         $today = now()->startOfDay();
-        $isPastDueUnpaid = fn (Payment $p) => $p->status !== Payment::STATUS_PAID && $p->due_date && $p->due_date->lte($today);
+        // Excludes a stuck/declined deposit charge (real bug fixed
+        // 2026-10-01, before it could ever fire) — a deposit isn't part of
+        // the rent-to-own payoff schedule's arrears, so a failed deposit
+        // charge must never inflate the EPO price. Late fees stay included
+        // here deliberately — unlike paymentsMadeCount(), an overdue late
+        // fee genuinely is still owed toward payoff.
+        $isPastDueUnpaid = fn (Payment $p) => $p->status !== Payment::STATUS_PAID && $p->type !== Payment::TYPE_DEPOSIT && $p->due_date && $p->due_date->lte($today);
 
         $amountPastDue = $lease->relationLoaded('payments')
             ? (float) $lease->payments->filter($isPastDueUnpaid)->sum('amount')
-            : (float) $lease->payments()->where('status', '!=', Payment::STATUS_PAID)->whereDate('due_date', '<=', $today)->sum('amount');
+            : (float) $lease->payments()->where('status', '!=', Payment::STATUS_PAID)->where('type', '!=', Payment::TYPE_DEPOSIT)->whereDate('due_date', '<=', $today)->sum('amount');
 
         return self::epoAt($lease, max(1, $lease->paymentsMadeCount()), $amountPastDue);
     }
@@ -269,6 +275,17 @@ class LeaseEngine
         }
 
         self::syncPaymentsPaidToDate($payment->leaseAgreement);
+
+        // A successful deposit charge (client, Joel, 2026-10-01) converges
+        // with the existing manual "Mark Deposit Received" admin action —
+        // Admin\ApplicationController's unconditional set of this same flag
+        // becomes a no-op once Stripe already did it, and stays the full
+        // fallback (cash/check, a failed charge) exactly as before when it
+        // hasn't. Never cleared on a failed/refunded charge — a prior
+        // manual "received" stays received.
+        if ($enteredPaid && $payment->type === Payment::TYPE_DEPOSIT) {
+            $payment->leaseAgreement->application?->update(['deposit_received' => true]);
+        }
 
         // Pickup/first-payment account setup (client, 2026-09-04) — see
         // activateGuestAccountIfFirstPayment() below, also used by the

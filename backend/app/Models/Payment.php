@@ -13,12 +13,18 @@ class Payment extends Model
     use HasFactory;
 
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_PAID = 'paid';
+
     public const STATUS_FAILED = 'failed';
+
     public const STATUS_REFUNDED = 'refunded';
 
     public const TYPE_RENTAL = 'rental';
+
     public const TYPE_LATE_FEE = 'late_fee';
+
+    public const TYPE_DEPOSIT = 'deposit';
 
     protected $fillable = [
         'lease_agreement_id',

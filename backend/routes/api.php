@@ -24,6 +24,7 @@ use App\Http\Controllers\Api\Auth\VerifyEmailController;
 use App\Http\Controllers\Api\AvatarController;
 use App\Http\Controllers\Api\Customer\ApplicationController;
 use App\Http\Controllers\Api\Customer\ContractController;
+use App\Http\Controllers\Api\Customer\DepositPaymentController;
 use App\Http\Controllers\Api\Customer\EquipmentController as CustomerEquipmentController;
 use App\Http\Controllers\Api\Customer\LeaseAgreementController;
 use App\Http\Controllers\Api\Customer\NotificationPreferencesController;
@@ -34,6 +35,7 @@ use App\Http\Controllers\Api\GuestApplicationController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\PublicContractController;
+use App\Http\Controllers\Api\PublicDepositPaymentController;
 use App\Http\Controllers\Api\PublicInfoRequestController;
 use App\Http\Controllers\Api\PublicPaymentMethodController;
 use App\Http\Controllers\Api\PublicPlaidVerificationController;
@@ -91,6 +93,13 @@ Route::post('/payment-methods/verify-setup-intent', [PublicPaymentMethodControll
 Route::post('/payment-methods/verify-confirm', [PublicPaymentMethodController::class, 'confirm'])->middleware('throttle:10,1');
 Route::post('/payment-methods/verify-primary', [PublicPaymentMethodController::class, 'setPrimary'])->middleware('throttle:10,1');
 
+// Signed-link deposit charging (client, Joel, 2026-10-01) — reuses the same
+// AutoPay signed link above rather than minting a new Signer: this is a
+// second step on the same page/link, not a new notification journey. See
+// StripeDepositPaymentService.
+Route::post('/deposit-payments/verify-show', [PublicDepositPaymentController::class, 'show'])->middleware('throttle:10,1');
+Route::post('/deposit-payments/verify-charge', [PublicDepositPaymentController::class, 'charge'])->middleware('throttle:10,1');
+
 // Signed-link info-request responses (2026-09-16 fix): a guest-originated
 // customer has no working login yet, so Customer\ApplicationController's
 // authenticated respondToInfoRequest() is unreachable for them — this exists
@@ -138,6 +147,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/lease-agreements/{leaseAgreement}/payment-methods/setup-intent', [PaymentMethodController::class, 'setupIntent']);
         Route::post('/lease-agreements/{leaseAgreement}/payment-methods/confirm', [PaymentMethodController::class, 'confirm']);
         Route::post('/lease-agreements/{leaseAgreement}/payment-methods/primary', [PaymentMethodController::class, 'setPrimary']);
+        Route::get('/lease-agreements/{leaseAgreement}/deposit-payment', [DepositPaymentController::class, 'show']);
+        Route::post('/lease-agreements/{leaseAgreement}/deposit-payment/charge', [DepositPaymentController::class, 'charge']);
         Route::get('/lease-agreements/{leaseAgreement}/contract-preview', [ContractController::class, 'preview']);
         Route::apiResource('contracts', ContractController::class)->only(['index', 'show', 'store']);
         Route::get('/contracts/{contract}/download', [ContractController::class, 'download']);

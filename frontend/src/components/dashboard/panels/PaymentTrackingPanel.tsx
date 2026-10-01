@@ -70,7 +70,14 @@ export function PaymentTrackingPanel() {
   const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-  const paid = payments.filter((p) => p.status === "paid" && p.paid_date);
+  // Revenue KPIs below (collected this/last month, avg monthly payment, the
+  // earnings chart) are recurring-rent figures — a one-time deposit charge
+  // (real money now, client, 2026-10-01) would otherwise show up as an
+  // outlier "monthly payment" and distort the trend the moment it lands.
+  // overduePayments and the DataTable below stay type-agnostic on purpose: a
+  // stuck/declined deposit should still surface there.
+  const recurring = payments.filter((p) => p.type === "rental");
+  const paid = recurring.filter((p) => p.status === "paid" && p.paid_date);
   const collectedThisMonth = paid
     .filter((p) => new Date(p.paid_date!) >= startOfThisMonth)
     .reduce((sum, p) => sum + Number(p.amount), 0);
@@ -84,7 +91,7 @@ export function PaymentTrackingPanel() {
   const autopayLeaseIds = new Set(payments.filter((p) => p.lease_agreement?.autopay_enabled).map((p) => p.lease_agreement_id));
   const autopayPct = leaseIds.size === 0 ? 0 : Math.round((autopayLeaseIds.size / leaseIds.size) * 100);
 
-  const avgMonthlyPayment = payments.length === 0 ? 0 : payments.reduce((sum, p) => sum + Number(p.amount), 0) / payments.length;
+  const avgMonthlyPayment = recurring.length === 0 ? 0 : recurring.reduce((sum, p) => sum + Number(p.amount), 0) / recurring.length;
 
   const earningsData: EarningsPoint[] = MONTH_LABELS.map((label, i) => {
     const thisYear = paid
@@ -152,6 +159,11 @@ export function PaymentTrackingPanel() {
               Late fee
             </span>
           )}
+          {r.type === "deposit" && (
+            <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+              Deposit
+            </span>
+          )}
         </span>
       ),
     },
@@ -213,7 +225,7 @@ export function PaymentTrackingPanel() {
         <StatCard
           label="Avg. monthly payment"
           value={money(avgMonthlyPayment)}
-          note={`Across ${payments.length} payment${payments.length === 1 ? "" : "s"}`}
+          note={`Across ${recurring.length} payment${recurring.length === 1 ? "" : "s"}`}
           noteTone="neutral"
           icon={CreditCardIcon}
           iconBg="#DBEAFE"

@@ -94,12 +94,6 @@ export default function CustomerPaymentsPage() {
               Manage Autopay
             </button>
           )}
-          <button
-            title="Manual one-off payments ship once accounting integration (Milestone 7) is wired up"
-            className="font-heading rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
-          >
-            Make a Payment
-          </button>
         </div>
       </div>
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { AutopaySetupCard } from "@/components/payment-methods/AutopaySetupCard";
+import { DepositPaymentCard } from "@/components/payment-methods/DepositPaymentCard";
 import { getMyLeaseAgreement } from "@/lib/lease-agreements";
 import {
   confirmPaymentMethod,
@@ -13,6 +14,7 @@ import {
   setPrimaryMethod,
   type PaymentMethodsStatus,
 } from "@/lib/payment-methods";
+import { chargeDepositPayment, getDepositPaymentStatus, type DepositPaymentStatus } from "@/lib/deposit-payment";
 import { ApiError } from "@/lib/api";
 
 /**
@@ -26,13 +28,18 @@ export default function AutopaySetupPage() {
   const { user } = useAuth();
 
   const [status, setStatus] = useState<PaymentMethodsStatus | null>(null);
+  const [depositStatus, setDepositStatus] = useState<DepositPaymentStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
+    const leaseId = Number(params.id);
     getMyLeaseAgreement(params.id)
-      .then(() => getPaymentMethodsStatus(Number(params.id)))
-      .then(setStatus)
+      .then(() => Promise.all([getPaymentMethodsStatus(leaseId), getDepositPaymentStatus(leaseId)]))
+      .then(([methodsData, deposit]) => {
+        setStatus(methodsData);
+        setDepositStatus(deposit);
+      })
       .catch((err) => setLoadError(err instanceof ApiError ? err.message : "Could not load this lease."))
       .finally(() => setLoading(false));
   }, [params.id]);
@@ -42,6 +49,7 @@ export default function AutopaySetupPage() {
 
   const leaseId = Number(params.id);
   const bothAdded = status.bank_account_added && status.card_added;
+  const atLeastOneMethodAdded = status.bank_account_added || status.card_added;
 
   return (
     <div className="space-y-6">
@@ -70,6 +78,15 @@ export default function AutopaySetupPage() {
 
       {bothAdded && (
         <p className="text-sm font-semibold text-green-700">You&rsquo;re all set — AutoPay is ready to go.</p>
+      )}
+
+      {atLeastOneMethodAdded && depositStatus && (
+        <DepositPaymentCard
+          status={depositStatus}
+          onStatusChange={setDepositStatus}
+          onCharge={() => chargeDepositPayment(leaseId)}
+          onRefreshStatus={() => getDepositPaymentStatus(leaseId)}
+        />
       )}
     </div>
   );

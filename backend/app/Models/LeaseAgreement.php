@@ -126,14 +126,22 @@ class LeaseAgreement extends Model
      * a fresh COUNT query — callers that list many leases eager-load payments
      * once up front, and this is called (often twice, via epoToday()) per
      * lease in that list, so re-querying here turns one query into hundreds.
+     *
+     * Excludes deposit rows (real bug found and fixed 2026-10-01, before it
+     * could ever fire): a paid deposit must never count toward "months
+     * paid" — it would inflate rental_payments_paid_to_date, flip
+     * ownership_status to OWNED early, and understate the EPO price.
+     * Deliberately scoped to deposit only, not type=rental — a paid
+     * late_fee already counts here today, and changing that pre-existing
+     * behavior isn't part of this fix.
      */
     public function paymentsMadeCount(): int
     {
         if ($this->relationLoaded('payments')) {
-            return $this->payments->where('status', Payment::STATUS_PAID)->count();
+            return $this->payments->where('status', Payment::STATUS_PAID)->where('type', '!=', Payment::TYPE_DEPOSIT)->count();
         }
 
-        return $this->payments()->where('status', Payment::STATUS_PAID)->count();
+        return $this->payments()->where('status', Payment::STATUS_PAID)->where('type', '!=', Payment::TYPE_DEPOSIT)->count();
     }
 
     /**
@@ -154,5 +162,35 @@ class LeaseAgreement extends Model
     public function totalMonthlyPayment(): float
     {
         return round((float) $this->monthly_rental_payment + $this->ldwMonthlyAmount() + $this->salesTaxAmount(), 2);
+    }
+
+    /** What the customer owes at signing: deposit + tracking fee + first month. Single source of truth — ContractPdfService and the deposit charge itself both read this instead of each re-deriving the formula. */
+    public function totalDueAtSigning(): float
+    {
+        return round((float) $this->security_deposit + self::TRACKING_DEVICE_FEE + $this->totalMonthlyPayment(), 2);
+    }
+
+    /**
+     * Which Stripe PaymentMethod AutoPay (or a deposit charge) should use:
+     * the customer's own chosen primary if it's actually on file, otherwise
+     * whichever of bank/card exists — never both, and never neither without
+     * returning null for the caller to handle.
+     */
+    public function autopayChargeablePaymentMethod(): ?array
+    {
+        if ($this->autopay_primary_method === 'ach' && $this->stripe_bank_payment_method_id) {
+            return ['type' => 'bank', 'id' => $this->stripe_bank_payment_method_id];
+        }
+        if ($this->autopay_primary_method === 'card' && $this->stripe_card_payment_method_id) {
+            return ['type' => 'card', 'id' => $this->stripe_card_payment_method_id];
+        }
+        if ($this->stripe_bank_payment_method_id) {
+            return ['type' => 'bank', 'id' => $this->stripe_bank_payment_method_id];
+        }
+        if ($this->stripe_card_payment_method_id) {
+            return ['type' => 'card', 'id' => $this->stripe_card_payment_method_id];
+        }
+
+        return null;
     }
 }

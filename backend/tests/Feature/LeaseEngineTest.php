@@ -170,4 +170,53 @@ class LeaseEngineTest extends TestCase
         $this->assertSame(0.0, LeaseEngine::epoAt($lease, 12));
         $this->assertSame(0.0, LeaseEngine::epoAt($lease, 20));
     }
+
+    /**
+     * Real bug found and fixed 2026-10-01, before it could ever fire: once a
+     * deposit could be its own paid Payment row (real Stripe charging), a
+     * paid deposit must never count as a "month paid" — it would inflate
+     * rental_payments_paid_to_date, flip ownership_status to OWNED early.
+     */
+    public function test_a_paid_deposit_does_not_count_toward_payments_made(): void
+    {
+        $lease = LeaseAgreement::factory()->create(['term_months' => 12, 'monthly_rental_payment' => 100]);
+        Payment::factory()->create([
+            'lease_agreement_id' => $lease->id,
+            'type' => Payment::TYPE_DEPOSIT,
+            'status' => Payment::STATUS_PAID,
+            'amount' => 450,
+        ]);
+
+        LeaseEngine::syncPaymentsPaidToDate($lease);
+        $fresh = $lease->fresh();
+
+        $this->assertSame(0, $fresh->paymentsMadeCount());
+        $this->assertSame('0.00', $fresh->rental_payments_paid_to_date);
+        $this->assertSame(LeaseAgreement::OWNERSHIP_LEASING, $fresh->ownership_status);
+    }
+
+    /** Same bug, the EPO side: a stuck/declined deposit must not inflate the "amount past due" the EPO formula adds back. */
+    public function test_a_stuck_deposit_does_not_inflate_epo_amount_past_due(): void
+    {
+        $lease = LeaseAgreement::factory()->create([
+            'term_months' => 24,
+            'monthly_rental_payment' => 150,
+            'cash_price' => 3000,
+            'additional_funds' => 0,
+        ]);
+        Payment::factory()->create([
+            'lease_agreement_id' => $lease->id,
+            'type' => Payment::TYPE_DEPOSIT,
+            'status' => Payment::STATUS_FAILED,
+            'due_date' => now()->subDays(3),
+            'amount' => 450,
+        ]);
+
+        // No rental payments made/past due at all — epoToday() floors the
+        // "month" at 1 (within the 90-day cutoff), so the plain
+        // cashPrice - paymentsScheduledToDate formula applies, same as if
+        // the failed deposit weren't there at all.
+        $expected = round(3000 - (1 * 150), 2);
+        $this->assertSame($expected, LeaseEngine::epoToday($lease->fresh()));
+    }
 }

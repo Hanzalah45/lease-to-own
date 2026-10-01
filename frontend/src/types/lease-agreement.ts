@@ -34,7 +34,7 @@ export interface Contract {
 export interface Payment {
   id: number;
   lease_agreement_id: number;
-  type: "rental" | "late_fee";
+  type: "rental" | "late_fee" | "deposit";
   late_fee_for_payment_id: number | null;
   amount: string;
   due_date: string;
