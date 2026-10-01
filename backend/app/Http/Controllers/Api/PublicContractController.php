@@ -47,6 +47,24 @@ class PublicContractController extends Controller
         return response()->json(['data' => $payload]);
     }
 
+    /**
+     * The full agreement text, readable before signing (client, Joel,
+     * 2026-10-01) — previously the signing page only showed a short summary,
+     * not the actual document the customer was agreeing to. See
+     * ContractPdfService::preview().
+     */
+    public function preview(Request $request)
+    {
+        $customer = $this->resolveSignedCustomer($request);
+        $lease = LeaseAgreement::with('equipmentUnit', 'customer.customerProfile')->findOrFail($request->integer('lease'));
+        abort_unless($lease->customer_id === $customer->id, 404);
+
+        return response(ContractPdfService::preview($lease), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="lease-agreement-preview.pdf"',
+        ]);
+    }
+
     public function store(Request $request)
     {
         $customer = $this->resolveSignedCustomer($request);

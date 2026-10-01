@@ -81,6 +81,7 @@ Route::post('/plaid/verify-exchange', [PublicPlaidVerificationController::class,
 // ContractSigner / RequestContractSignatureNotification.
 Route::post('/contracts/verify-lease', [PublicContractController::class, 'show'])->middleware('throttle:10,1');
 Route::post('/contracts/verify-sign', [PublicContractController::class, 'store'])->middleware('throttle:10,1');
+Route::post('/contracts/verify-preview', [PublicContractController::class, 'preview'])->middleware('throttle:10,1');
 
 // Signed-link AutoPay payment-method setup (client, 2026-10-01): same
 // guest-no-login gap as the contract-signing routes above. See
@@ -137,6 +138,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/lease-agreements/{leaseAgreement}/payment-methods/setup-intent', [PaymentMethodController::class, 'setupIntent']);
         Route::post('/lease-agreements/{leaseAgreement}/payment-methods/confirm', [PaymentMethodController::class, 'confirm']);
         Route::post('/lease-agreements/{leaseAgreement}/payment-methods/primary', [PaymentMethodController::class, 'setPrimary']);
+        Route::get('/lease-agreements/{leaseAgreement}/contract-preview', [ContractController::class, 'preview']);
         Route::apiResource('contracts', ContractController::class)->only(['index', 'show', 'store']);
         Route::get('/contracts/{contract}/download', [ContractController::class, 'download']);
         Route::apiResource('payments', PaymentController::class)->only(['index', 'show']);

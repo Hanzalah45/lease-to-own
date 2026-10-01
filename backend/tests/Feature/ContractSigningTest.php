@@ -8,6 +8,7 @@ use App\Models\LeaseAgreement;
 use App\Models\User;
 use App\Notifications\ContractVoidedNotification;
 use App\Services\ContractPdfService;
+use App\Services\ContractSigner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
@@ -242,5 +243,58 @@ class ContractSigningTest extends TestCase
             'version' => 1,
             'voided_at' => null,
         ]);
+    }
+
+    /**
+     * Real gap found 2026-10-01 (client, Joel): the signing page only showed
+     * a short summary before this, not the full agreement text — a customer
+     * could agree to documents by name without ever being shown them.
+     */
+    public function test_customer_can_preview_the_full_agreement_before_signing(): void
+    {
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
+
+        $response = $this->actingAs($lease->customer, 'sanctum')
+            ->get("/api/customer/lease-agreements/{$lease->id}/contract-preview");
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF', $response->getContent());
+    }
+
+    public function test_customer_cannot_preview_another_customers_lease(): void
+    {
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
+        $otherCustomer = User::factory()->create(['role' => User::ROLE_CUSTOMER]);
+
+        $response = $this->actingAs($otherCustomer, 'sanctum')
+            ->get("/api/customer/lease-agreements/{$lease->id}/contract-preview");
+
+        $response->assertStatus(404);
+    }
+
+    public function test_guest_can_preview_the_full_agreement_via_signed_link(): void
+    {
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
+        $url = ContractSigner::urlFor($lease->customer, $lease);
+        parse_str(parse_url($url, PHP_URL_QUERY), $params);
+
+        $response = $this->postJson('/api/contracts/verify-preview', $params);
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF', $response->getContent());
+    }
+
+    public function test_a_tampered_preview_signature_is_rejected(): void
+    {
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
+        $url = ContractSigner::urlFor($lease->customer, $lease);
+        parse_str(parse_url($url, PHP_URL_QUERY), $params);
+        $params['signature'] = 'tampered';
+
+        $response = $this->postJson('/api/contracts/verify-preview', $params);
+
+        $response->assertStatus(422);
     }
 }

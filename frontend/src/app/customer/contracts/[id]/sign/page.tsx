@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { money, TRACKING_DEVICE_FEE } from "@/components/applications/wizard/types";
 import { getMyLeaseAgreement } from "@/lib/lease-agreements";
-import { signLease } from "@/lib/contracts";
+import { previewLease, signLease } from "@/lib/contracts";
 import { ApiError } from "@/lib/api";
 import { validateName } from "@/lib/validation";
 import type { LeaseAgreement } from "@/types/lease-agreement";
@@ -29,6 +29,21 @@ export default function SignLeaseAgreementPage() {
   const [nameTouched, setNameTouched] = useState(false);
   const [signing, setSigning] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  async function handlePreview() {
+    if (!lease) return;
+    setPreviewing(true);
+    setPreviewError(null);
+    try {
+      await previewLease(lease.id);
+    } catch (err) {
+      setPreviewError(err instanceof ApiError ? err.message : "Could not load the agreement.");
+    } finally {
+      setPreviewing(false);
+    }
+  }
 
   useEffect(() => {
     getMyLeaseAgreement(params.id)
@@ -125,6 +140,18 @@ export default function SignLeaseAgreementPage() {
           <div className="mb-4 flex items-center gap-2">
             <span className="h-4 w-1 shrink-0 rounded-full bg-red-600" />
             <h2 className="font-heading text-base font-bold uppercase tracking-wide text-neutral-900">Signature</h2>
+          </div>
+
+          <div className="mb-4 rounded-md border border-neutral-200 bg-neutral-50 p-3.5 text-center">
+            <button
+              onClick={handlePreview}
+              disabled={previewing}
+              className="font-heading text-sm font-bold text-red-600 underline hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {previewing ? "Opening…" : "View full lease agreement →"}
+            </button>
+            <p className="mt-1 text-xs text-neutral-400">Opens the complete document in a new tab.</p>
+            {previewError && <p className="mt-1.5 text-xs text-red-600">{previewError}</p>}
           </div>
 
           <div className="mb-4">

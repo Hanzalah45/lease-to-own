@@ -142,4 +142,19 @@ class ContractController extends Controller
 
         return Storage::disk('local')->download($path, "lease-agreement-{$contract->lease_agreement_id}.pdf");
     }
+
+    /**
+     * The full agreement text, readable before signing (client, Joel,
+     * 2026-10-01) — guest counterpart is PublicContractController::preview().
+     */
+    public function preview(Request $request, LeaseAgreement $leaseAgreement)
+    {
+        abort_unless($leaseAgreement->customer_id === $request->user()->id, 404);
+        $leaseAgreement->loadMissing('equipmentUnit', 'customer.customerProfile');
+
+        return response(ContractPdfService::preview($leaseAgreement), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="lease-agreement-preview.pdf"',
+        ]);
+    }
 }

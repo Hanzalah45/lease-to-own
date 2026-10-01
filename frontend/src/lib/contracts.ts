@@ -64,6 +64,44 @@ export function downloadContract(contractId: number): Promise<void> {
   return downloadFile(`/admin/contracts/${contractId}/download`, `lease-agreement-${contractId}.pdf`);
 }
 
+/**
+ * Opens a PDF blob response in a new tab rather than downloading it — the
+ * browser's own PDF viewer handles paging/zoom, no download step needed just
+ * to read it. The object URL is intentionally never revoked: revoking it
+ * before the new tab finishes loading the PDF would blank the tab, and
+ * there's no reliable "the other tab is done with this" signal to revoke on.
+ */
+async function viewFile(request: Promise<Response>, errorMessage: string): Promise<void> {
+  const response = await request;
+  if (!response.ok) {
+    throw new ApiError(response.status, errorMessage);
+  }
+  const blob = await response.blob();
+  window.open(URL.createObjectURL(blob), "_blank");
+}
+
+/** The full agreement text, readable before signing — authenticated counterpart of previewSignedLease(). */
+export function previewLease(leaseAgreementId: number): Promise<void> {
+  return viewFile(
+    fetch(`${API_BASE_URL}/customer/lease-agreements/${leaseAgreementId}/contract-preview`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    }),
+    "Could not load the agreement.",
+  );
+}
+
+/** Unauthenticated counterpart to previewLease() — used by /sign-contract. */
+export function previewSignedLease(params: SignedContractLinkParams): Promise<void> {
+  return viewFile(
+    fetch(`${API_BASE_URL}/contracts/verify-preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    }),
+    "Could not load the agreement.",
+  );
+}
+
 /** Voids a signed contract — the customer is notified and can sign again once this clears. */
 export async function voidContract(contractId: number, reason: string): Promise<Contract> {
   const data = await apiFetch<{ data: Contract }>(`/admin/contracts/${contractId}/void`, {

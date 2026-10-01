@@ -41,6 +41,31 @@ class ContractPdfService
         return $path;
     }
 
+    /**
+     * Renders the same document a customer would sign, before they've
+     * actually signed it (client, Joel, 2026-10-01 — the signing page only
+     * showed a short summary, not the full agreement text, before this).
+     * Built from an unsaved Contract instance so renderHtml()'s template
+     * (which references contract id/version/signer/signed_at for the
+     * signature block) renders those as blank rather than needing a second
+     * template. Nothing here is persisted — generated fresh on every call,
+     * unlike the signed PDF, which is captured once and reused.
+     */
+    public static function preview(LeaseAgreement $lease): string
+    {
+        $contract = new Contract([
+            'lease_agreement_id' => $lease->id,
+            'version' => ($lease->contracts()->max('version') ?? 0) + 1,
+        ]);
+        $contract->setRelation('leaseAgreement', $lease);
+
+        $pdf = Pdf::loadHTML(self::renderHtml($contract));
+        $pdf->render();
+        self::addPageNumbers($pdf->getDomPDF());
+
+        return $pdf->output();
+    }
+
     private static function renderHtml(Contract $contract): string
     {
         $contract->loadMissing(['leaseAgreement.equipmentUnit', 'leaseAgreement.customer.customerProfile']);
