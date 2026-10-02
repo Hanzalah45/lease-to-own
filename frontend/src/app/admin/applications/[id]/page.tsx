@@ -374,7 +374,7 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  async function toggleChecklistField(field: "signature_received" | "deposit_received") {
+  async function toggleChecklistField(field: "signature_received" | "deposit_received" | "pickup_balance_received") {
     if (!application) return;
     setTogglingChecklist(true);
     setActionError(null);
@@ -900,6 +900,7 @@ export default function ApplicationDetailPage() {
             items={[
               `Contract ${application.signature_received ? "signed" : "not yet signed"}`,
               `Security deposit ${application.deposit_received ? "collected" : "not yet collected"}`,
+              `Pickup balance (tracking fee + first month) ${application.pickup_balance_received ? "collected" : "not yet collected"}`,
               "Awaiting delivery and first payment to move to Finished",
             ]}
           />
@@ -1136,8 +1137,11 @@ export default function ApplicationDetailPage() {
             items={[
               { label: "Deposit received", done: application.deposit_received },
               { label: "Signature received", done: application.signature_received },
+              { label: "Pickup balance received", done: application.pickup_balance_received },
             ]}
-            onToggle={(i) => toggleChecklistField(i === 0 ? "deposit_received" : "signature_received")}
+            onToggle={(i) =>
+              toggleChecklistField(i === 0 ? "deposit_received" : i === 1 ? "signature_received" : "pickup_balance_received")
+            }
             disabled={togglingChecklist}
           />
           {(() => {

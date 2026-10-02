@@ -11,7 +11,6 @@ use App\Models\RiskProfile;
 use App\Models\User;
 use App\Notifications\ApplicationInfoRequestedNotification;
 use App\Notifications\ApplicationStatusChangedNotification;
-use App\Notifications\PaymentMethodsRequestedNotification;
 use App\Notifications\PaymentStatusChangedNotification;
 use App\Notifications\RequestContractSignatureNotification;
 use App\Services\ApplicationCreationService;
@@ -19,7 +18,6 @@ use App\Services\ApplicationValidationRules;
 use App\Services\ContractSigner;
 use App\Services\InfoRequestResponder;
 use App\Services\LeaseEngine;
-use App\Services\PaymentMethodSigner;
 use App\Services\RiskScoringService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -155,6 +153,11 @@ class ApplicationController extends Controller
             'status_notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'signature_received' => ['sometimes', 'boolean'],
             'deposit_received' => ['sometimes', 'boolean'],
+            // "Pay deposit only" admin checklist item (client, Joel,
+            // 2026-10-02) — soft, manually-toggleable confirmation, same
+            // pattern as deposit_received, not a hard gate on advancing the
+            // application.
+            'pickup_balance_received' => ['sometimes', 'boolean'],
             // AutoPay payment methods (client, 2026-10-01): lets an admin
             // move a lease to waiting_delivery even though the customer
             // hasn't added both a bank account and a card yet — see the
@@ -326,9 +329,6 @@ class ApplicationController extends Controller
                         $application->customer->notify(
                             new RequestContractSignatureNotification(ContractSigner::urlFor($application->customer, $lease)),
                         );
-                        $application->customer->notify(
-                            new PaymentMethodsRequestedNotification(PaymentMethodSigner::urlFor($application->customer, $lease)),
-                        );
                     } catch (\Throwable $e) {
                         report($e);
                     }
@@ -410,10 +410,11 @@ class ApplicationController extends Controller
             }
         }
 
-        if (array_key_exists('signature_received', $data) || array_key_exists('deposit_received', $data)) {
+        if (array_key_exists('signature_received', $data) || array_key_exists('deposit_received', $data) || array_key_exists('pickup_balance_received', $data)) {
             $application->update(array_filter([
                 'signature_received' => $data['signature_received'] ?? null,
                 'deposit_received' => $data['deposit_received'] ?? null,
+                'pickup_balance_received' => $data['pickup_balance_received'] ?? null,
             ], fn ($v) => $v !== null));
         }
 

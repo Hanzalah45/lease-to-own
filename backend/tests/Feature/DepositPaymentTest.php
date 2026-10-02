@@ -83,7 +83,10 @@ class DepositPaymentTest extends TestCase
         $payment = Payment::where('lease_agreement_id', $lease->id)->where('type', Payment::TYPE_DEPOSIT)->first();
         $this->assertSame(Payment::STATUS_PAID, $payment->status);
         $this->assertSame('pi_test1', $payment->stripe_payment_intent_id);
-        $this->assertEqualsWithDelta(650.0, (float) $payment->amount, 0.01); // 300 deposit + 150 tracking fee + 200 first month (no tax/LDW in this fixture)
+        // Deposit-only (client, Joel, 2026-10-02) — the $150 tracking fee +
+        // $200 first month are now a separate chargePickupBalance(), not
+        // bundled into this charge.
+        $this->assertEqualsWithDelta(300.0, (float) $payment->amount, 0.01);
         $this->assertTrue($lease->application->fresh()->deposit_received);
         $this->assertSame(0, RiskRedFlag::where('type', RiskRedFlag::TYPE_FAILED_ACH)->count());
     }
@@ -284,6 +287,117 @@ class DepositPaymentTest extends TestCase
         $response->assertStatus(422);
     }
 
+    public function test_charging_the_pickup_balance_succeeds_independently_of_the_deposit(): void
+    {
+        $lease = $this->signedLeaseReadyForDeposit();
+
+        $this->stripe->queue(['id' => 'cus_test8', 'object' => 'customer']);
+        $this->stripe->queue(['id' => 'pi_test8', 'object' => 'payment_intent', 'status' => 'succeeded']);
+
+        $response = $this->actingAs($lease->customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/deposit-payment/charge-balance");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.payment.status', 'paid');
+
+        $payment = Payment::where('lease_agreement_id', $lease->id)->where('type', Payment::TYPE_PICKUP_BALANCE)->first();
+        $this->assertSame(Payment::STATUS_PAID, $payment->status);
+        $this->assertEqualsWithDelta(350.0, (float) $payment->amount, 0.01); // 150 tracking fee + 200 first month
+        $this->assertTrue($lease->application->fresh()->pickup_balance_received);
+        // Charging the balance never touches the deposit row.
+        $this->assertSame(0, Payment::where('lease_agreement_id', $lease->id)->where('type', Payment::TYPE_DEPOSIT)->count());
+    }
+
+    public function test_pay_in_full_is_two_independent_charges_that_never_share_an_intent(): void
+    {
+        $lease = $this->signedLeaseReadyForDeposit();
+
+        // ensureStripeCustomer() only calls Stripe once and caches
+        // stripe_customer_id on the profile — only the first charge's
+        // "create customer" response is ever consumed.
+        $this->stripe->queue(['id' => 'cus_test9', 'object' => 'customer']);
+        $this->stripe->queue(['id' => 'pi_test9_deposit', 'object' => 'payment_intent', 'status' => 'succeeded']);
+        $this->actingAs($lease->customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/deposit-payment/charge")->assertOk();
+
+        $this->stripe->queue(['id' => 'pi_test9_balance', 'object' => 'payment_intent', 'status' => 'succeeded']);
+        $this->actingAs($lease->customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/deposit-payment/charge-balance")->assertOk();
+
+        $deposit = Payment::where('lease_agreement_id', $lease->id)->where('type', Payment::TYPE_DEPOSIT)->first();
+        $balance = Payment::where('lease_agreement_id', $lease->id)->where('type', Payment::TYPE_PICKUP_BALANCE)->first();
+        $this->assertSame(Payment::STATUS_PAID, $deposit->status);
+        $this->assertSame(Payment::STATUS_PAID, $balance->status);
+        $this->assertNotSame($deposit->stripe_payment_intent_id, $balance->stripe_payment_intent_id);
+        $this->assertTrue($lease->application->fresh()->deposit_received);
+        $this->assertTrue($lease->application->fresh()->pickup_balance_received);
+    }
+
+    public function test_cannot_charge_the_pickup_balance_twice(): void
+    {
+        $lease = $this->signedLeaseReadyForDeposit();
+        $this->stripe->queue(['id' => 'cus_test10', 'object' => 'customer']);
+        $this->stripe->queue(['id' => 'pi_test10', 'object' => 'payment_intent', 'status' => 'succeeded']);
+
+        $this->actingAs($lease->customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/deposit-payment/charge-balance")->assertOk();
+
+        $response = $this->actingAs($lease->customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/deposit-payment/charge-balance");
+
+        $response->assertStatus(422);
+        $this->assertSame(1, Payment::where('lease_agreement_id', $lease->id)->where('type', Payment::TYPE_PICKUP_BALANCE)->count());
+    }
+
+    public function test_pickup_balance_is_still_chargeable_once_waiting_on_delivery(): void
+    {
+        $lease = $this->signedLeaseReadyForDeposit();
+        $lease->application->update(['status' => Application::STATUS_WAITING_DELIVERY, 'deposit_received' => true]);
+
+        $this->stripe->queue(['id' => 'cus_test11', 'object' => 'customer']);
+        $this->stripe->queue(['id' => 'pi_test11', 'object' => 'payment_intent', 'status' => 'succeeded']);
+
+        $this->actingAs($lease->customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/deposit-payment/charge-balance")
+            ->assertOk();
+    }
+
+    public function test_cannot_charge_the_pickup_balance_before_the_contract_is_signed(): void
+    {
+        $customer = User::factory()->create(['role' => User::ROLE_CUSTOMER]);
+        $application = Application::factory()->create(['customer_id' => $customer->id, 'status' => Application::STATUS_WAITING_DEPOSIT]);
+        $lease = LeaseAgreement::factory()->create([
+            'application_id' => $application->id,
+            'customer_id' => $customer->id,
+            'equipment_unit_id' => null,
+            'stripe_card_payment_method_id' => 'pm_card_existing',
+            'autopay_primary_method' => 'card',
+        ]);
+
+        $response = $this->actingAs($customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/deposit-payment/charge-balance");
+
+        $response->assertStatus(422);
+        $this->assertCount(0, $this->stripe->requests);
+    }
+
+    public function test_guest_signed_link_can_charge_the_pickup_balance(): void
+    {
+        $lease = $this->signedLeaseReadyForDeposit();
+        $lease->customer->update(['status' => 'pending']);
+
+        $url = PaymentMethodSigner::urlFor($lease->customer, $lease);
+        parse_str(parse_url($url, PHP_URL_QUERY), $params);
+
+        $this->stripe->queue(['id' => 'cus_test12', 'object' => 'customer']);
+        $this->stripe->queue(['id' => 'pi_test12', 'object' => 'payment_intent', 'status' => 'succeeded']);
+
+        $response = $this->postJson('/api/deposit-payments/verify-charge-balance', $params);
+
+        $response->assertOk();
+        $response->assertJsonPath('data.payment.status', 'paid');
+    }
+
     public function test_webhook_payment_intent_succeeded_also_sets_deposit_received(): void
     {
         $lease = $this->signedLeaseReadyForDeposit();
@@ -312,5 +426,36 @@ class DepositPaymentTest extends TestCase
         $response->assertOk();
         $this->assertSame(Payment::STATUS_PAID, $payment->fresh()->status);
         $this->assertTrue($lease->application->fresh()->deposit_received);
+    }
+
+    public function test_webhook_payment_intent_succeeded_also_sets_pickup_balance_received(): void
+    {
+        $lease = $this->signedLeaseReadyForDeposit();
+        $payment = Payment::factory()->create([
+            'lease_agreement_id' => $lease->id,
+            'type' => Payment::TYPE_PICKUP_BALANCE,
+            'status' => Payment::STATUS_PENDING,
+            'stripe_payment_intent_id' => 'pi_webhook_test_balance',
+        ]);
+
+        config(['services.stripe.webhook_secret' => 'whsec_test_secret_for_specs_only']);
+        $event = [
+            'id' => 'evt_'.Str::random(16),
+            'object' => 'event',
+            'type' => 'payment_intent.succeeded',
+            'data' => ['object' => ['id' => 'pi_webhook_test_balance', 'object' => 'payment_intent', 'status' => 'succeeded']],
+        ];
+        $payload = json_encode($event);
+        $signature = WebhookSignature::generateSignatureHeader($payload, 'whsec_test_secret_for_specs_only');
+
+        $response = $this->call('POST', '/api/webhooks/stripe', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_Stripe-Signature' => $signature,
+        ], $payload);
+
+        $response->assertOk();
+        $this->assertSame(Payment::STATUS_PAID, $payment->fresh()->status);
+        $this->assertTrue($lease->application->fresh()->pickup_balance_received);
+        $this->assertFalse($lease->application->fresh()->deposit_received);
     }
 }

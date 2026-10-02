@@ -127,21 +127,23 @@ class LeaseAgreement extends Model
      * once up front, and this is called (often twice, via epoToday()) per
      * lease in that list, so re-querying here turns one query into hundreds.
      *
-     * Excludes deposit rows (real bug found and fixed 2026-10-01, before it
-     * could ever fire): a paid deposit must never count toward "months
-     * paid" — it would inflate rental_payments_paid_to_date, flip
-     * ownership_status to OWNED early, and understate the EPO price.
-     * Deliberately scoped to deposit only, not type=rental — a paid
-     * late_fee already counts here today, and changing that pre-existing
-     * behavior isn't part of this fix.
+     * Scoped to type=rental only (tightened 2026-10-02 when pickup_balance was
+     * added — the prior "!= deposit" denylist would otherwise have let a paid
+     * pickup_balance row inflate this too, the same bug a paid deposit row
+     * was fixed for on 2026-10-01). A paid deposit or pickup_balance row must
+     * never count toward "months paid" — it would inflate
+     * rental_payments_paid_to_date, flip ownership_status to OWNED early, and
+     * understate the EPO price. late_fee is excluded by the same allowlist;
+     * no behavior change intended there, it simply was never counted as a
+     * rental payment either.
      */
     public function paymentsMadeCount(): int
     {
         if ($this->relationLoaded('payments')) {
-            return $this->payments->where('status', Payment::STATUS_PAID)->where('type', '!=', Payment::TYPE_DEPOSIT)->count();
+            return $this->payments->where('status', Payment::STATUS_PAID)->where('type', Payment::TYPE_RENTAL)->count();
         }
 
-        return $this->payments()->where('status', Payment::STATUS_PAID)->where('type', '!=', Payment::TYPE_DEPOSIT)->count();
+        return $this->payments()->where('status', Payment::STATUS_PAID)->where('type', Payment::TYPE_RENTAL)->count();
     }
 
     /**
@@ -164,10 +166,22 @@ class LeaseAgreement extends Model
         return round((float) $this->monthly_rental_payment + $this->ldwMonthlyAmount() + $this->salesTaxAmount(), 2);
     }
 
-    /** What the customer owes at signing: deposit + tracking fee + first month. Single source of truth — ContractPdfService and the deposit charge itself both read this instead of each re-deriving the formula. */
+    /** The security deposit alone — what "pay deposit only" charges now (client, Joel, 2026-10-02). */
+    public function depositAmountDue(): float
+    {
+        return round((float) $this->security_deposit, 2);
+    }
+
+    /** Tracking fee + first month — what "pay deposit only" defers to a later, separate charge once the customer is ready for pickup. */
+    public function pickupBalanceAmountDue(): float
+    {
+        return round(self::TRACKING_DEVICE_FEE + $this->totalMonthlyPayment(), 2);
+    }
+
+    /** What the customer owes at signing if paying in full: deposit + tracking fee + first month. Single source of truth — ContractPdfService reads this instead of re-deriving the formula. */
     public function totalDueAtSigning(): float
     {
-        return round((float) $this->security_deposit + self::TRACKING_DEVICE_FEE + $this->totalMonthlyPayment(), 2);
+        return round($this->depositAmountDue() + $this->pickupBalanceAmountDue(), 2);
     }
 
     /**

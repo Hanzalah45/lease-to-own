@@ -34,7 +34,7 @@ export interface Contract {
 export interface Payment {
   id: number;
   lease_agreement_id: number;
-  type: "rental" | "late_fee" | "deposit";
+  type: "rental" | "late_fee" | "deposit" | "pickup_balance";
   late_fee_for_payment_id: number | null;
   amount: string;
   due_date: string;
@@ -94,4 +94,8 @@ export interface LeaseAgreement {
   epo_today: number;
   /** Only present on the `show` endpoint, not `index`. */
   epo_schedule?: { month: number; value: number }[];
+  /** Only present on the guest signed-link endpoint (PublicContractController::show()) — whether step 1 (account creation) is already done. */
+  customer_account_active?: boolean;
+  /** Only present on the guest signed-link endpoint — `customer` isn't eager-loaded there. */
+  customer_email?: string;
 }

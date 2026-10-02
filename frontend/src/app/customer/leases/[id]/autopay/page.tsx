@@ -14,7 +14,12 @@ import {
   setPrimaryMethod,
   type PaymentMethodsStatus,
 } from "@/lib/payment-methods";
-import { chargeDepositPayment, getDepositPaymentStatus, type DepositPaymentStatus } from "@/lib/deposit-payment";
+import {
+  chargeBalancePayment,
+  chargeDepositPayment,
+  getDepositPaymentStatus,
+  type DepositPaymentStatus,
+} from "@/lib/deposit-payment";
 import { ApiError } from "@/lib/api";
 
 /**
@@ -84,7 +89,8 @@ export default function AutopaySetupPage() {
         <DepositPaymentCard
           status={depositStatus}
           onStatusChange={setDepositStatus}
-          onCharge={() => chargeDepositPayment(leaseId)}
+          onChargeDeposit={() => chargeDepositPayment(leaseId)}
+          onChargeBalance={() => chargeBalancePayment(leaseId)}
           onRefreshStatus={() => getDepositPaymentStatus(leaseId)}
         />
       )}

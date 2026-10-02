@@ -26,6 +26,9 @@ class Payment extends Model
 
     public const TYPE_DEPOSIT = 'deposit';
 
+    /** The $150 tracking fee + first month's rent, deferred when a customer chooses "pay deposit only" (client, Joel, 2026-10-02) — never shares a PaymentIntent with the deposit row. */
+    public const TYPE_PICKUP_BALANCE = 'pickup_balance';
+
     protected $fillable = [
         'lease_agreement_id',
         'type',

@@ -164,6 +164,11 @@ export function PaymentTrackingPanel() {
               Deposit
             </span>
           )}
+          {r.type === "pickup_balance" && (
+            <span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-purple-700">
+              Pickup balance
+            </span>
+          )}
         </span>
       ),
     },

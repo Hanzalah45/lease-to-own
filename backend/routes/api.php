@@ -34,6 +34,7 @@ use App\Http\Controllers\Api\Customer\PlaidController;
 use App\Http\Controllers\Api\GuestApplicationController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\PublicAccountActivationController;
 use App\Http\Controllers\Api\PublicContractController;
 use App\Http\Controllers\Api\PublicDepositPaymentController;
 use App\Http\Controllers\Api\PublicInfoRequestController;
@@ -85,6 +86,12 @@ Route::post('/contracts/verify-lease', [PublicContractController::class, 'show']
 Route::post('/contracts/verify-sign', [PublicContractController::class, 'store'])->middleware('throttle:10,1');
 Route::post('/contracts/verify-preview', [PublicContractController::class, 'preview'])->middleware('throttle:10,1');
 
+// Consolidated guest onboarding (client, Joel, 2026-10-02): account creation
+// as the first of two separate steps reached from the same preview link
+// above — reuses ContractSigner's signature rather than a new Signer. See
+// PublicAccountActivationController.
+Route::post('/contracts/verify-activate-account', [PublicAccountActivationController::class, 'activate'])->middleware('throttle:10,1');
+
 // Signed-link AutoPay payment-method setup (client, 2026-10-01): same
 // guest-no-login gap as the contract-signing routes above. See
 // PaymentMethodSigner / PaymentMethodsRequestedNotification.
@@ -99,6 +106,9 @@ Route::post('/payment-methods/verify-primary', [PublicPaymentMethodController::c
 // StripeDepositPaymentService.
 Route::post('/deposit-payments/verify-show', [PublicDepositPaymentController::class, 'show'])->middleware('throttle:10,1');
 Route::post('/deposit-payments/verify-charge', [PublicDepositPaymentController::class, 'charge'])->middleware('throttle:10,1');
+// "Pay deposit only" defers this to a separate, later charge (client, Joel,
+// 2026-10-02) — see StripeDepositPaymentService::chargePickupBalance().
+Route::post('/deposit-payments/verify-charge-balance', [PublicDepositPaymentController::class, 'chargeBalance'])->middleware('throttle:10,1');
 
 // Signed-link info-request responses (2026-09-16 fix): a guest-originated
 // customer has no working login yet, so Customer\ApplicationController's
@@ -149,6 +159,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/lease-agreements/{leaseAgreement}/payment-methods/primary', [PaymentMethodController::class, 'setPrimary']);
         Route::get('/lease-agreements/{leaseAgreement}/deposit-payment', [DepositPaymentController::class, 'show']);
         Route::post('/lease-agreements/{leaseAgreement}/deposit-payment/charge', [DepositPaymentController::class, 'charge']);
+        Route::post('/lease-agreements/{leaseAgreement}/deposit-payment/charge-balance', [DepositPaymentController::class, 'chargeBalance']);
         Route::get('/lease-agreements/{leaseAgreement}/contract-preview', [ContractController::class, 'preview']);
         Route::apiResource('contracts', ContractController::class)->only(['index', 'show', 'store']);
         Route::get('/contracts/{contract}/download', [ContractController::class, 'download']);

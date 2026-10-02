@@ -2,13 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { money, TRACKING_DEVICE_FEE } from "@/components/applications/wizard/types";
-import { getSignedLease, previewSignedLease, signLeaseViaLink, type SignedContractLinkParams } from "@/lib/contracts";
+import { getSignedLease, previewSignedLease, type SignedContractLinkParams } from "@/lib/contracts";
+import { activateAccountFromLink } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
-import { validateName } from "@/lib/validation";
-import { CheckCircleIcon } from "@/components/icons";
+import { validatePassword } from "@/lib/validation";
 import type { LeaseAgreement } from "@/types/lease-agreement";
 
 function num(value: string | number | null | undefined): number {
@@ -17,13 +18,14 @@ function num(value: string | number | null | undefined): number {
 }
 
 /**
- * Public counterpart to the customer portal's contract-signing step —
+ * Consolidated guest onboarding, step 1 of 2 (client, Joel, 2026-10-02):
  * reached from the signed link RequestContractSignatureNotification emails
  * once an application reaches "waiting on deposit" (see ContractSigner on
- * the backend). Exists because a guest-originated customer's account has no
- * usable password yet (activated at first-payment/pickup, which happens
- * AFTER signing in the confirmed flow), so they can't log in to reach
- * /customer/contracts/[id]/sign.
+ * the backend). Shows the agreement preview, then — as its own separate step,
+ * per Joel's explicit correction ("first do the account, next sign the
+ * contract") — creates the customer's account. That step issues a real
+ * session, so signing itself (step 2) happens on the normal authenticated
+ * /customer/contracts/[id]/sign page instead of a second guest-only UI here.
  */
 export default function SignContractPage() {
   return (
@@ -34,6 +36,8 @@ export default function SignContractPage() {
 }
 
 function SignContractFlow() {
+  const router = useRouter();
+  const { refresh } = useAuth();
   const searchParams = useSearchParams();
   const id = searchParams.get("id");
   const lease = searchParams.get("lease");
@@ -49,12 +53,11 @@ function SignContractFlow() {
   const [loading, setLoading] = useState(hasAllParams);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [agreed, setAgreed] = useState(false);
-  const [agreedTouched, setAgreedTouched] = useState(false);
-  const [typedName, setTypedName] = useState("");
-  const [nameTouched, setNameTouched] = useState(false);
-  const [signing, setSigning] = useState(false);
-  const [signError, setSignError] = useState<string | null>(null);
+  const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [touched, setTouched] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [activateError, setActivateError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
@@ -81,31 +84,32 @@ function SignContractFlow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const nameError = validateName(typedName, "Full legal name");
-  const isValid = agreed && !nameError;
+  const passwordErr = validatePassword(password, true);
+  const confirmErr = passwordConfirmation && passwordConfirmation !== password ? "Passwords do not match." : undefined;
+  const isValid = !passwordErr && !confirmErr && !!passwordConfirmation;
 
-  async function handleSign() {
-    if (!leaseAgreement || !params) return;
+  async function handleActivate() {
+    if (!params || !lease) return;
     if (!isValid) {
-      setNameTouched(true);
-      setAgreedTouched(true);
+      setTouched(true);
       return;
     }
-    setSigning(true);
-    setSignError(null);
+    setActivating(true);
+    setActivateError(null);
     try {
-      await signLeaseViaLink(params, typedName.trim());
-      setLeaseAgreement(await getSignedLease(params));
+      await activateAccountFromLink({ ...params, password, password_confirmation: passwordConfirmation });
+      await refresh();
+      router.push(`/customer/contracts/${lease}/sign`);
     } catch (err) {
-      setSignError(err instanceof ApiError ? err.message : "Could not sign the agreement. Please try again.");
+      setActivateError(err instanceof ApiError ? err.message : "Could not create your account. Please try again.");
     } finally {
-      setSigning(false);
+      setActivating(false);
     }
   }
 
   const totalMonthly = num(leaseAgreement?.total_monthly_payment);
   const totalDueToday = num(leaseAgreement?.security_deposit) + TRACKING_DEVICE_FEE + totalMonthly;
-  const signed = !!leaseAgreement?.contract;
+  const accountAlreadyActive = !!leaseAgreement?.customer_account_active;
 
   return (
     <main
@@ -119,8 +123,8 @@ function SignContractFlow() {
         <div className="mb-6 flex flex-col items-center text-center">
           <Image src="/logo.png" alt="Prostart Leasing" width={159} height={103} className="mb-3 h-16 w-auto" priority />
           <p className="font-heading text-xs font-semibold uppercase tracking-widest text-neutral-400">Prostart Leasing</p>
-          <h1 className="mt-1 text-xl font-bold uppercase tracking-tight text-neutral-900">Sign your lease agreement</h1>
-          <p className="mt-1 text-sm text-neutral-500">Review the terms below, then sign to complete your lease.</p>
+          <h1 className="mt-1 text-xl font-bold uppercase tracking-tight text-neutral-900">Your lease agreement</h1>
+          <p className="mt-1 text-sm text-neutral-500">Review the terms below, then create your account to sign.</p>
         </div>
 
         {!hasAllParams ? (
@@ -162,86 +166,79 @@ function SignContractFlow() {
               </div>
             </div>
 
-            {signed ? (
-              <div className="flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 p-5">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600">
-                  <CheckCircleIcon className="h-4 w-4" />
-                </span>
-                <div>
-                  <p className="text-sm font-bold text-green-700">Signed &amp; legally valid</p>
-                  <p className="mt-1 text-sm text-neutral-600">
-                    Signed on {new Date(leaseAgreement.contract!.signed_at).toLocaleString()}.
-                  </p>
-                  <p className="mt-3 text-xs text-neutral-400">
-                    You&rsquo;re all set. Prostart Leasing will be in touch with next steps for pickup.
-                  </p>
-                </div>
+            <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3.5 text-center">
+              <button
+                onClick={handlePreview}
+                disabled={previewing}
+                className="font-heading text-sm font-bold text-red-600 underline hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {previewing ? "Opening…" : "View full lease agreement →"}
+              </button>
+              <p className="mt-1 text-xs text-neutral-400">Opens the complete document in a new tab.</p>
+              {previewError && <p className="mt-1.5 text-xs text-red-600">{previewError}</p>}
+            </div>
+
+            {accountAlreadyActive ? (
+              <div className="rounded-xl border border-neutral-200 bg-white p-5 text-center">
+                <p className="text-sm font-semibold text-neutral-900">You&rsquo;ve already set up your account.</p>
+                <Link
+                  href={`/login?next=/customer/contracts/${lease}/sign`}
+                  className="font-heading mt-4 inline-block w-full rounded-md bg-red-600 py-3 text-sm font-bold text-white hover:bg-red-700"
+                >
+                  Sign in to continue →
+                </Link>
               </div>
             ) : (
               <div className="rounded-xl border border-neutral-200 bg-white p-5">
                 <div className="mb-4 flex items-center gap-2">
                   <span className="h-4 w-1 shrink-0 rounded-full bg-red-600" />
-                  <h2 className="font-heading text-base font-bold uppercase tracking-wide text-neutral-900">Signature</h2>
+                  <h2 className="font-heading text-base font-bold uppercase tracking-wide text-neutral-900">
+                    Step 1: Create your account
+                  </h2>
                 </div>
+                <p className="mb-4 text-sm text-neutral-500">
+                  Set a password for {leaseAgreement.customer_email ?? "your account"}. You&rsquo;ll sign your lease
+                  agreement next.
+                </p>
 
-                <div className="mb-4 rounded-md border border-neutral-200 bg-neutral-50 p-3.5 text-center">
-                  <button
-                    onClick={handlePreview}
-                    disabled={previewing}
-                    className="font-heading text-sm font-bold text-red-600 underline hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {previewing ? "Opening…" : "View full lease agreement →"}
-                  </button>
-                  <p className="mt-1 text-xs text-neutral-400">Opens the complete document in a new tab.</p>
-                  {previewError && <p className="mt-1.5 text-xs text-red-600">{previewError}</p>}
-                </div>
-
-                <div className="mb-4">
-                  <label className="flex items-start gap-2.5 text-sm text-neutral-700">
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-neutral-500">Password</label>
                     <input
-                      type="checkbox"
-                      checked={agreed}
-                      onChange={(e) => {
-                        setAgreed(e.target.checked);
-                        setAgreedTouched(true);
-                      }}
-                      aria-invalid={agreedTouched && !agreed}
-                      className="mt-0.5 h-4 w-4 accent-red-600"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      onBlur={() => setTouched(true)}
+                      placeholder="Letter + number, 8+ chars"
+                      aria-invalid={touched && !!passwordErr}
+                      className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-red-600 focus:outline-none"
                     />
-                    I have read and agree to the Lease Purchase Agreement, Early Purchase Option terms, and AutoPay
-                    Payment Authorization.
-                  </label>
-                  {agreedTouched && !agreed && (
-                    <p className="mt-1.5 text-xs text-red-600">You must agree to the terms before signing.</p>
-                  )}
+                    {touched && passwordErr && <p className="mt-1 text-xs text-red-600">{passwordErr}</p>}
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-neutral-500">
+                      Confirm password
+                    </label>
+                    <input
+                      type="password"
+                      value={passwordConfirmation}
+                      onChange={(e) => setPasswordConfirmation(e.target.value)}
+                      onBlur={() => setTouched(true)}
+                      aria-invalid={touched && !!confirmErr}
+                      className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-red-600 focus:outline-none"
+                    />
+                    {touched && confirmErr && <p className="mt-1 text-xs text-red-600">{confirmErr}</p>}
+                  </div>
                 </div>
 
-                <div className="rounded-md border border-dashed border-neutral-300 p-6 text-center">
-                  <input
-                    value={typedName}
-                    onChange={(e) => setTypedName(e.target.value)}
-                    onBlur={() => setNameTouched(true)}
-                    placeholder="Type your full legal name"
-                    aria-label="Full legal name"
-                    aria-invalid={nameTouched && !!nameError}
-                    className={`w-full border-b bg-transparent pb-2 text-center font-serif text-2xl italic text-neutral-700 placeholder:text-neutral-300 focus:outline-none ${
-                      nameTouched && nameError ? "border-red-500" : "border-neutral-900"
-                    }`}
-                  />
-                  {nameTouched && nameError && <p className="mt-2 text-xs text-red-600">{nameError}</p>}
-                  <p className="mt-3 text-xs text-neutral-400">
-                    Typing your name above and clicking Sign constitutes your legal electronic signature.
-                  </p>
-                </div>
-
-                {signError && <p className="mt-3 text-sm text-red-600">{signError}</p>}
+                {activateError && <p className="mt-3 text-sm text-red-600">{activateError}</p>}
 
                 <button
-                  onClick={handleSign}
-                  disabled={signing}
+                  onClick={handleActivate}
+                  disabled={activating}
                   className="font-heading mt-4 w-full rounded-md bg-red-600 py-3 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {signing ? "Signing…" : "Sign & Complete →"}
+                  {activating ? "Creating account…" : "Create account →"}
                 </button>
               </div>
             )}
@@ -249,6 +246,10 @@ function SignContractFlow() {
         )}
 
         <div className="mt-6 text-center text-sm text-neutral-500">
+          <Link href="/faq" className="font-semibold text-neutral-900 underline">
+            Have questions about how this works?
+          </Link>
+          <span className="mx-2">&middot;</span>
           <Link href="/login" className="font-semibold text-neutral-900 underline">
             Back to sign in
           </Link>

@@ -89,6 +89,7 @@ class Application extends Model
         'status_notes',
         'signature_received',
         'deposit_received',
+        'pickup_balance_received',
         'deposit_hold_expires_at',
         'deposit_forfeited_at',
         'reviewed_by',
@@ -100,6 +101,7 @@ class Application extends Model
         return [
             'signature_received' => 'boolean',
             'deposit_received' => 'boolean',
+            'pickup_balance_received' => 'boolean',
             'deposit_hold_expires_at' => 'datetime',
             'deposit_forfeited_at' => 'datetime',
         ];

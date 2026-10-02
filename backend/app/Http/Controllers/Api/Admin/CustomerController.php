@@ -9,8 +9,10 @@ use App\Models\Payment;
 use App\Models\User;
 use App\Notifications\AccountSecurityUpdatedNotification;
 use App\Notifications\ActivateAccountNotification;
+use App\Notifications\RequestContractSignatureNotification;
 use App\Services\AccountSetupSigner;
 use App\Services\CommonValidationRules;
+use App\Services\ContractSigner;
 use App\Services\LeaseEngine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -194,23 +196,37 @@ class CustomerController extends Controller
     }
 
     /**
-     * Resends the "Set up your account" link. Real gap found 2026-09-21: it
-     * is only ever sent once, when the first payment lands, and it expires
-     * after 14 days — and there was no other way in for a guest customer,
-     * since "Forgot password" only changes the password without activating
-     * the account, so they'd still be told to verify their email at login.
-     * Mirrors the rule that starts setup in the first place: only a guest
-     * (still pending) who has actually made a first payment.
+     * Resends the "set up your account" link — real gap found 2026-09-21,
+     * widened 2026-10-02 when account setup moved earlier in the funnel
+     * (client, Joel): a guest who hasn't signed yet now needs the same
+     * consolidated preview-and-activate link RequestContractSignatureNotification
+     * already sends (see ContractSigner / PublicAccountActivationController),
+     * not the old post-payment AccountSetupSigner link, which would 422 for
+     * them since they have no paid payment yet. Still falls back to the old
+     * path for a true legacy straggler: someone who's signed and paid but
+     * never got the chance to activate early (pre-cutover, or the admin
+     * override on AutoPay's payment-methods check let them skip ahead).
      */
     public function resendAccountSetup(User $customer)
     {
         $this->assertIsCustomer($customer);
 
         abort_unless($customer->status === 'pending', 422, 'This customer has already set up their account.');
+
+        $application = $customer->applications()->latest()->first();
+        $lease = $application?->leaseAgreement;
+
+        if ($lease && ! $lease->contract()->exists()
+            && in_array($application->status, [Application::STATUS_WAITING_DEPOSIT, Application::STATUS_WAITING_DELIVERY, Application::STATUS_FINISHED], true)) {
+            $customer->notify(new RequestContractSignatureNotification(ContractSigner::urlFor($customer, $lease)));
+
+            return response()->json(['message' => "Signing/activation link sent to {$customer->email}."]);
+        }
+
         abort_unless(
             $customer->leaseAgreements()->whereHas('payments', fn ($q) => $q->where('status', Payment::STATUS_PAID))->exists(),
             422,
-            'Account setup opens once the customer\'s first payment is recorded.',
+            'Account setup isn\'t available for this customer yet.',
         );
 
         $customer->notify(new ActivateAccountNotification(AccountSetupSigner::urlFor($customer)));

@@ -16,6 +16,7 @@ import {
   type SignedPaymentMethodLinkParams,
 } from "@/lib/payment-methods";
 import {
+  chargeSignedBalancePayment,
   chargeSignedDepositPayment,
   getSignedDepositPaymentStatus,
   type DepositPaymentStatus,
@@ -130,7 +131,8 @@ function SetupAutopayFlow() {
               <DepositPaymentCard
                 status={depositStatus}
                 onStatusChange={setDepositStatus}
-                onCharge={() => chargeSignedDepositPayment(params)}
+                onChargeDeposit={() => chargeSignedDepositPayment(params)}
+                onChargeBalance={() => chargeSignedBalancePayment(params)}
                 onRefreshStatus={() => getSignedDepositPaymentStatus(params)}
               />
             )}

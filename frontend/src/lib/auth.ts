@@ -149,6 +149,32 @@ export async function setUpAccount(payload: {
   });
 }
 
+/**
+ * Consolidated guest onboarding (client, Joel, 2026-10-02) — the first of two
+ * separate steps reached from the contract preview link: creates the
+ * account, and unlike setUpAccount() above, immediately logs the customer in
+ * (mirrors login()'s own cookie plumbing) so the very next step — signing —
+ * can use the normal authenticated endpoints. See
+ * PublicAccountActivationController on the backend.
+ */
+export async function activateAccountFromLink(payload: {
+  id: string;
+  lease: string;
+  hash: string;
+  expires: string;
+  signature: string;
+  password: string;
+  password_confirmation: string;
+}): Promise<LoginResponse> {
+  const data = await apiFetch<LoginResponse>("/contracts/verify-activate-account", {
+    method: "POST",
+    body: payload,
+  });
+  setToken(data.token);
+  setRole(data.user.role);
+  return data;
+}
+
 export async function updateMyProfile(payload: {
   name?: string;
   phone?: string | null;

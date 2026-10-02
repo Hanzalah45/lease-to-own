@@ -42,6 +42,8 @@ export interface Application {
   status_notes: string | null;
   signature_received: boolean;
   deposit_received: boolean;
+  /** "Pay deposit only" defers the tracking fee + first month to a later charge (client, Joel, 2026-10-02) — this is that balance's deposit_received sibling. */
+  pickup_balance_received: boolean;
   /** Set the moment the customer signs the contract — the deposit secures the unit for 30 days from this timestamp. */
   deposit_hold_expires_at: string | null;
   /** Set once the daily deposits:forfeit-expired-holds job actually declines this application for a missed pickup. */

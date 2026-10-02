@@ -102,17 +102,19 @@ class LeaseEngine
         // request into an extra query per row (real regression, caught by
         // ApplicationListQueryCountTest).
         $today = now()->startOfDay();
-        // Excludes a stuck/declined deposit charge (real bug fixed
-        // 2026-10-01, before it could ever fire) — a deposit isn't part of
-        // the rent-to-own payoff schedule's arrears, so a failed deposit
-        // charge must never inflate the EPO price. Late fees stay included
-        // here deliberately — unlike paymentsMadeCount(), an overdue late
-        // fee genuinely is still owed toward payoff.
-        $isPastDueUnpaid = fn (Payment $p) => $p->status !== Payment::STATUS_PAID && $p->type !== Payment::TYPE_DEPOSIT && $p->due_date && $p->due_date->lte($today);
+        // Excludes a stuck/declined deposit or pickup_balance charge (deposit
+        // fixed 2026-10-01, pickup_balance added 2026-10-02, both before
+        // either could ever fire) — neither is part of the rent-to-own payoff
+        // schedule's arrears, so a failed/stuck charge of either must never
+        // inflate the EPO price. Late fees stay included here deliberately —
+        // unlike paymentsMadeCount(), an overdue late fee genuinely is still
+        // owed toward payoff.
+        $notPayoffArrears = fn (string $type) => ! in_array($type, [Payment::TYPE_DEPOSIT, Payment::TYPE_PICKUP_BALANCE], true);
+        $isPastDueUnpaid = fn (Payment $p) => $p->status !== Payment::STATUS_PAID && $notPayoffArrears($p->type) && $p->due_date && $p->due_date->lte($today);
 
         $amountPastDue = $lease->relationLoaded('payments')
             ? (float) $lease->payments->filter($isPastDueUnpaid)->sum('amount')
-            : (float) $lease->payments()->where('status', '!=', Payment::STATUS_PAID)->where('type', '!=', Payment::TYPE_DEPOSIT)->whereDate('due_date', '<=', $today)->sum('amount');
+            : (float) $lease->payments()->where('status', '!=', Payment::STATUS_PAID)->whereNotIn('type', [Payment::TYPE_DEPOSIT, Payment::TYPE_PICKUP_BALANCE])->whereDate('due_date', '<=', $today)->sum('amount');
 
         return self::epoAt($lease, max(1, $lease->paymentsMadeCount()), $amountPastDue);
     }
@@ -207,7 +209,14 @@ class LeaseEngine
      */
     public static function markFirstPaymentPaid(LeaseAgreement $lease, int $recordedBy): ?Payment
     {
-        $payment = $lease->payments()->where('status', Payment::STATUS_PENDING)->orderBy('due_date')->first();
+        // type=rental only (real bug found and fixed 2026-10-02, before it
+        // could ever fire): a pickup_balance row is created with due_date =
+        // today and can sit pending for weeks (the whole point of "pay
+        // deposit only" deferring it) — without this filter it would almost
+        // always sort before any future rental due date and get wrongly
+        // marked as the "first payment" here instead of the real first rental
+        // payment.
+        $payment = $lease->payments()->where('status', Payment::STATUS_PENDING)->where('type', Payment::TYPE_RENTAL)->orderBy('due_date')->first();
         if (! $payment) {
             return null;
         }
@@ -285,6 +294,13 @@ class LeaseEngine
         // manual "received" stays received.
         if ($enteredPaid && $payment->type === Payment::TYPE_DEPOSIT) {
             $payment->leaseAgreement->application?->update(['deposit_received' => true]);
+        }
+
+        // Sibling of the deposit sync above, for the deferred tracking-fee +
+        // first-month balance a "pay deposit only" customer settles later,
+        // whenever they're ready for pickup (client, Joel, 2026-10-02).
+        if ($enteredPaid && $payment->type === Payment::TYPE_PICKUP_BALANCE) {
+            $payment->leaseAgreement->application?->update(['pickup_balance_received' => true]);
         }
 
         // Pickup/first-payment account setup (client, 2026-09-04) — see

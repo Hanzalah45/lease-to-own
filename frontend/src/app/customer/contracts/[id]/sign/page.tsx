@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { money, TRACKING_DEVICE_FEE } from "@/components/applications/wizard/types";
 import { getMyLeaseAgreement } from "@/lib/lease-agreements";
@@ -18,6 +18,7 @@ function num(value: string | number | null | undefined): number {
 
 export default function SignLeaseAgreementPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const { user } = useAuth();
   const [lease, setLease] = useState<LeaseAgreement | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,7 +67,9 @@ export default function SignLeaseAgreementPage() {
     setSignError(null);
     try {
       await signLease(lease.id, typedName.trim());
-      setLease(await getMyLeaseAgreement(lease.id));
+      // Automatically continues into AutoPay setup (client, Joel, 2026-10-02)
+      // — no further email/link needed, the customer is already logged in.
+      router.push(`/customer/leases/${lease.id}/autopay`);
     } catch (err) {
       setSignError(err instanceof ApiError ? err.message : "Could not sign the agreement. Please try again.");
     } finally {

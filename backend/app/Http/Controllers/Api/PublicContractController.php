@@ -42,6 +42,15 @@ class PublicContractController extends Controller
             'total_monthly_payment' => $lease->totalMonthlyPayment(),
             'payments_made' => $lease->paymentsMadeCount(),
             'epo_today' => LeaseEngine::epoToday($lease),
+            // Tells the frontend whether the account-creation step is still
+            // needed (client, Joel, 2026-10-02 consolidated onboarding) — a
+            // re-visit after already activating should skip straight to
+            // signing in instead of showing the password form again.
+            'customer_account_active' => $customer->status === 'active',
+            // customer isn't eager-loaded on $lease above — same shape
+            // PublicPaymentMethodController::show() already returns, so the
+            // step-1 account-creation form can show which email it's for.
+            'customer_email' => $customer->email,
         ]);
 
         return response()->json(['data' => $payload]);

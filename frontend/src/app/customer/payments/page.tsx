@@ -132,6 +132,16 @@ export default function CustomerPaymentsPage() {
                           Late fee
                         </span>
                       )}
+                      {row.type === "deposit" && (
+                        <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+                          Deposit
+                        </span>
+                      )}
+                      {row.type === "pickup_balance" && (
+                        <span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-purple-700">
+                          Pickup balance
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 text-neutral-600">{row.method ?? "—"}</td>
                     <td className="py-3">
