@@ -96,7 +96,7 @@ export function wizardStateToFormData(state: WizardState): FormData {
   set("promo_code", state.promoCode);
   set("term_months", state.termMonths);
   set("tax_rate", state.taxRate);
-  set("payment_due_day", state.paymentDueDay);
+  set("billing_cycle", state.billingCycle);
   set("autopay", state.autopay);
 
   // Monthly rental and (when LDW is declined) the security deposit are
@@ -146,7 +146,7 @@ export async function attachLeaseToApplication(applicationId: number | string, s
   set("promo_code", state.promoCode);
   set("term_months", state.termMonths);
   set("tax_rate", state.taxRate);
-  set("payment_due_day", state.paymentDueDay);
+  set("billing_cycle", state.billingCycle);
   set("autopay", state.autopay);
 
   // See the matching comment in wizardStateToFormData — always the computed
@@ -279,11 +279,16 @@ export interface ApplicationUpdatePayload {
   deposit_received?: boolean;
   /** Bypasses the AutoPay bank-account-and-card requirement on the waiting_deposit → waiting_delivery transition — see Admin\ApplicationController::update(). */
   override_payment_methods_check?: boolean;
+  /** "Mark Delivered": the day the customer took the equipment (YYYY-MM-DD, default today in Texas, at most 7 days back). */
+  pickup_date?: string;
+  /** "Mark Delivered" only, for an older signed lease that never got a billing cycle. */
+  billing_cycle?: "1st" | "15th";
   lease?: Partial<{
     term_months: number;
     monthly_rental_payment: number;
     sales_tax_rate: number;
     security_deposit: number;
+    billing_cycle: "1st" | "15th" | null;
     autopay_enabled: boolean;
     ldw_selected: boolean;
     promo_code: string | null;

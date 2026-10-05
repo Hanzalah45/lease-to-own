@@ -8,6 +8,7 @@ use App\Models\Payment;
 use App\Models\User;
 use App\Notifications\ActivateAccountNotification;
 use App\Notifications\PaymentStatusChangedNotification;
+use App\Services\BillingClock;
 use App\Services\ContractSigner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -276,7 +277,7 @@ class GuestApplicationTest extends TestCase
         $lease = LeaseAgreement::where('application_id', $application->id)->first();
         $signUrl = ContractSigner::urlFor($customer, $lease);
         parse_str(parse_url($signUrl, PHP_URL_QUERY), $signParams);
-        $this->postJson('/api/contracts/verify-sign', [...$signParams, 'signer_name' => 'Guest Applicant'])
+        $this->postJson('/api/contracts/verify-sign', [...$signParams, 'signer_name' => 'Guest Applicant', 'billing_cycle' => '15th'])
             ->assertCreated();
 
         // Not under test here (AutoPay payment methods are covered by
@@ -292,6 +293,10 @@ class GuestApplicationTest extends TestCase
         $firstPayment = $lease->payments()->orderBy('due_date')->first();
         $this->assertSame(Payment::STATUS_PAID, $firstPayment->status);
         $this->assertNotNull($firstPayment->paid_date);
+        // The schedule is built at pickup, from today in the client's time zone.
+        $this->assertSame(36, $lease->payments()->count());
+        $this->assertSame(BillingClock::todayDate(), $firstPayment->due_date->toDateString());
+        $this->assertSame(BillingClock::todayDate(), $lease->start_date->toDateString());
 
         // Real gap found 2026-09-15: the equipment unit's delivery_date was
         // never set anywhere, which silently blocked any later admin edit to
@@ -300,7 +305,7 @@ class GuestApplicationTest extends TestCase
         // "Mark Delivered & Paid" is the actual delivery event, so that's
         // where it gets filled in now.
         $this->assertNotNull($lease->equipmentUnit->delivery_date);
-        $this->assertTrue($lease->equipmentUnit->delivery_date->isToday());
+        $this->assertSame(BillingClock::todayDate(), $lease->equipmentUnit->delivery_date->toDateString());
 
         Notification::assertSentTo($customer, ActivateAccountNotification::class);
         Notification::assertSentTo($admin, PaymentStatusChangedNotification::class);

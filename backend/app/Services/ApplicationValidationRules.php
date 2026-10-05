@@ -22,22 +22,32 @@ class ApplicationValidationRules
     // controller in the app uses, so a limit can't drift between "submit an
     // application" and, say, "admin creates a customer."
     private const NAME_MIN = CommonValidationRules::NAME_MIN;
+
     private const NAME_MAX = CommonValidationRules::NAME_MAX;
+
     private const PHONE_MIN = CommonValidationRules::PHONE_MIN;
+
     private const PHONE_MAX = CommonValidationRules::PHONE_MAX;
+
     private const STREET_MIN = CommonValidationRules::STREET_MIN;
+
     private const STREET_MAX = CommonValidationRules::STREET_MAX;
+
     private const CITY_MAX = CommonValidationRules::CITY_MAX;
 
     // Mirrors DRIVERS_LICENSE_MAX / PROMO_CODE_MAX in validation.ts (neither
     // has a frontend minimum beyond "required").
     private const DRIVERS_LICENSE_MAX = 60;
+
     private const PROMO_CODE_MAX = 60;
 
     // Also shared with Admin\EquipmentUnitController via CommonValidationRules.
     private const EQUIPMENT_MODEL_MIN = CommonValidationRules::EQUIPMENT_MODEL_MIN;
+
     private const EQUIPMENT_MODEL_MAX = CommonValidationRules::EQUIPMENT_MODEL_MAX;
+
     private const SERIAL_MIN = CommonValidationRules::SERIAL_MIN;
+
     private const SERIAL_MAX = CommonValidationRules::SERIAL_MAX;
 
     // Mirrors NOTES_MAX in validation.ts — a UX ceiling so a free-text box
@@ -109,7 +119,13 @@ class ApplicationValidationRules
             'monthly_rental' => ['required', 'numeric', 'min:0'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'security_deposit' => ['nullable', 'numeric', 'min:0'],
+            // Legacy free-text day (never used to compute a due date). Still
+            // validated if an old client sends it; superseded by billing_cycle.
             'payment_due_day' => ['nullable', 'integer', 'between:1,31'],
+            // Billing cycles (client, 2026-10-05): the 1st or the 15th, no
+            // custom dates. Optional here: the customer chooses it right
+            // before signing if the admin leaves it blank.
+            'billing_cycle' => ['nullable', Rule::in(BillingSchedule::CYCLES)],
             'autopay' => ['nullable', 'in:yes,no'],
         ];
     }

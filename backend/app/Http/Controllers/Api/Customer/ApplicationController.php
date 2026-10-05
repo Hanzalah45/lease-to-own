@@ -103,6 +103,7 @@ class ApplicationController extends Controller
             $payload['lease_agreement']['total_monthly_payment'] = $lease->totalMonthlyPayment();
             $payload['lease_agreement']['payments_made'] = $lease->paymentsMadeCount();
             $payload['lease_agreement']['epo_today'] = LeaseEngine::epoToday($lease);
+            $payload['lease_agreement']['pricing'] = $lease->pricingSummary();
         }
 
         return $payload;

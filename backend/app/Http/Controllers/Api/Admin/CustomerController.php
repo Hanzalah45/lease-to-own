@@ -120,6 +120,7 @@ class CustomerController extends Controller
                 $data['lease_agreement']['total_monthly_payment'] = $lease->totalMonthlyPayment();
                 $data['lease_agreement']['payments_made'] = $lease->paymentsMadeCount();
                 $data['lease_agreement']['epo_today'] = LeaseEngine::epoToday($lease);
+                $data['lease_agreement']['pricing'] = $lease->pricingSummary();
             }
 
             return $data;

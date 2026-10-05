@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\PaymentMethodSigner;
 use App\Services\StripeDepositPaymentService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * The signed-link counterpart to Customer\DepositPaymentController — reached
@@ -39,7 +40,8 @@ class PublicDepositPaymentController extends Controller
         abort_unless($lease->customer_id === $customer->id, 404);
 
         $this->guardDepositChargeable($lease);
-        $result = $this->deposits->chargeDepositOnly($lease);
+        $choice = $this->chargeChoice($request);
+        $result = $this->deposits->chargeDepositOnly($lease, $choice['method'], $choice['expected_total_cents']);
 
         return response()->json(['data' => [
             'payment' => $result['payment'],
@@ -55,13 +57,31 @@ class PublicDepositPaymentController extends Controller
         abort_unless($lease->customer_id === $customer->id, 404);
 
         $this->guardBalanceChargeable($lease);
-        $result = $this->deposits->chargePickupBalance($lease);
+        $choice = $this->chargeChoice($request);
+        $result = $this->deposits->chargePickupBalance($lease, $choice['method'], $choice['expected_total_cents']);
 
         return response()->json(['data' => [
             'payment' => $result['payment'],
             'requires_action' => $result['requires_action'],
             'client_secret' => $result['client_secret'],
         ]]);
+    }
+
+    /**
+     * The customer's per-payment choice (dual pricing): which saved method to
+     * use and the total they were shown. Both optional so a plain charge still
+     * falls back to the AutoPay primary.
+     *
+     * @return array{method: ?string, expected_total_cents: ?int}
+     */
+    private function chargeChoice(Request $request): array
+    {
+        $data = $request->validate([
+            'method' => ['nullable', Rule::in(['bank', 'card'])],
+            'expected_total_cents' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        return ['method' => $data['method'] ?? null, 'expected_total_cents' => isset($data['expected_total_cents']) ? (int) $data['expected_total_cents'] : null];
     }
 
     private function guardDepositChargeable(LeaseAgreement $lease): void
@@ -96,7 +116,7 @@ class PublicDepositPaymentController extends Controller
         return [
             'security_deposit' => [
                 'amount' => $lease->depositAmountDue(),
-                'payment' => $depositPayment?->only(['id', 'status', 'method', 'amount', 'paid_date', 'created_at']),
+                'payment' => $depositPayment?->only(['id', 'status', 'method', 'amount', 'card_fee_amount', 'paid_date', 'created_at']),
                 'received' => (bool) $lease->application?->deposit_received,
             ],
             'pickup_balance' => [
@@ -105,11 +125,18 @@ class PublicDepositPaymentController extends Controller
                     'tracking_device_fee' => LeaseAgreement::TRACKING_DEVICE_FEE,
                     'first_month_payment' => $lease->totalMonthlyPayment(),
                 ],
-                'payment' => $balancePayment?->only(['id', 'status', 'method', 'amount', 'paid_date', 'created_at']),
+                'payment' => $balancePayment?->only(['id', 'status', 'method', 'amount', 'card_fee_amount', 'paid_date', 'created_at']),
                 'received' => (bool) $lease->application?->pickup_balance_received,
             ],
             'amount_due_full' => $lease->totalDueAtSigning(),
             'chargeable_method' => $lease->autopayChargeablePaymentMethod()['type'] ?? null,
+            // Dual pricing (client, 2026-10-05): bank vs card price for every
+            // charge, and which methods can actually be picked.
+            'prices' => $lease->pricingSummary(),
+            'available_methods' => array_values(array_filter([
+                $lease->stripe_bank_payment_method_id ? 'bank' : null,
+                $lease->stripe_card_payment_method_id ? 'card' : null,
+            ])),
         ];
     }
 

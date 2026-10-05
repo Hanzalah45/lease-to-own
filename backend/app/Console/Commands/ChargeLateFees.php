@@ -3,9 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Models\AdminPermission;
+use App\Models\Application;
 use App\Models\Payment;
 use App\Models\User;
 use App\Notifications\LateFeeChargedNotification;
+use App\Services\BillingClock;
 use App\Services\LeaseEngine;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Notification;
@@ -28,12 +30,18 @@ class ChargeLateFees extends Command
 
     public function handle(): int
     {
-        $cutoff = now()->subDays(LeaseEngine::LATE_FEE_GRACE_DAYS)->toDateString();
+        $cutoff = BillingClock::today()->subDays(LeaseEngine::LATE_FEE_GRACE_DAYS)->toDateString();
 
+        // A rental row whose automatic charge failed on every method is left
+        // 'failed' (see AutopayCharger), so it must be eligible here too, not
+        // just 'pending'. Only leases already picked up have a real schedule,
+        // and a row with an attached intent is an in-flight charge.
         $overdue = Payment::with('leaseAgreement.customer.customerProfile')
             ->where('type', Payment::TYPE_RENTAL)
-            ->where('status', Payment::STATUS_PENDING)
+            ->whereIn('status', [Payment::STATUS_PENDING, Payment::STATUS_FAILED])
+            ->where(fn ($q) => $q->where('status', Payment::STATUS_FAILED)->orWhereNull('stripe_payment_intent_id'))
             ->whereDate('due_date', '<=', $cutoff)
+            ->whereHas('leaseAgreement.application', fn ($q) => $q->where('status', Application::STATUS_FINISHED))
             ->whereDoesntHave('lateFeeCharge')
             ->get();
 
@@ -52,7 +60,7 @@ class ChargeLateFees extends Command
                 'type' => Payment::TYPE_LATE_FEE,
                 'late_fee_for_payment_id' => $payment->id,
                 'amount' => LeaseEngine::lateFeeFor($payment),
-                'due_date' => now()->toDateString(),
+                'due_date' => BillingClock::todayDate(),
                 'status' => Payment::STATUS_PENDING,
             ]);
 

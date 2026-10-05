@@ -13,7 +13,7 @@ class PaymentController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Payment::with(['leaseAgreement.customer:id,name,email', 'recordedBy:id,name'])->latest('due_date');
+        $query = Payment::with(['leaseAgreement.customer:id,name,email', 'recordedBy:id,name', 'attempts'])->latest('due_date');
 
         if ($request->filled('lease_agreement_id')) {
             $query->where('lease_agreement_id', $request->integer('lease_agreement_id'));
@@ -24,7 +24,7 @@ class PaymentController extends Controller
 
     public function show(Payment $payment)
     {
-        return response()->json(['data' => $payment->load(['leaseAgreement.customer:id,name,email', 'recordedBy:id,name'])]);
+        return response()->json(['data' => $payment->load(['leaseAgreement.customer:id,name,email', 'recordedBy:id,name', 'attempts'])]);
     }
 
     /** Admins record manual payments here (cash/check/ACH confirmation), or a processor webhook records one automatically — see LeaseEngine::applyPaymentStatusChange(). */

@@ -15,10 +15,13 @@ use App\Notifications\PaymentStatusChangedNotification;
 use App\Notifications\RequestContractSignatureNotification;
 use App\Services\ApplicationCreationService;
 use App\Services\ApplicationValidationRules;
+use App\Services\BillingClock;
+use App\Services\BillingSchedule;
 use App\Services\ContractSigner;
 use App\Services\InfoRequestResponder;
 use App\Services\LeaseEngine;
 use App\Services\RiskScoringService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Notification;
@@ -88,17 +91,10 @@ class ApplicationController extends Controller
         $application = ApplicationCreationService::attachLease($application, $data, Auth::id());
         $lease = $application->leaseAgreement;
 
-        // Same out-of-order gap, second half (found 2026-09-21 on production
-        // application #5, which reached "finished" with zero payments): the
-        // schedule is otherwise only generated at the waiting_deposit
-        // transition itself, which a late-attached lease already missed.
-        if (in_array($application->status, [
-            Application::STATUS_WAITING_DEPOSIT,
-            Application::STATUS_WAITING_DELIVERY,
-            Application::STATUS_FINISHED,
-        ], true)) {
-            LeaseEngine::generatePaymentSchedule($lease);
-        }
+        // No payment schedule is built here any more (2026-10-05): the
+        // monthly schedule is created when the equipment is picked up, from
+        // the real pickup date (see LeaseEngine::startLease), so a late-
+        // attached lease needs nothing extra to catch up.
 
         // Real gap found live 2026-09-16: nothing requires a lease to exist
         // before an application reaches waiting_deposit, so an admin who
@@ -147,6 +143,7 @@ class ApplicationController extends Controller
     public function update(Request $request, Application $application)
     {
         $equipmentUnitId = $application->leaseAgreement?->equipment_unit_id;
+        $pickupDate = null;
 
         $data = $request->validate([
             'status' => ['sometimes', Rule::in(Application::ALL_STATUSES)],
@@ -164,6 +161,12 @@ class ApplicationController extends Controller
             // check below. Deliberately narrow: this bypasses only that one
             // check, not the signed-contract requirement above it.
             'override_payment_methods_check' => ['sometimes', 'boolean'],
+            // "Mark Delivered" (billing cycles, client 2026-10-05): the day the
+            // customer actually took the equipment (default today in Texas;
+            // not in the future, at most 7 days back), and the billing cycle
+            // only for an older signed lease that never got one.
+            'pickup_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
+            'billing_cycle' => ['sometimes', 'nullable', Rule::in(BillingSchedule::CYCLES)],
             'lease' => ['sometimes', 'array'],
             // Only 12/24/36 have a defined monthly-payment divisor (see
             // ApplicationValidationRules::equipmentAndLease / the official
@@ -173,6 +176,7 @@ class ApplicationController extends Controller
             'lease.sales_tax_rate' => ['sometimes', 'numeric', 'min:0', 'max:1'],
             'lease.security_deposit' => ['sometimes', 'numeric', 'min:0'],
             'lease.autopay_enabled' => ['sometimes', 'boolean'],
+            'lease.billing_cycle' => ['sometimes', 'nullable', Rule::in(BillingSchedule::CYCLES)],
             'lease.ldw_selected' => ['sometimes', 'boolean'],
             'lease.promo_code' => ['sometimes', 'nullable', 'string', 'max:60'],
             'equipment' => ['sometimes', 'array'],
@@ -262,6 +266,19 @@ class ApplicationController extends Controller
                     ]);
                 }
             }
+
+            // "Mark Delivered" starts the lease term (billing cycles, client
+            // 2026-10-05): checked BEFORE the status changes below so a
+            // missing billing cycle or a bad pickup date can never leave an
+            // application "finished" with no payment schedule.
+            if ($data['status'] === Application::STATUS_FINISHED && $application->leaseAgreement) {
+                abort_unless(
+                    $application->leaseAgreement->billing_cycle || ! empty($data['billing_cycle']),
+                    422,
+                    'Choose a billing cycle (the 1st or the 15th) before marking this lease delivered.',
+                );
+                $pickupDate = $this->resolvePickupDate($data['pickup_date'] ?? null);
+            }
         }
 
         if (array_key_exists('status', $data)) {
@@ -307,13 +324,11 @@ class ApplicationController extends Controller
 
             // Terms are locked in once verification passes and the
             // application enters "waiting on deposit" — matches the same
-            // point ContractController opens up for signing — so the
-            // payment schedule is generated here, well before "finished".
+            // point ContractController opens up for signing. (The monthly
+            // payment schedule is NOT built here: it starts at pickup, see
+            // LeaseEngine::startLease.)
             if ($data['status'] === Application::STATUS_WAITING_DEPOSIT) {
                 $lease = $application->leaseAgreement;
-                if ($lease && ! $lease->payments()->exists()) {
-                    LeaseEngine::generatePaymentSchedule($lease);
-                }
 
                 // A guest-originated customer has no usable password yet
                 // (activated at first payment/pickup, which happens AFTER
@@ -321,9 +336,9 @@ class ApplicationController extends Controller
                 // sign endpoint is unreachable for them, so they need the
                 // signed link instead. A customer with a real account can
                 // already sign from their own portal, so this is guest-only.
-                // The status change and payment schedule above are already
-                // committed — a mail transport hiccup here must not turn
-                // this into an apparent failure to advance the application.
+                // The status change above is already committed — a mail
+                // transport hiccup here must not turn this into an apparent
+                // failure to advance the application.
                 if ($lease && $application->customer->status === 'pending') {
                     try {
                         $application->customer->notify(
@@ -343,40 +358,40 @@ class ApplicationController extends Controller
                 $application->update(['signature_received' => true, 'deposit_received' => true]);
             }
 
-            // "Mark Delivered & Paid" (waiting_delivery -> finished) is the
-            // other place, besides Payments, where a lease's first payment
-            // gets recorded — without this it only relabeled the status,
-            // leaving the payment "pending" forever and never sending a
-            // guest-originated customer their account-activation link.
+            // "Mark Delivered & Paid" (waiting_delivery -> finished) STARTS the
+            // lease (billing cycles, client 2026-10-05): the monthly schedule
+            // is built here from the real pickup date and the billing cycle
+            // the customer chose, with the first month recorded as paid on
+            // the pickup day. See LeaseEngine::startLease(). Without this the
+            // status was only relabeled, leaving no payments at all and
+            // never sending a guest-originated customer their
+            // account-activation link.
             if ($data['status'] === Application::STATUS_FINISHED) {
                 $lease = $application->leaseAgreement;
                 if ($lease) {
-                    // Real gap found 2026-09-15: the equipment unit's delivery_date
-                    // was never set anywhere, but Equipment Tracking's edit form
-                    // requires it (and expected_return_or_ownership_date) the
-                    // moment a unit's status is "leased" — so any admin edit to an
-                    // already-leased unit (e.g. adding a GPS serial later) silently
-                    // failed validation on a date field nobody had a reason to fill
-                    // in yet. Delivery is exactly what's happening right here, so
-                    // this is the correct, and only, place to set it — also
-                    // reanchors the ownership-date estimate to the real pickup date
-                    // instead of whenever the lease was first created.
-                    if ($lease->equipmentUnit && ! $lease->equipmentUnit->delivery_date) {
-                        $lease->equipmentUnit->update([
-                            'delivery_date' => now()->toDateString(),
-                            'expected_return_or_ownership_date' => now()->addMonthsNoOverflow($lease->term_months)->toDateString(),
-                        ]);
+                    $pickupDate ??= $this->resolvePickupDate($data['pickup_date'] ?? null);
+
+                    // An older signed lease that predates the billing-cycle
+                    // choice gets it from the admin here (with the customer's
+                    // agreement); a lease that already has one keeps it.
+                    if (! $lease->billing_cycle && ! empty($data['billing_cycle'])) {
+                        $lease->update(['billing_cycle' => $data['billing_cycle']]);
                     }
 
-                    // Idempotent no-op when the schedule already exists. Without
-                    // it, a lease with no schedule (attached out of order, see
-                    // attachLease()) made markFirstPaymentPaid() silently find
-                    // nothing: application "finished" with zero payments, no
-                    // admin notification, and the guest's account-setup email
-                    // never sent.
-                    LeaseEngine::generatePaymentSchedule($lease);
+                    // Real gap found 2026-09-15: the equipment unit's delivery_date
+                    // was never set anywhere, but Equipment Tracking's edit form
+                    // requires it the moment a unit's status is "leased" — so any
+                    // admin edit to an already-leased unit (e.g. adding a GPS serial
+                    // later) silently failed validation on a date field nobody had a
+                    // reason to fill in yet. Delivery is exactly what's happening
+                    // right here, so this is the correct, and only, place to set it.
+                    // (The ownership date is set by startLease() to the final
+                    // payment's due date.)
+                    if ($lease->equipmentUnit && ! $lease->equipmentUnit->delivery_date) {
+                        $lease->equipmentUnit->update(['delivery_date' => $pickupDate]);
+                    }
 
-                    $payment = LeaseEngine::markFirstPaymentPaid($lease, Auth::id());
+                    $payment = LeaseEngine::startLease($lease, $pickupDate, Auth::id());
                     if ($payment) {
                         $recipients = User::where('role', User::ROLE_SUPER_ADMIN)
                             ->orWhere(function ($query) {
@@ -425,6 +440,18 @@ class ApplicationController extends Controller
 
                 $termsChanged = isset($data['lease']['term_months']) || isset($data['lease']['monthly_rental_payment']);
 
+                // No schedule exists before pickup any more, so there is
+                // nothing to rebuild on a terms edit (a legacy schedule built
+                // at creation is replaced at pickup, see
+                // LeaseEngine::startLease). But money already collected
+                // against the old numbers still blocks the edit, checked
+                // before anything is saved.
+                abort_if(
+                    $termsChanged && $lease->payments()->where('status', Payment::STATUS_PAID)->exists(),
+                    422,
+                    'Cannot change the term or rental amount once a payment has been made against this lease.',
+                );
+
                 $lease->update(array_merge($data['lease'], ['updated_by' => Auth::id()]));
                 if ($termsChanged) {
                     $lease->update([
@@ -433,17 +460,6 @@ class ApplicationController extends Controller
                             (int) $lease->term_months,
                         ),
                     ]);
-
-                    // A schedule may already exist from the approval step — rebuild it
-                    // at the new terms rather than leaving stale rows on the books.
-                    if ($lease->payments()->exists()) {
-                        abort_if(
-                            $lease->payments()->where('status', Payment::STATUS_PAID)->exists(),
-                            422,
-                            'Cannot change the term or rental amount once a payment has been made against this lease.',
-                        );
-                        LeaseEngine::regeneratePaymentSchedule($lease);
-                    }
                 }
             }
 
@@ -532,6 +548,25 @@ class ApplicationController extends Controller
     }
 
     /** Attaches the LeaseEngine's live EPO figures to the loaded lease agreement, if one exists. */
+    /**
+     * The date the customer took the equipment, as a calendar date in the
+     * client's (Texas) time zone: today by default, never in the future, and
+     * at most a week back (the delivery is often recorded a little afterward).
+     */
+    private function resolvePickupDate(?string $requested): string
+    {
+        $today = BillingClock::todayDate();
+        if (! $requested) {
+            return $today;
+        }
+
+        $date = Carbon::parse($requested)->toDateString();
+        abort_if($date > $today, 422, 'The pickup date cannot be in the future.');
+        abort_if($date < Carbon::parse($today)->subDays(7)->toDateString(), 422, 'The pickup date can be at most 7 days in the past.');
+
+        return $date;
+    }
+
     private function present(Application $application): array
     {
         $application->load([
@@ -569,6 +604,7 @@ class ApplicationController extends Controller
             $payload['lease_agreement']['total_monthly_payment'] = $lease->totalMonthlyPayment();
             $payload['lease_agreement']['payments_made'] = $lease->paymentsMadeCount();
             $payload['lease_agreement']['epo_today'] = LeaseEngine::epoToday($lease);
+            $payload['lease_agreement']['pricing'] = $lease->pricingSummary();
             $payload['lease_agreement']['epo_schedule'] = LeaseEngine::fullSchedule($lease);
         }
 

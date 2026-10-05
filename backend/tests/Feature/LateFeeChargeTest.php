@@ -7,6 +7,7 @@ use App\Models\LeaseAgreement;
 use App\Models\Payment;
 use App\Models\User;
 use App\Notifications\LateFeeChargedNotification;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
@@ -22,17 +23,61 @@ class LateFeeChargeTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function overduePayment(float $amount = 200, int $daysPastDue = 11): Payment
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Midday UTC is the same calendar date in Texas (the command works
+        // off the client's America/Chicago date), so "today" is unambiguous.
+        $this->travelTo(Carbon::parse('2026-10-05 18:00:00', 'UTC'));
+    }
+
+    private function overduePayment(float $amount = 200, int $daysPastDue = 11, array $overrides = []): Payment
     {
         $customer = User::factory()->create(['role' => User::ROLE_CUSTOMER]);
-        $lease = LeaseAgreement::factory()->create(['customer_id' => $customer->id]);
+        $lease = LeaseAgreement::factory()->pickedUp()->create(['customer_id' => $customer->id]);
 
-        return Payment::factory()->create([
+        return Payment::factory()->create(array_merge([
             'lease_agreement_id' => $lease->id,
             'amount' => $amount,
             'due_date' => now()->subDays($daysPastDue),
             'status' => Payment::STATUS_PENDING,
+        ], $overrides));
+    }
+
+    public function test_a_failed_automatic_charge_still_gets_a_late_fee(): void
+    {
+        Notification::fake();
+        $payment = $this->overduePayment(overrides: ['status' => Payment::STATUS_FAILED, 'stripe_payment_intent_id' => 'pi_failed']);
+
+        $this->artisan('payments:charge-late-fees')->assertSuccessful();
+
+        $this->assertNotNull(Payment::where('late_fee_for_payment_id', $payment->id)->first());
+    }
+
+    public function test_a_payment_with_an_in_flight_charge_is_not_charged_a_late_fee(): void
+    {
+        Notification::fake();
+        $payment = $this->overduePayment(overrides: ['stripe_payment_intent_id' => 'pi_processing']);
+
+        $this->artisan('payments:charge-late-fees')->assertSuccessful();
+
+        $this->assertNull(Payment::where('late_fee_for_payment_id', $payment->id)->first());
+    }
+
+    public function test_a_lease_that_has_not_been_picked_up_is_left_alone(): void
+    {
+        Notification::fake();
+        $customer = User::factory()->create(['role' => User::ROLE_CUSTOMER]);
+        $lease = LeaseAgreement::factory()->create(['customer_id' => $customer->id]);
+        Payment::factory()->create([
+            'lease_agreement_id' => $lease->id,
+            'due_date' => now()->subDays(20),
+            'status' => Payment::STATUS_PENDING,
         ]);
+
+        $this->artisan('payments:charge-late-fees')->assertSuccessful();
+
+        $this->assertSame(0, Payment::where('type', Payment::TYPE_LATE_FEE)->count());
     }
 
     public function test_a_payment_overdue_by_ten_or_more_days_is_charged_a_late_fee(): void
@@ -89,7 +134,7 @@ class LateFeeChargeTest extends TestCase
     {
         Notification::fake();
         $customer = User::factory()->create(['role' => User::ROLE_CUSTOMER]);
-        $lease = LeaseAgreement::factory()->create(['customer_id' => $customer->id]);
+        $lease = LeaseAgreement::factory()->pickedUp()->create(['customer_id' => $customer->id]);
         Payment::factory()->create([
             'lease_agreement_id' => $lease->id,
             'amount' => 200,
@@ -119,7 +164,7 @@ class LateFeeChargeTest extends TestCase
     {
         Notification::fake();
         $customer = User::factory()->create(['role' => User::ROLE_CUSTOMER]);
-        $lease = LeaseAgreement::factory()->create(['customer_id' => $customer->id]);
+        $lease = LeaseAgreement::factory()->pickedUp()->create(['customer_id' => $customer->id]);
         Payment::factory()->create([
             'lease_agreement_id' => $lease->id,
             'type' => Payment::TYPE_LATE_FEE,

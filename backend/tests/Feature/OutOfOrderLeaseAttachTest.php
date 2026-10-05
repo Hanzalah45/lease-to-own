@@ -20,8 +20,12 @@ use Tests\TestCase;
  * only ever generated at the waiting_deposit transition itself — so a lease
  * attached afterward never got one, "Mark Delivered & Paid" then found no
  * payment to mark, and the guest's account-setup email (which fires on the
- * first payment landing) was never sent. The customer was left with no
- * schedule, no late-fee/autopay tracking, and no way to ever set a password.
+ * first payment landing) was never sent.
+ *
+ * Since 2026-10-05 the monthly schedule is built when the equipment is picked
+ * up (LeaseEngine::startLease), not at any earlier status change, so a lease
+ * attached out of order needs no special catch-up: pickup is the one place
+ * the schedule and the first payment are created.
  */
 class OutOfOrderLeaseAttachTest extends TestCase
 {
@@ -42,45 +46,43 @@ class OutOfOrderLeaseAttachTest extends TestCase
         return $application;
     }
 
+    private function attachLease(User $admin, Application $application): void
+    {
+        $this->actingAs($admin, 'sanctum')->postJson("/api/admin/applications/{$application->id}/lease", [
+            'make' => 'Worldlawn',
+            'model' => 'Zero-Turn 52',
+            'cash_price' => 5000,
+            'term_months' => 36,
+            'monthly_rental' => 200,
+        ])->assertOk();
+    }
+
     private function signViaGuestLink(Application $application): void
     {
         $lease = LeaseAgreement::where('application_id', $application->id)->firstOrFail();
         parse_str(parse_url(ContractSigner::urlFor($application->customer, $lease), PHP_URL_QUERY), $params);
-        $this->postJson('/api/contracts/verify-sign', [...$params, 'signer_name' => 'Guest Signer'])->assertCreated();
+        $this->postJson('/api/contracts/verify-sign', [...$params, 'signer_name' => 'Guest Signer', 'billing_cycle' => '1st'])->assertCreated();
     }
 
-    public function test_attaching_a_lease_after_waiting_deposit_generates_the_payment_schedule(): void
+    public function test_attaching_a_lease_after_waiting_deposit_builds_no_schedule_before_pickup(): void
     {
         Notification::fake();
         $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
         $application = $this->guestAdvancedWithoutALease($admin);
 
-        $this->actingAs($admin, 'sanctum')->postJson("/api/admin/applications/{$application->id}/lease", [
-            'make' => 'Worldlawn',
-            'model' => 'Zero-Turn 52',
-            'cash_price' => 5000,
-            'term_months' => 36,
-            'monthly_rental' => 200,
-        ])->assertOk();
+        $this->attachLease($admin, $application);
 
         $lease = LeaseAgreement::where('application_id', $application->id)->firstOrFail();
-        $this->assertSame(36, $lease->payments()->count());
+        $this->assertSame(0, $lease->payments()->count());
     }
 
-    public function test_the_full_out_of_order_path_records_the_first_payment_and_activates_the_account(): void
+    public function test_the_full_out_of_order_path_builds_the_schedule_at_pickup_and_activates_the_account(): void
     {
         Notification::fake();
         $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
         $application = $this->guestAdvancedWithoutALease($admin);
 
-        $this->actingAs($admin, 'sanctum')->postJson("/api/admin/applications/{$application->id}/lease", [
-            'make' => 'Worldlawn',
-            'model' => 'Zero-Turn 52',
-            'cash_price' => 5000,
-            'term_months' => 36,
-            'monthly_rental' => 200,
-        ])->assertOk();
-
+        $this->attachLease($admin, $application);
         $this->signViaGuestLink($application);
 
         // Not under test here (AutoPay payment methods are covered by
@@ -90,39 +92,32 @@ class OutOfOrderLeaseAttachTest extends TestCase
         }
 
         $lease = LeaseAgreement::where('application_id', $application->id)->firstOrFail();
+        $this->assertSame(36, $lease->payments()->where('type', Payment::TYPE_RENTAL)->count());
         $this->assertSame(1, $lease->payments()->where('status', Payment::STATUS_PAID)->count());
         Notification::assertSentTo($application->customer, ActivateAccountNotification::class);
     }
 
-    public function test_finishing_still_records_the_first_payment_when_no_schedule_exists_at_all(): void
+    public function test_delivery_is_refused_while_the_lease_has_no_billing_cycle(): void
     {
         Notification::fake();
         $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
         $application = $this->guestAdvancedWithoutALease($admin);
-
-        $this->actingAs($admin, 'sanctum')->postJson("/api/admin/applications/{$application->id}/lease", [
-            'make' => 'Worldlawn',
-            'model' => 'Zero-Turn 52',
-            'cash_price' => 5000,
-            'term_months' => 36,
-            'monthly_rental' => 200,
-        ])->assertOk();
+        $this->attachLease($admin, $application);
         $this->signViaGuestLink($application);
 
-        // Reproduces production's state exactly: a signed lease with no
-        // schedule, however it got that way.
+        // An older signed lease that never got a cycle.
         $lease = LeaseAgreement::where('application_id', $application->id)->firstOrFail();
-        $lease->payments()->delete();
+        $lease->update(['billing_cycle' => null]);
+
+        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", ['status' => Application::STATUS_WAITING_DELIVERY, 'override_payment_methods_check' => true])->assertOk();
+
+        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", ['status' => Application::STATUS_FINISHED])->assertStatus(422);
+        $this->assertSame(Application::STATUS_WAITING_DELIVERY, $application->fresh()->status);
         $this->assertSame(0, $lease->payments()->count());
 
-        // Not under test here (AutoPay payment methods are covered by
-        // AutopayPaymentMethodsTest).
-        foreach ([Application::STATUS_WAITING_DELIVERY, Application::STATUS_FINISHED] as $status) {
-            $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", ['status' => $status, 'override_payment_methods_check' => true])->assertOk();
-        }
-
+        // The admin supplies the cycle at delivery.
+        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$application->id}", ['status' => Application::STATUS_FINISHED, 'billing_cycle' => '15th'])->assertOk();
+        $this->assertSame('15th', $lease->fresh()->billing_cycle);
         $this->assertSame(36, $lease->payments()->count());
-        $this->assertSame(1, $lease->payments()->where('status', Payment::STATUS_PAID)->count());
-        Notification::assertSentTo($application->customer, ActivateAccountNotification::class);
     }
 }

@@ -85,6 +85,10 @@ class ContractPdfService
             'profile' => $profile,
             'companyPhone' => config('company.phone'),
             'companyAddress' => config('company.address'),
+            'billingCycleLabel' => ucfirst(BillingSchedule::cycleLabel($lease->billing_cycle)),
+            // Dual pricing (client, 2026-10-05): both prices of every charge.
+            'pricing' => $lease->pricingSummary(),
+            'cardFeePercent' => rtrim(rtrim(number_format(CardPricing::ratePercent(), 2), '0'), '.'),
             'cashPrice' => (float) $lease->cash_price,
             'monthlyRental' => (float) $lease->monthly_rental_payment,
             'salesTax' => $lease->salesTaxAmount(),

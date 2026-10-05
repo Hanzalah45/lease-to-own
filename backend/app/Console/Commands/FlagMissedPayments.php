@@ -2,8 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Application;
 use App\Models\Payment;
+use App\Models\PaymentAttempt;
 use App\Models\RiskRedFlag;
+use App\Services\BillingClock;
 use App\Services\RiskRedFlagger;
 use Illuminate\Console\Command;
 
@@ -22,9 +25,16 @@ class FlagMissedPayments extends Command
 
     public function handle(): int
     {
+        // Only leases already picked up (application finished) have a real
+        // schedule to miss, and a row with a Stripe intent attached is an
+        // in-flight charge (an ACH debit takes days to settle), not a missed
+        // payment. "Today" is the client's calendar day, not the server's UTC.
         $overdue = Payment::with('leaseAgreement')
             ->where('status', Payment::STATUS_PENDING)
-            ->whereDate('due_date', '<', now()->toDateString())
+            ->whereNull('stripe_payment_intent_id')
+            ->whereDoesntHave('attempts', fn ($q) => $q->whereIn('status', [PaymentAttempt::STATUS_INITIATED, PaymentAttempt::STATUS_PROCESSING]))
+            ->whereDate('due_date', '<', BillingClock::todayDate())
+            ->whereHas('leaseAgreement.application', fn ($q) => $q->where('status', Application::STATUS_FINISHED))
             ->whereDoesntHave('riskRedFlags', fn ($q) => $q->where('type', RiskRedFlag::TYPE_MISSED_PAYMENT)->where('resolved', false))
             ->get();
 

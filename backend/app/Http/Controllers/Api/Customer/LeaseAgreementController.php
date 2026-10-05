@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Customer;
 
 use App\Http\Controllers\Controller;
 use App\Models\LeaseAgreement;
+use App\Services\BillingSchedule;
 use App\Services\LeaseEngine;
 use Illuminate\Http\Request;
 
@@ -34,10 +35,19 @@ class LeaseAgreementController extends Controller
             'total_monthly_payment' => $lease->totalMonthlyPayment(),
             'payments_made' => $lease->paymentsMadeCount(),
             'epo_today' => LeaseEngine::epoToday($lease),
+            // Dual pricing (client, 2026-10-05): the bank and card price of every charge.
+            'pricing' => $lease->pricingSummary(),
         ]);
 
         if ($includeSchedule) {
             $payload['epo_schedule'] = LeaseEngine::fullSchedule($lease);
+
+            // What each billing cycle would look like if equipment were picked
+            // up today, shown on the signing page where the customer chooses
+            // (before pickup there is no real schedule to show).
+            if (! $lease->contract) {
+                $payload['billing_preview'] = BillingSchedule::illustrate($lease);
+            }
         }
 
         return $payload;

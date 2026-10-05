@@ -69,12 +69,16 @@ export function LeaseDetailsStep({
             <Field label="TOTAL DUE">
               <TextInput value={money(pricing.totalDueToday)} onChange={() => {}} />
             </Field>
-            <Field label="Payment Due Day" required error={err("payment_due_day")}>
-              <TextInput
-                value={state.paymentDueDay}
-                onChange={(v) => set("paymentDueDay", v)}
-                placeholder="15th"
-                hasError={!!err("payment_due_day")}
+            <Field label="Billing Cycle (optional)" error={err("billing_cycle")}>
+              <RadioGroup
+                value={state.billingCycle}
+                onChange={(v) => set("billingCycle", v as WizardState["billingCycle"])}
+                options={[
+                  { value: "", label: "Customer chooses" },
+                  { value: "1st", label: "1st" },
+                  { value: "15th", label: "15th" },
+                ]}
+                hasError={!!err("billing_cycle")}
               />
             </Field>
 

@@ -24,8 +24,8 @@ class ApplicationCreationService
 {
     /**
      * @param  int  $actorUserId  Who submitted this application — an admin (New
-     *   Application wizard) or the customer themselves (self-service). Always
-     *   provided by the caller since both entry points have an authenticated user.
+     *                            Application wizard) or the customer themselves (self-service). Always
+     *                            provided by the caller since both entry points have an authenticated user.
      */
     public static function create(User $customer, array $data, ?UploadedFile $idDocument, ?string $salesPerson = null, ?int $actorUserId = null, ?UploadedFile $utilityBill = null): Application
     {
@@ -187,6 +187,7 @@ class ApplicationCreationService
             'start_date' => $startDate,
             'renewal_date' => now()->addMonthNoOverflow()->toDateString(),
             'payment_due_day' => $data['payment_due_day'] ?? null,
+            'billing_cycle' => $data['billing_cycle'] ?? null,
             'autopay_enabled' => ($data['autopay'] ?? 'no') === 'yes',
             'monthly_rental_payment' => $monthlyRental,
             'sales_tax_rate' => $taxRate,

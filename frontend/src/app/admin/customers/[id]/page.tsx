@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import { getCustomer, type CustomerDetail } from "@/lib/customers";
 import { downloadIdDocument, downloadInfoRequestDocument, downloadUtilityBill } from "@/lib/applications";
 import { adminClearPaymentMethod } from "@/lib/payment-methods";
+import { pauseAutopay, resumeAutopay } from "@/lib/payments";
+import { formatDateOnly } from "@/lib/dates";
 import { ApiError } from "@/lib/api";
 import { SectionHeading } from "@/components/dashboard/SectionHeading";
 import { DetailCard } from "@/components/applications/detail/DetailCard";
@@ -184,7 +186,7 @@ function ApplicationBlock({ application }: { application: Application }) {
               { label: "Term", value: `${lease.term_months} months` },
               { label: "Monthly rental", value: money(lease.total_monthly_payment) },
               { label: "Security deposit", value: money(num(lease.security_deposit)) },
-              { label: "AutoPay", value: lease.autopay_enabled ? "On" : "Off" },
+              { label: "AutoPay", value: lease.autopay_enabled ? (lease.autopay_paused_at ? "Paused" : "On") : "Off" },
             ]}
           />
           <DetailCard
@@ -202,7 +204,7 @@ function ApplicationBlock({ application }: { application: Application }) {
               { label: "Signature", value: signed ? `Signed ${new Date(contract.signed_at).toLocaleDateString()}` : "Awaiting signature" },
               { label: "Payments made", value: `${lease.payments_made} of ${lease.term_months}` },
               { label: "Collected to date", value: money(collected) },
-              { label: "Next due", value: nextDue ? `${money(num(nextDue.amount))} on ${new Date(nextDue.due_date).toLocaleDateString()}` : "—" },
+              { label: "Next due", value: nextDue ? `${money(num(nextDue.amount))} on ${formatDateOnly(nextDue.due_date)}` : "—" },
             ]}
             note={
               <Link href={`/admin/applications/${application.id}/contract`} className="font-semibold text-red-600 hover:underline">
@@ -231,7 +233,29 @@ function PaymentMethodsCard({ lease }: { lease: LeaseAgreement }) {
   const [cardAdded, setCardAdded] = useState(!!lease.stripe_card_payment_method_id);
   const [primaryMethod, setPrimaryMethod] = useState(lease.autopay_primary_method);
   const [clearing, setClearing] = useState<"bank" | "card" | null>(null);
+  const [paused, setPaused] = useState(!!lease.autopay_paused_at);
+  const [togglingPause, setTogglingPause] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // A signed lease's terms cannot be edited, so this is how staff stop (and
+  // restart) automatic monthly charging on one lease.
+  async function togglePause() {
+    setError(null);
+    setTogglingPause(true);
+    try {
+      if (paused) {
+        await resumeAutopay(lease.id);
+        setPaused(false);
+      } else {
+        await pauseAutopay(lease.id);
+        setPaused(true);
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not change AutoPay. Please try again.");
+    } finally {
+      setTogglingPause(false);
+    }
+  }
 
   async function clear(type: "bank" | "card") {
     setError(null);
@@ -281,6 +305,16 @@ function PaymentMethodsCard({ lease }: { lease: LeaseAgreement }) {
           ),
         },
         { label: "Customer's chosen primary", value: primaryMethod ? PRIMARY_METHOD_LABEL[primaryMethod] : "Not chosen yet" },
+        ...(lease.autopay_enabled
+          ? [{
+              label: "Automatic charging",
+              value: (
+                <button onClick={togglePause} disabled={togglingPause} className="text-red-600 hover:underline disabled:opacity-50">
+                  {togglingPause ? "Saving…" : paused ? "Paused — Resume →" : "Active — Pause →"}
+                </button>
+              ),
+            }]
+          : []),
         ...(lease.payment_methods_override_by
           ? [{
               label: "Deposit requirement overridden",

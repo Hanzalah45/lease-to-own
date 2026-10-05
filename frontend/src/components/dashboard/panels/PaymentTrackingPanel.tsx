@@ -10,11 +10,20 @@ import { StatusTag } from "@/components/dashboard/StatusTag";
 import { Modal } from "@/components/ui/Modal";
 import { money } from "@/components/applications/wizard/types";
 import { AlertCircleIcon, ArrowUpRightIcon, CheckCircleIcon, ClockIcon, CreditCardIcon } from "@/components/icons";
-import { listPayments, markPaymentStatus } from "@/lib/payments";
+import { formatDateOnly, isBeforeToday } from "@/lib/dates";
+import { listPayments, markPaymentStatus, retryAutopayCharge } from "@/lib/payments";
 import { ApiError } from "@/lib/api";
 import type { Payment } from "@/types/lease-agreement";
 
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Why the last automatic attempt failed, e.g. "Bank account failed: account_closed". */
+function lastFailure(payment: Payment): string | null {
+  const failed = [...(payment.attempts ?? [])].reverse().find((a) => a.status === "failed");
+  if (!failed) return null;
+  const reason = failed.failure_message ?? failed.failure_code;
+  return `${failed.method === "bank" ? "Bank account" : "Card"} failed${reason ? `: ${reason}` : ""}`;
+}
 
 function pctChange(current: number, prior: number): string {
   if (prior === 0) return current > 0 ? "New this month" : "No change vs last month";
@@ -29,6 +38,8 @@ export function PaymentTrackingPanel() {
   const [confirming, setConfirming] = useState<{ payment: Payment; status: "paid" | "failed" } | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [retryingId, setRetryingId] = useState<number | null>(null);
+  const [retryError, setRetryError] = useState<string | null>(null);
 
   function load() {
     return listPayments()
@@ -63,6 +74,21 @@ export function PaymentTrackingPanel() {
     }
   }
 
+  // Automatic charging does not retry a payment that failed on every method,
+  // so staff decide when to try again (a fresh round, primary method first).
+  async function retryCharge(payment: Payment) {
+    setRetryError(null);
+    setRetryingId(payment.id);
+    try {
+      await retryAutopayCharge(payment.id);
+      await load();
+    } catch (err) {
+      setRetryError(err instanceof ApiError ? err.message : "Could not retry that charge. Please try again.");
+    } finally {
+      setRetryingId(null);
+    }
+  }
+
   if (loading) return <p className="py-6 text-sm text-neutral-500">Loading payments…</p>;
   if (error) return <p className="py-6 text-sm text-neutral-500">{error}</p>;
 
@@ -85,7 +111,7 @@ export function PaymentTrackingPanel() {
     .filter((p) => new Date(p.paid_date!) >= startOfLastMonth && new Date(p.paid_date!) < startOfThisMonth)
     .reduce((sum, p) => sum + Number(p.amount), 0);
 
-  const overduePayments = payments.filter((p) => p.status === "pending" && new Date(p.due_date) < now);
+  const overduePayments = payments.filter((p) => p.status === "pending" && isBeforeToday(p.due_date));
 
   const leaseIds = new Set(payments.map((p) => p.lease_agreement_id));
   const autopayLeaseIds = new Set(payments.filter((p) => p.lease_agreement?.autopay_enabled).map((p) => p.lease_agreement_id));
@@ -125,16 +151,26 @@ export function PaymentTrackingPanel() {
     return { label: `Wk ${i + 1}`, units };
   });
 
-  const overdueRows = [...overduePayments, ...payments.filter((p) => p.status === "pending" && !overduePayments.includes(p))]
-    .slice(0, 6);
+  // A monthly payment AutoPay could not collect stays "failed" and needs a
+  // person, so it is listed first, ahead of the overdue and upcoming rows.
+  const failedAutopay = payments.filter((p) => p.type === "rental" && p.status === "failed" && p.lease_agreement?.autopay_enabled);
+  const overdueRows = [
+    ...failedAutopay,
+    ...overduePayments,
+    ...payments.filter((p) => p.status === "pending" && !overduePayments.includes(p)),
+  ].slice(0, 6);
 
   const columns: DataTableColumn<Payment>[] = [
     {
       key: "status",
       header: "Status",
       render: (r) => {
-        const isOverdue = r.status === "pending" && new Date(r.due_date) < now;
+        if (r.status === "failed") return <StatusTag color="#DC2626" label="Charge failed" />;
+        const isOverdue = r.status === "pending" && isBeforeToday(r.due_date);
+        const debiting = r.attempts?.some((a) => a.status === "processing");
+        if (debiting) return <StatusTag color="#2563EB" label="Bank debit processing" />;
         if (isOverdue) return <StatusTag color="#DC2626" label="Overdue" />;
+        if (r.lease_agreement?.autopay_paused_at) return <StatusTag color="#D97706" label="Autopay paused" />;
         if (r.lease_agreement?.autopay_enabled) return <StatusTag color="#16A34A" label="Autopay set" />;
         return <StatusTag color="#7C3AED" label="Upcoming" />;
       },
@@ -154,6 +190,9 @@ export function PaymentTrackingPanel() {
       render: (r) => (
         <span className="text-neutral-700">
           {money(Number(r.amount))}
+          {Number(r.card_fee_amount) > 0 && (
+            <span className="ml-1.5 text-xs text-neutral-400">+ {money(Number(r.card_fee_amount))} card fee</span>
+          )}
           {r.type === "late_fee" && (
             <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
               Late fee
@@ -169,15 +208,27 @@ export function PaymentTrackingPanel() {
               Pickup balance
             </span>
           )}
+          {r.status === "failed" && lastFailure(r) && (
+            <span className="mt-0.5 block text-xs text-red-600">{lastFailure(r)}</span>
+          )}
         </span>
       ),
     },
-    { key: "due", header: "Due", render: (r) => <span className="text-neutral-500">{new Date(r.due_date).toLocaleDateString()}</span> },
+    { key: "due", header: "Due", render: (r) => <span className="text-neutral-500">{formatDateOnly(r.due_date)}</span> },
     {
       key: "action",
       header: "",
       render: (r) => (
         <div className="flex items-center justify-end gap-3">
+          {r.type === "rental" && r.status === "failed" && r.lease_agreement?.autopay_enabled && !r.lease_agreement.autopay_paused_at && (
+            <button
+              onClick={() => retryCharge(r)}
+              disabled={retryingId === r.id}
+              className="text-sm font-semibold text-blue-700 hover:underline disabled:opacity-50"
+            >
+              {retryingId === r.id ? "Charging…" : "Retry charge"}
+            </button>
+          )}
           <button
             onClick={() => setConfirming({ payment: r, status: "paid" })}
             className="text-sm font-semibold text-green-700 hover:underline"
@@ -247,6 +298,7 @@ export function PaymentTrackingPanel() {
 
       <FundedVolumeChart data={collectionsData} title="Collections" unitLabel="payments collected" tooltipVerb="Collected" />
 
+      {retryError && <p className="text-sm text-red-600">{retryError}</p>}
       <DataTable title="Overdue & upcoming payments" columns={columns} rows={overdueRows} emptyLabel="No pending payments." />
 
       {confirming && (

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { getStripe } from "@/lib/stripe-client";
 import { ApiError } from "@/lib/api";
+import { money } from "@/components/applications/wizard/types";
 import type { AutopayMethodType, PaymentMethodsStatus } from "@/lib/payment-methods";
 import { AlertCircleIcon, BuildingIcon, CheckCircleIcon, CreditCardIcon } from "@/components/icons";
 
@@ -11,7 +12,7 @@ interface AutopaySetupCardProps {
   status: PaymentMethodsStatus;
   onStatusChange: (status: PaymentMethodsStatus) => void;
   onCreateSetupIntent: (type: AutopayMethodType) => Promise<string>;
-  onConfirm: (type: AutopayMethodType, paymentMethodId: string) => Promise<PaymentMethodsStatus>;
+  onConfirm: (type: AutopayMethodType, setupIntentId: string) => Promise<PaymentMethodsStatus>;
   onSetPrimary: (type: AutopayMethodType) => Promise<PaymentMethodsStatus>;
   billingName: string;
   billingEmail: string;
@@ -86,11 +87,13 @@ export function AutopaySetupCard({
       const confirmed = await stripe.confirmUsBankAccountSetup(clientSecret);
       if (confirmed.error) throw new Error(confirmed.error.message ?? "Could not confirm the bank account.");
 
-      const paymentMethod = confirmed.setupIntent?.payment_method;
-      const paymentMethodId = typeof paymentMethod === "string" ? paymentMethod : paymentMethod?.id;
-      if (!paymentMethodId) throw new Error("Could not confirm the bank account.");
+      // The server checks this SetupIntent actually succeeded (a bank still
+      // waiting on microdeposit verification can't be charged later) and
+      // reads the saved payment method from it.
+      const setupIntentId = confirmed.setupIntent?.id;
+      if (!setupIntentId) throw new Error("Could not confirm the bank account.");
 
-      onStatusChange(await onConfirm("bank", paymentMethodId));
+      onStatusChange(await onConfirm("bank", setupIntentId));
     } catch (err) {
       setBankError(errorMessage(err, "Could not link the bank account."));
     } finally {
@@ -118,6 +121,7 @@ export function AutopaySetupCard({
         icon={<BuildingIcon className="h-5 w-5" />}
         label="Bank account (ACH)"
         added={status.bank_account_added}
+        hint={status.monthly_prices ? `${money(status.monthly_prices.bank)} a month, no fee` : undefined}
       >
         {!status.bank_account_added && (
           <>
@@ -133,7 +137,12 @@ export function AutopaySetupCard({
         )}
       </MethodRow>
 
-      <MethodRow icon={<CreditCardIcon className="h-5 w-5" />} label="Backup card" added={status.card_added}>
+      <MethodRow
+        icon={<CreditCardIcon className="h-5 w-5" />}
+        label="Backup card"
+        added={status.card_added}
+        hint={status.monthly_prices ? `${money(status.monthly_prices.card)} a month, includes ${money(status.monthly_prices.card_fee)} card fee` : undefined}
+      >
         {!status.card_added && !cardFormSecret && (
           <>
             <button
@@ -149,8 +158,8 @@ export function AutopaySetupCard({
         {!status.card_added && cardFormSecret && (
           <Elements stripe={getStripe()} options={{ clientSecret: cardFormSecret }}>
             <CardSetupForm
-              onSaved={(paymentMethodId) =>
-                onConfirm("card", paymentMethodId).then((next) => {
+              onSaved={(setupIntentId) =>
+                onConfirm("card", setupIntentId).then((next) => {
                   setCardFormSecret(null);
                   onStatusChange(next);
                 })
@@ -166,7 +175,8 @@ export function AutopaySetupCard({
             Which one should AutoPay use first?
           </h3>
           <p className="mt-1 text-xs text-neutral-500">
-            If that one ever fails, AutoPay automatically falls back to the other.
+            If that one ever fails, AutoPay automatically falls back to the other and charges that method&rsquo;s price.
+            Paying from your bank account is cheaper: a card costs {status.monthly_prices?.card_fee_percent ?? 3}% more.
           </p>
           <div className="mt-3 flex gap-3">
             {(["ach", "card"] as const).map((method) => (
@@ -186,7 +196,16 @@ export function AutopaySetupCard({
                   onChange={() => choosePrimary(method === "ach" ? "bank" : "card")}
                   className="accent-red-600"
                 />
-                {method === "ach" ? "Bank account" : "Card"}
+                <span>
+                  {method === "ach" ? "Bank account" : "Card"}
+                  {status.monthly_prices && (
+                    <span className="block text-xs font-normal text-neutral-500">
+                      {method === "ach"
+                        ? `${money(status.monthly_prices.bank)} a month, no fee`
+                        : `${money(status.monthly_prices.card)} a month, includes ${money(status.monthly_prices.card_fee)} card fee`}
+                    </span>
+                  )}
+                </span>
               </label>
             ))}
           </div>
@@ -201,11 +220,13 @@ function MethodRow({
   icon,
   label,
   added,
+  hint,
   children,
 }: {
   icon: React.ReactNode;
   label: string;
   added: boolean;
+  hint?: string;
   children?: React.ReactNode;
 }) {
   return (
@@ -216,6 +237,7 @@ function MethodRow({
         </span>
         <div className="flex-1">
           <p className="font-heading text-sm font-bold text-neutral-900">{label}</p>
+          {hint && <p className="text-xs text-neutral-500">{hint}</p>}
           {added ? (
             <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-green-700">
               <CheckCircleIcon className="h-3.5 w-3.5" />
@@ -234,7 +256,7 @@ function MethodRow({
   );
 }
 
-function CardSetupForm({ onSaved }: { onSaved: (paymentMethodId: string) => void }) {
+function CardSetupForm({ onSaved }: { onSaved: (setupIntentId: string) => void }) {
   const stripe = useStripe();
   const elements = useElements();
   const [submitting, setSubmitting] = useState(false);
@@ -254,11 +276,9 @@ function CardSetupForm({ onSaved }: { onSaved: (paymentMethodId: string) => void
       });
       if (confirmError) throw new Error(confirmError.message ?? "Could not save the card.");
 
-      const paymentMethod = setupIntent?.payment_method;
-      const paymentMethodId = typeof paymentMethod === "string" ? paymentMethod : paymentMethod?.id;
-      if (!paymentMethodId) throw new Error("Could not save the card.");
+      if (!setupIntent?.id) throw new Error("Could not save the card.");
 
-      onSaved(paymentMethodId);
+      onSaved(setupIntent.id);
     } catch (err) {
       setError(errorMessage(err, "Could not save the card."));
     } finally {

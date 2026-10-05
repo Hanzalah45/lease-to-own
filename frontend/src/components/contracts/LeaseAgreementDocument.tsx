@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { money, TRACKING_DEVICE_FEE } from "@/components/applications/wizard/types";
-import type { LeaseAgreement } from "@/types/lease-agreement";
+import type { LeaseAgreement, PriceOption } from "@/types/lease-agreement";
 import type { CustomerProfile } from "@/types/auth";
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -14,12 +14,29 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+function PriceRow({ label, option }: { label: string; option: PriceOption }) {
+  return (
+    <>
+      <span className="border-b border-neutral-100 py-2.5 text-sm text-neutral-500">{label}</span>
+      <span className="border-b border-neutral-100 py-2.5 text-right text-sm font-bold text-neutral-900">{money(option.bank)}</span>
+      <span className="border-b border-neutral-100 py-2.5 text-right text-sm font-bold text-neutral-900">{money(option.card)}</span>
+    </>
+  );
+}
+
 function SubHeader({ children }: { children: string }) {
   return (
     <div className="rounded-md bg-neutral-100 px-3 py-2 text-xs font-bold uppercase tracking-wide text-neutral-500 print:break-after-avoid">
       {children}
     </div>
   );
+}
+
+/** Mirrors BillingSchedule::cycleLabel() on the backend (the Blade contract uses the same wording). */
+function billingCycleLabel(cycle: "1st" | "15th" | null | undefined): string {
+  if (cycle === "1st") return "The 1st of each month";
+  if (cycle === "15th") return "The 15th of each month";
+  return "To be selected before signing";
 }
 
 function num(value: string | number | null | undefined): number {
@@ -223,7 +240,7 @@ export function LeaseAgreementDocument({
           <SubHeader>Lease details</SubHeader>
           <div className="mt-2 grid grid-cols-1 gap-x-8 sm:grid-cols-2">
             <Row label="Months to Ownership" value={String(lease.term_months)} />
-            <Row label="Payment Due Day" value={lease.payment_due_day ?? "—"} />
+            <Row label="Billing Cycle" value={billingCycleLabel(lease.billing_cycle)} />
             <Row label="Rental Payment" value={money(monthlyRental)} />
             <Row label={lease.ldw_selected ? "LDW (monthly)" : "LDW Declined (monthly)"} value={`${money(ldwAmount)} / mo`} />
             <Row label="Sales Tax" value={money(salesTax)} />
@@ -236,6 +253,31 @@ export function LeaseAgreementDocument({
           </div>
         </div>
 
+        {lease.pricing && (
+          <>
+            <div className="mt-5">
+              <SubHeader>Payment price by method</SubHeader>
+              <div className="mt-2 grid grid-cols-[1fr_auto_auto] gap-x-8 text-sm">
+                <span />
+                <span className="py-2.5 text-right text-xs font-bold uppercase tracking-wide text-neutral-500">Bank account (ACH)</span>
+                <span className="py-2.5 text-right text-xs font-bold uppercase tracking-wide text-neutral-500">Card</span>
+                <PriceRow label="Total Monthly Payment" option={lease.pricing.monthly} />
+                <PriceRow label="Security Deposit" option={lease.pricing.deposit} />
+                <PriceRow label="Tracking Device Fee + First Month's Payment" option={lease.pricing.pickup_balance} />
+                <PriceRow label="TOTAL DUE TODAY" option={lease.pricing.full} />
+              </div>
+            </div>
+            <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
+              <strong>Payment prices.</strong> The amounts in the Lease details table above are the bank (ACH) prices.
+              Our listed price for each payment is the card price shown here. When you pay by bank account (ACH) you
+              receive a discount and pay the lower bank price; paying by credit or debit card costs{" "}
+              {lease.pricing.card_fee_percent}% more than paying by bank. You choose how to pay each payment. The
+              difference is a card processing cost: it does not count toward the Total Rental-Purchase Price, your
+              Months to Ownership, or the Early Purchase Option.
+            </p>
+          </>
+        )}
+
         <p className="mt-5 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
           <strong>Security Deposit &amp; Unit Hold.</strong> Your Security Deposit of {money(securityDeposit)} is
           non-refundable and holds the Property exclusively for you for thirty (30) days from the date of this
@@ -247,7 +289,15 @@ export function LeaseAgreementDocument({
           begins on the date you pick up the Property and expires one month later. You can renew the Agreement for
           additional one-month terms at your option by making a monthly rental renewal payment on or before the
           expiration date. The Agreement will also renew if you continue to possess the Property until you notify us
-          that you want to end the rental and make the Property available for pickup.
+          that you want to end the rental and make the Property available for pickup.{" "}
+          <strong>Billing cycle.</strong> Your Rental Payments are due on the billing cycle shown above (the 1st or
+          the 15th of each month). Your first Rental Payment, a full month, is due on the day you pick up the
+          Property. If your first billing cycle date falls fewer than thirty (30) days after pickup, your second
+          Rental Payment is prorated: your monthly payment divided by 30, multiplied by the number of days from
+          pickup to that date. Every later payment is the full monthly amount, due on your billing cycle date. The
+          prorated payment counts as one of your Rental Payments toward the Months to Ownership shown above, and
+          there is no final catch-up payment, so the total of your scheduled Rental Payments is slightly less than
+          the Months to Ownership multiplied by your monthly payment.
         </p>
         <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
           <strong>3. Rental-Purchase Ownership.</strong> If you renew this Agreement for {lease.term_months} months
@@ -728,8 +778,9 @@ export function LeaseAgreementDocument({
             application.
           </p>
           <div className="mt-4 grid grid-cols-1 gap-x-8 sm:grid-cols-2">
-            <Row label="Payment Amount" value={money(totalMonthly)} />
-            <Row label="Payment Due Day" value={lease.payment_due_day ?? "—"} />
+            <Row label="Payment Amount, paid by bank account (ACH)" value={money(lease.pricing?.monthly.bank ?? totalMonthly)} />
+            {lease.pricing && <Row label="Payment Amount, paid by card" value={money(lease.pricing.monthly.card)} />}
+            <Row label="Billing Cycle" value={billingCycleLabel(lease.billing_cycle)} />
             <Row label="Payment Frequency" value="Monthly" />
           </div>
           <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
@@ -738,6 +789,15 @@ export function LeaseAgreementDocument({
             unpaid rental charges, up to a maximum of $30.00 more than your regularly-scheduled payment amount. You
             will receive notice at least 10 days before a payment is deducted if it falls outside that range.
           </p>
+          {lease.pricing && (
+            <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
+              <strong>Payment Method &amp; Price.</strong> Each payment is charged to the AutoPay method you choose as
+              primary. If a payment cannot be collected from your primary method, AutoPay will charge your other
+              method instead, and the price for that method applies (the card price is {lease.pricing.card_fee_percent}
+              % higher than the bank price). Your second Rental Payment may be a prorated, lower amount as described in
+              Section 2.
+            </p>
+          )}
           <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
             <strong>Revocation.</strong> This Payment Authorization applies until you revoke it. You may revoke it by
             notifying us in writing at least 3 business days before a scheduled payment. Revoking this authorization

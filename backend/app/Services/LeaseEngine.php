@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Notifications\ActivateAccountNotification;
 use App\Notifications\PaymentStatusChangedNotification;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 
 /**
@@ -101,7 +102,7 @@ class LeaseEngine
         // here instead of filtering the loaded collection turned one list
         // request into an extra query per row (real regression, caught by
         // ApplicationListQueryCountTest).
-        $today = now()->startOfDay();
+        $today = BillingClock::todayDate();
         // Excludes a stuck/declined deposit or pickup_balance charge (deposit
         // fixed 2026-10-01, pickup_balance added 2026-10-02, both before
         // either could ever fire) — neither is part of the rent-to-own payoff
@@ -110,11 +111,25 @@ class LeaseEngine
         // unlike paymentsMadeCount(), an overdue late fee genuinely is still
         // owed toward payoff.
         $notPayoffArrears = fn (string $type) => ! in_array($type, [Payment::TYPE_DEPOSIT, Payment::TYPE_PICKUP_BALANCE], true);
-        $isPastDueUnpaid = fn (Payment $p) => $p->status !== Payment::STATUS_PAID && $notPayoffArrears($p->type) && $p->due_date && $p->due_date->lte($today);
+        // A pending row with a Stripe intent is an in-flight charge (an ACH
+        // debit takes days to settle), not money the customer is behind on —
+        // without this every AutoPay month would briefly bump the EPO price.
+        // A 'failed' row keeps its intent id and DOES count as arrears.
+        $isInFlight = fn (Payment $p) => $p->status === Payment::STATUS_PENDING && $p->stripe_payment_intent_id;
+        $isPastDueUnpaid = fn (Payment $p) => $p->status !== Payment::STATUS_PAID
+            && $notPayoffArrears($p->type)
+            && ! $isInFlight($p)
+            && $p->due_date
+            && $p->due_date->toDateString() <= $today;
 
         $amountPastDue = $lease->relationLoaded('payments')
             ? (float) $lease->payments->filter($isPastDueUnpaid)->sum('amount')
-            : (float) $lease->payments()->where('status', '!=', Payment::STATUS_PAID)->whereNotIn('type', [Payment::TYPE_DEPOSIT, Payment::TYPE_PICKUP_BALANCE])->whereDate('due_date', '<=', $today)->sum('amount');
+            : (float) $lease->payments()
+                ->where('status', '!=', Payment::STATUS_PAID)
+                ->whereNotIn('type', [Payment::TYPE_DEPOSIT, Payment::TYPE_PICKUP_BALANCE])
+                ->where(fn ($q) => $q->where('status', '!=', Payment::STATUS_PENDING)->orWhereNull('stripe_payment_intent_id'))
+                ->whereDate('due_date', '<=', $today)
+                ->sum('amount');
 
         return self::epoAt($lease, max(1, $lease->paymentsMadeCount()), $amountPastDue);
     }
@@ -140,7 +155,10 @@ class LeaseEngine
      */
     public static function generatePaymentSchedule(LeaseAgreement $lease): void
     {
-        if ($lease->payments()->exists()) {
+        // Rental rows only: a paid deposit or pickup_balance row (created at
+        // signing, before pickup) must not block or be confused with the
+        // monthly schedule.
+        if ($lease->payments()->where('type', Payment::TYPE_RENTAL)->exists()) {
             return;
         }
 
@@ -152,6 +170,7 @@ class LeaseEngine
 
             Payment::create([
                 'lease_agreement_id' => $lease->id,
+                'type' => Payment::TYPE_RENTAL,
                 'amount' => $amount,
                 'due_date' => $dueDate,
                 'status' => Payment::STATUS_PENDING,
@@ -168,11 +187,14 @@ class LeaseEngine
      */
     public static function regeneratePaymentSchedule(LeaseAgreement $lease): void
     {
-        if ($lease->payments()->where('status', Payment::STATUS_PAID)->exists()) {
+        // Rental rows only — a paid deposit/pickup_balance is not "the
+        // schedule", and deleting those (or a late fee's parent row) would
+        // destroy real payment history.
+        if ($lease->payments()->where('type', Payment::TYPE_RENTAL)->where('status', Payment::STATUS_PAID)->exists()) {
             throw new \RuntimeException('Cannot regenerate the payment schedule once a payment has been made.');
         }
 
-        $lease->payments()->delete();
+        $lease->payments()->where('type', Payment::TYPE_RENTAL)->delete();
         self::generatePaymentSchedule($lease);
     }
 
@@ -233,6 +255,84 @@ class LeaseEngine
     }
 
     /**
+     * Pickup (client, Joel, 2026-10-05): the lease term starts the day the
+     * customer takes the equipment, so THIS is where the monthly schedule is
+     * built, from the real pickup date and the billing cycle the customer
+     * chose before signing (see BillingSchedule for the rules). Before pickup
+     * a lease has no rental rows at all: building them at signing/creation
+     * anchored every due date to the wrong day and made the daily commands
+     * flag "missed" payments for equipment nobody had received yet.
+     *
+     * Row 1 (the first month, due on the pickup day) is created already PAID:
+     * it is collected at pickup, either through the pickup-balance charge or
+     * by hand. Idempotent: calling it again on a lease that already started
+     * returns the existing first payment and changes nothing. A legacy
+     * schedule built at creation time (pending, no charge attempted) is
+     * replaced.
+     *
+     * @return Payment the first payment (already paid)
+     */
+    public static function startLease(LeaseAgreement $lease, string $pickupDate, ?int $recordedBy): Payment
+    {
+        return DB::transaction(function () use ($lease, $pickupDate, $recordedBy) {
+            $locked = LeaseAgreement::whereKey($lease->id)->lockForUpdate()->firstOrFail();
+
+            $alreadyStarted = $locked->payments()
+                ->where('type', Payment::TYPE_RENTAL)
+                ->where('status', Payment::STATUS_PAID)
+                ->orderBy('due_date')
+                ->first();
+            if ($alreadyStarted) {
+                return $alreadyStarted;
+            }
+
+            abort_unless($locked->billing_cycle, 422, 'Choose a billing cycle (the 1st or the 15th) before marking this lease delivered.');
+
+            $locked->payments()
+                ->where('type', Payment::TYPE_RENTAL)
+                ->where('status', Payment::STATUS_PENDING)
+                ->whereNull('stripe_payment_intent_id')
+                ->delete();
+            abort_if(
+                $locked->payments()->where('type', Payment::TYPE_RENTAL)->exists(),
+                422,
+                'This lease already has rental payments in progress and its schedule cannot be rebuilt.',
+            );
+
+            $rows = BillingSchedule::build($pickupDate, $locked->billing_cycle, $locked->totalMonthlyPayment(), (int) $locked->term_months);
+            abort_if(empty($rows), 422, 'This lease has no payment term.');
+
+            $first = null;
+            foreach ($rows as $row) {
+                $isFirst = $row['sequence'] === 1;
+                $payment = Payment::create([
+                    'lease_agreement_id' => $locked->id,
+                    'type' => Payment::TYPE_RENTAL,
+                    'amount' => $row['amount'],
+                    'due_date' => $row['due_date'],
+                    'status' => $isFirst ? Payment::STATUS_PAID : Payment::STATUS_PENDING,
+                    'paid_date' => $isFirst ? $pickupDate : null,
+                    'recorded_by' => $isFirst ? $recordedBy : null,
+                ]);
+                $first ??= $payment;
+            }
+
+            $lastDue = end($rows)['due_date'];
+            $locked->update([
+                'start_date' => $pickupDate,
+                // The "renewal" is the next billing date, so the daily renewal
+                // job advances it from the cycle, not from whenever it last ran.
+                'renewal_date' => $rows[1]['due_date'] ?? $rows[0]['due_date'],
+            ]);
+            $locked->equipmentUnit?->update(['expected_return_or_ownership_date' => $lastDue]);
+
+            self::syncPaymentsPaidToDate($locked);
+
+            return $first;
+        });
+    }
+
+    /**
      * Applies a payment status change with every side effect that has to
      * follow it — risk flagging on a failure, staff/customer notifications,
      * paid-to-date sync, and guest account activation on a first payment —
@@ -249,7 +349,7 @@ class LeaseEngine
         $payment->update([
             'status' => $status,
             'method' => $method ?? $payment->method,
-            'paid_date' => $status === Payment::STATUS_PAID ? now()->toDateString() : $payment->paid_date,
+            'paid_date' => $status === Payment::STATUS_PAID ? BillingClock::todayDate() : $payment->paid_date,
             'recorded_by' => $recordedBy ?? $payment->recorded_by,
         ]);
 

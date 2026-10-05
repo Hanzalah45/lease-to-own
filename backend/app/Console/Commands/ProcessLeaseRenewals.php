@@ -2,9 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Application;
 use App\Models\LeaseAgreement;
 use App\Notifications\LeaseRenewalProcessedNotification;
+use App\Services\BillingClock;
 use App\Services\LeaseEngine;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 
 /**
@@ -22,13 +25,25 @@ class ProcessLeaseRenewals extends Command
 
     public function handle(): int
     {
-        $due = LeaseAgreement::whereDate('renewal_date', '<=', now()->toDateString())
+        $today = BillingClock::today();
+
+        // Only leases already picked up renew (before pickup there is no term
+        // running), and the date advances from the existing renewal_date, not
+        // from today, so it stays anchored to the billing cycle (the 1st or
+        // 15th) instead of drifting by however late this command ran.
+        $due = LeaseAgreement::whereDate('renewal_date', '<=', $today->toDateString())
             ->where('ownership_status', '!=', LeaseAgreement::OWNERSHIP_OWNED)
+            ->whereHas('application', fn ($q) => $q->where('status', Application::STATUS_FINISHED))
             ->with('customer')
             ->get();
 
         foreach ($due as $lease) {
-            $lease->update(['renewal_date' => now()->addMonthNoOverflow()->toDateString()]);
+            $next = Carbon::parse($lease->renewal_date)->startOfDay();
+            do {
+                $next = $next->copy()->addMonthNoOverflow();
+            } while ($next->lte($today));
+
+            $lease->update(['renewal_date' => $next->toDateString()]);
 
             $lease->customer?->notify(new LeaseRenewalProcessedNotification($lease, LeaseEngine::epoToday($lease)));
         }

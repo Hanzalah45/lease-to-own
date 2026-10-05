@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Admin\AdminUserController;
 use App\Http\Controllers\Api\Admin\ApplicationController as AdminApplicationController;
+use App\Http\Controllers\Api\Admin\AutopayController as AdminAutopayController;
 use App\Http\Controllers\Api\Admin\ContractController as AdminContractController;
 use App\Http\Controllers\Api\Admin\CustomerController as AdminCustomerController;
 use App\Http\Controllers\Api\Admin\DealerNoteController;
@@ -234,6 +235,9 @@ Route::middleware('auth:sanctum')->group(function () {
         });
 
         Route::middleware('permission:payment_tracking')->group(function () {
+            Route::post('/lease-agreements/{leaseAgreement}/autopay/pause', [AdminAutopayController::class, 'pause']);
+            Route::post('/lease-agreements/{leaseAgreement}/autopay/resume', [AdminAutopayController::class, 'resume']);
+            Route::post('/payments/{payment}/retry-autopay', [AdminAutopayController::class, 'retry']);
             Route::apiResource('payments', AdminPaymentController::class);
         });
     });

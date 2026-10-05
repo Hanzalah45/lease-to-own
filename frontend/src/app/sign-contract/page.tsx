@@ -108,7 +108,9 @@ function SignContractFlow() {
   }
 
   const totalMonthly = num(leaseAgreement?.total_monthly_payment);
-  const totalDueToday = num(leaseAgreement?.security_deposit) + TRACKING_DEVICE_FEE + totalMonthly;
+  // Both prices come from the server (dual pricing, client 2026-10-05); the old client-side sum is only a fallback.
+  const pricing = leaseAgreement?.pricing;
+  const totalDueToday = pricing?.full.bank ?? num(leaseAgreement?.security_deposit) + TRACKING_DEVICE_FEE + totalMonthly;
   const accountAlreadyActive = !!leaseAgreement?.customer_account_active;
 
   return (
@@ -161,7 +163,10 @@ function SignContractFlow() {
                 </div>
                 <div className="flex items-center justify-between py-1">
                   <span className="text-neutral-500">Total due today</span>
-                  <span className="font-semibold text-neutral-900">{money(totalDueToday)}</span>
+                  <span className="text-right font-semibold text-neutral-900">
+                    {money(totalDueToday)} by bank
+                    {pricing && <span className="block text-xs font-normal text-neutral-500">{money(pricing.full.card)} by card</span>}
+                  </span>
                 </div>
               </div>
             </div>

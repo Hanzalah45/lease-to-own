@@ -89,21 +89,102 @@ class AutopayPaymentMethodsTest extends TestCase
         $this->assertSame('/v1/setup_intents', parse_url($this->stripe->requests[0]['url'], PHP_URL_PATH));
     }
 
+    /**
+     * What Stripe returns once the customer finished the on-page setup: the
+     * SetupIntent (status, owner, saved PaymentMethod id) and then that
+     * PaymentMethod itself. AutoPay only accepts a method from a COMPLETED
+     * SetupIntent belonging to this customer's Stripe profile.
+     */
+    private function queueCompletedSetup(
+        LeaseAgreement $lease,
+        string $setupIntentId,
+        array $paymentMethod,
+        string $status = 'succeeded',
+        string $owner = 'cus_test',
+    ): void {
+        $lease->customer->customerProfile()->updateOrCreate([], ['stripe_customer_id' => 'cus_test']);
+        $this->stripe->queue([
+            'id' => $setupIntentId,
+            'object' => 'setup_intent',
+            'status' => $status,
+            'customer' => $owner,
+            'payment_method' => $paymentMethod['id'],
+        ]);
+        $this->stripe->queue($paymentMethod);
+    }
+
     public function test_confirm_attaches_a_card_to_the_lease(): void
     {
         $lease = $this->leaseAwaitingDeposit();
 
-        $this->stripe->queue(['id' => 'pm_card123', 'object' => 'payment_method', 'type' => 'card']);
+        $this->queueCompletedSetup($lease, 'seti_card1', ['id' => 'pm_card123', 'object' => 'payment_method', 'type' => 'card']);
 
         $response = $this->actingAs($lease->customer, 'sanctum')
             ->postJson("/api/customer/lease-agreements/{$lease->id}/payment-methods/confirm", [
                 'type' => 'card',
-                'payment_method_id' => 'pm_card123',
+                'setup_intent_id' => 'seti_card1',
             ]);
 
         $response->assertOk();
         $response->assertJsonPath('data.card_added', true);
         $this->assertSame('pm_card123', $lease->fresh()->stripe_card_payment_method_id);
+    }
+
+    public function test_confirm_rejects_a_setup_that_has_not_succeeded(): void
+    {
+        $lease = $this->leaseAwaitingDeposit();
+
+        // e.g. a bank account still waiting on microdeposit verification: saving it
+        // would make every future automatic charge fail.
+        $this->queueCompletedSetup(
+            $lease,
+            'seti_bank_pending',
+            ['id' => 'pm_bank_pending', 'object' => 'payment_method', 'type' => 'us_bank_account'],
+            status: 'requires_action',
+        );
+
+        $this->actingAs($lease->customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/payment-methods/confirm", [
+                'type' => 'bank',
+                'setup_intent_id' => 'seti_bank_pending',
+            ])->assertStatus(422);
+
+        $this->assertNull($lease->fresh()->stripe_bank_payment_method_id);
+    }
+
+    public function test_confirm_rejects_a_setup_belonging_to_another_stripe_customer(): void
+    {
+        $lease = $this->leaseAwaitingDeposit();
+
+        $this->queueCompletedSetup(
+            $lease,
+            'seti_other',
+            ['id' => 'pm_other', 'object' => 'payment_method', 'type' => 'card'],
+            owner: 'cus_someone_else',
+        );
+
+        $this->actingAs($lease->customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/payment-methods/confirm", [
+                'type' => 'card',
+                'setup_intent_id' => 'seti_other',
+            ])->assertStatus(422);
+
+        $this->assertNull($lease->fresh()->stripe_card_payment_method_id);
+    }
+
+    public function test_confirm_rejects_a_payment_method_of_the_wrong_type(): void
+    {
+        $lease = $this->leaseAwaitingDeposit();
+
+        $this->queueCompletedSetup($lease, 'seti_wrongtype', ['id' => 'pm_card_x', 'object' => 'payment_method', 'type' => 'card']);
+
+        $this->actingAs($lease->customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/payment-methods/confirm", [
+                'type' => 'bank',
+                'setup_intent_id' => 'seti_wrongtype',
+            ])->assertStatus(422);
+
+        $this->assertNull($lease->fresh()->stripe_bank_payment_method_id);
     }
 
     public function test_customer_can_choose_an_already_added_method_as_primary(): void
@@ -137,7 +218,7 @@ class AutopayPaymentMethodsTest extends TestCase
             'plaid_verified_bank_mask' => '1234',
         ]);
 
-        $this->stripe->queue([
+        $this->queueCompletedSetup($lease, 'seti_bank123', [
             'id' => 'pm_bank123',
             'object' => 'payment_method',
             'type' => 'us_bank_account',
@@ -147,7 +228,7 @@ class AutopayPaymentMethodsTest extends TestCase
         $this->actingAs($lease->customer, 'sanctum')
             ->postJson("/api/customer/lease-agreements/{$lease->id}/payment-methods/confirm", [
                 'type' => 'bank',
-                'payment_method_id' => 'pm_bank123',
+                'setup_intent_id' => 'seti_bank123',
             ])->assertOk();
 
         $this->assertSame(0, RiskRedFlag::where('type', RiskRedFlag::TYPE_BANK_ACCOUNT_CHANGE)->count());
@@ -161,7 +242,7 @@ class AutopayPaymentMethodsTest extends TestCase
             'plaid_verified_bank_mask' => '1234',
         ]);
 
-        $this->stripe->queue([
+        $this->queueCompletedSetup($lease, 'seti_bank456', [
             'id' => 'pm_bank456',
             'object' => 'payment_method',
             'type' => 'us_bank_account',
@@ -171,7 +252,7 @@ class AutopayPaymentMethodsTest extends TestCase
         $this->actingAs($lease->customer, 'sanctum')
             ->postJson("/api/customer/lease-agreements/{$lease->id}/payment-methods/confirm", [
                 'type' => 'bank',
-                'payment_method_id' => 'pm_bank456',
+                'setup_intent_id' => 'seti_bank456',
             ])->assertOk();
 
         $flag = RiskRedFlag::where('type', RiskRedFlag::TYPE_BANK_ACCOUNT_CHANGE)->first();
@@ -199,12 +280,12 @@ class AutopayPaymentMethodsTest extends TestCase
         $url = PaymentMethodSigner::urlFor($lease->customer, $lease);
         parse_str(parse_url($url, PHP_URL_QUERY), $params);
 
-        $this->stripe->queue(['id' => 'pm_card789', 'object' => 'payment_method', 'type' => 'card']);
+        $this->queueCompletedSetup($lease, 'seti_card789', ['id' => 'pm_card789', 'object' => 'payment_method', 'type' => 'card']);
 
         $response = $this->postJson('/api/payment-methods/verify-confirm', [
             ...$params,
             'type' => 'card',
-            'payment_method_id' => 'pm_card789',
+            'setup_intent_id' => 'seti_card789',
         ]);
 
         $response->assertOk();

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { money } from "@/components/applications/wizard/types";
+import { formatDateOnly } from "@/lib/dates";
 import { listMyPayments } from "@/lib/payments";
 import { ApiError } from "@/lib/api";
 import type { Payment } from "@/types/lease-agreement";
@@ -73,7 +74,7 @@ export default function CustomerPaymentsPage() {
             {loading
               ? "Loading…"
               : nextPayment
-                ? `${money(num(nextPayment.amount))} due ${new Date(nextPayment.due_date).toLocaleDateString()}`
+                ? `${money(num(nextPayment.amount))} due ${formatDateOnly(nextPayment.due_date)}`
                 : "No upcoming payment scheduled."}
           </p>
         </div>
@@ -124,9 +125,12 @@ export default function CustomerPaymentsPage() {
               ) : (
                 payments.map((row) => (
                   <tr key={row.id} className="border-b border-neutral-100 last:border-0">
-                    <td className="py-3 text-neutral-700">{new Date(row.due_date).toLocaleDateString()}</td>
+                    <td className="py-3 text-neutral-700">{formatDateOnly(row.due_date)}</td>
                     <td className="py-3 font-semibold text-neutral-900">
-                      {money(num(row.amount))}
+                      {money(num(row.amount) + num(row.card_fee_amount))}
+                      {num(row.card_fee_amount) > 0 && (
+                        <span className="ml-1.5 text-xs font-normal text-neutral-400">includes {money(num(row.card_fee_amount))} card fee</span>
+                      )}
                       {row.type === "late_fee" && (
                         <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
                           Late fee

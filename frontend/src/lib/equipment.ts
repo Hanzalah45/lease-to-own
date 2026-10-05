@@ -1,5 +1,6 @@
 import { apiFetch } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { formatDateOnly } from "@/lib/dates";
 import type {
   AssignableLease,
   CustomerEquipmentUnit,
@@ -145,10 +146,9 @@ export async function listMyEquipment(): Promise<CustomerEquipmentUnit[]> {
  * Date columns come back as ISO datetimes from the admin endpoints and as
  * plain Y-m-d from the customer one — this renders both, and an em dash for null.
  */
+/** Calendar dates only (delivery, ownership, lease start/renewal): no time zone shift, see formatDateOnly. */
 export function formatDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
+  return formatDateOnly(value);
 }
 
 /** Y-m-d for date inputs, from either payload shape. */

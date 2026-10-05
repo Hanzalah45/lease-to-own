@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\CardPricing;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -32,7 +33,9 @@ class LeaseAgreement extends Model
         'start_date',
         'renewal_date',
         'payment_due_day',
+        'billing_cycle',
         'autopay_enabled',
+        'autopay_paused_at',
         'stripe_bank_payment_method_id',
         'stripe_card_payment_method_id',
         'autopay_primary_method',
@@ -69,6 +72,7 @@ class LeaseAgreement extends Model
             'ldw_amount' => 'decimal:2',
             'promo_discount' => 'decimal:2',
             'autopay_enabled' => 'boolean',
+            'autopay_paused_at' => 'datetime',
             'payment_methods_override_at' => 'datetime',
         ];
     }
@@ -182,6 +186,50 @@ class LeaseAgreement extends Model
     public function totalDueAtSigning(): float
     {
         return round($this->depositAmountDue() + $this->pickupBalanceAmountDue(), 2);
+    }
+
+    /**
+     * Dual pricing (client, Joel, 2026-10-05): every amount a customer pays,
+     * at the bank price (exactly the stored lease numbers) and the card price
+     * (bank price + the card fee). Priced per CHARGE, not per line item:
+     * "balance" is the tracking fee + first month as ONE charge, and the card
+     * "full" total is the sum of the two separately rounded charges, so the
+     * number shown always equals what Stripe is asked to collect.
+     *
+     * @return array{card_fee_percent: float, deposit: array, pickup_balance: array, monthly: array, full: array}
+     */
+    public function pricingSummary(): array
+    {
+        $deposit = CardPricing::both($this->depositAmountDue());
+        $balance = CardPricing::both($this->pickupBalanceAmountDue());
+
+        return [
+            'card_fee_percent' => CardPricing::ratePercent(),
+            'deposit' => $deposit,
+            'pickup_balance' => $balance,
+            'monthly' => CardPricing::both($this->totalMonthlyPayment()),
+            'full' => [
+                'bank' => round($deposit['bank'] + $balance['bank'], 2),
+                'card' => round($deposit['card'] + $balance['card'], 2),
+                'card_fee' => round($deposit['card_fee'] + $balance['card_fee'], 2),
+            ],
+        ];
+    }
+
+    /**
+     * The saved Stripe PaymentMethod to charge for an explicit choice
+     * ('bank' or 'card'), or, with no choice, the customer's AutoPay primary
+     * (see autopayChargeablePaymentMethod()). Null when that method isn't on file.
+     *
+     * @return array{type: string, id: string}|null
+     */
+    public function paymentMethodFor(?string $type): ?array
+    {
+        return match ($type) {
+            'bank' => $this->stripe_bank_payment_method_id ? ['type' => 'bank', 'id' => $this->stripe_bank_payment_method_id] : null,
+            'card' => $this->stripe_card_payment_method_id ? ['type' => 'card', 'id' => $this->stripe_card_payment_method_id] : null,
+            default => $this->autopayChargeablePaymentMethod(),
+        };
     }
 
     /**

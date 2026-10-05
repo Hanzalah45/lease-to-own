@@ -10,12 +10,14 @@ use App\Models\LeaseAgreement;
 use App\Models\User;
 use App\Notifications\ContractPdfGenerationFailedNotification;
 use App\Notifications\ContractSignedNotification;
+use App\Services\BillingSchedule;
 use App\Services\CommonValidationRules;
 use App\Services\ContractPdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 
 /**
  * Built-in e-signature capture for the customer's own lease — the plan's
@@ -46,6 +48,10 @@ class ContractController extends Controller
         $data = $request->validate([
             'lease_agreement_id' => ['required', 'integer', 'exists:lease_agreements,id'],
             'signer_name' => ['required', 'string', 'min:'.CommonValidationRules::NAME_MIN, 'max:'.CommonValidationRules::NAME_MAX],
+            // Billing cycle (client, 2026-10-05): chosen right before signing
+            // so the contract states it. Required unless the lease already
+            // carries one (an admin may have pre-selected it).
+            'billing_cycle' => ['nullable', Rule::in(BillingSchedule::CYCLES)],
         ]);
 
         $lease = LeaseAgreement::findOrFail($data['lease_agreement_id']);
@@ -75,6 +81,15 @@ class ContractController extends Controller
         $contract = DB::transaction(function () use ($lease, $data, $request) {
             $lockedLease = LeaseAgreement::whereKey($lease->id)->lockForUpdate()->firstOrFail();
             abort_if($lockedLease->contract()->exists(), 422, 'This lease agreement has already been signed.');
+
+            // Saved in the same transaction as the signature, so the billing
+            // cycle the customer agreed to can never differ from the one
+            // stored (and it is immutable once signed: terms edits are blocked).
+            $cycle = $data['billing_cycle'] ?? $lockedLease->billing_cycle;
+            abort_unless($cycle, 422, 'Choose your billing cycle (the 1st or the 15th) before signing.');
+            if ($lockedLease->billing_cycle !== $cycle) {
+                $lockedLease->update(['billing_cycle' => $cycle]);
+            }
 
             return Contract::create([
                 'lease_agreement_id' => $lockedLease->id,
@@ -151,6 +166,13 @@ class ContractController extends Controller
     {
         abort_unless($leaseAgreement->customer_id === $request->user()->id, 404);
         $leaseAgreement->loadMissing('equipmentUnit', 'customer.customerProfile');
+
+        // Lets the customer see the contract with the billing cycle they are
+        // CONSIDERING, before it is saved (it is only saved at signing).
+        $preview = $request->validate(['billing_cycle' => ['nullable', Rule::in(BillingSchedule::CYCLES)]]);
+        if (! empty($preview['billing_cycle'])) {
+            $leaseAgreement->billing_cycle = $preview['billing_cycle'];
+        }
 
         return response(ContractPdfService::preview($leaseAgreement), 200, [
             'Content-Type' => 'application/pdf',

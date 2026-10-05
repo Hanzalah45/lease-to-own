@@ -34,6 +34,7 @@ import {
   updateApplication,
 } from "@/lib/applications";
 import { money, TRACKING_DEVICE_FEE } from "@/components/applications/wizard/types";
+import { formatDateOnly } from "@/lib/dates";
 import { ApiError } from "@/lib/api";
 import {
   NOTES_MAX,
@@ -173,10 +174,30 @@ export default function ApplicationDetailPage() {
 
   const [showPaymentMethodsOverrideConfirm, setShowPaymentMethodsOverrideConfirm] = useState(false);
 
-  async function advance(overridePaymentMethodsCheck?: boolean) {
+  // "Mark Delivered & Paid" starts the lease term (billing cycles, client
+  // 2026-10-05), so it first asks for the pickup date (and a billing cycle if
+  // an older signed lease never got one) instead of firing immediately.
+  const [showDeliveryConfirm, setShowDeliveryConfirm] = useState(false);
+  const [pickupDate, setPickupDate] = useState("");
+  const [deliveryCycle, setDeliveryCycle] = useState<"" | "1st" | "15th">("");
+
+  function localToday(): string {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }
+
+  async function advance(overridePaymentMethodsCheck?: boolean, delivery?: { pickup_date: string; billing_cycle?: "1st" | "15th" }) {
     if (!application) return;
     const next = FLOW[application.status];
     if (!next) return;
+    if (next === "finished" && !delivery) {
+      setPickupDate(localToday());
+      setDeliveryCycle("");
+      setActionError(null);
+      setShowDeliveryConfirm(true);
+      return;
+    }
     setActing(true);
     setActionError(null);
     try {
@@ -184,9 +205,11 @@ export default function ApplicationDetailPage() {
         await updateApplication(application.id, {
           status: next,
           ...(overridePaymentMethodsCheck ? { override_payment_methods_check: true } : {}),
+          ...(delivery ?? {}),
         }),
       );
       setShowPaymentMethodsOverrideConfirm(false);
+      setShowDeliveryConfirm(false);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Could not update this application.";
       // Recoverable, unlike every other status-transition guard — offer the
@@ -395,6 +418,7 @@ export default function ApplicationDetailPage() {
           term_months: Number(values.term_months),
           monthly_rental_payment: Number(values.monthly_rental_payment),
           security_deposit: Number(values.security_deposit),
+          billing_cycle: values.billing_cycle === "1st" || values.billing_cycle === "15th" ? values.billing_cycle : null,
           autopay_enabled: values.autopay_enabled === "Yes",
           ldw_selected: values.ldw_selected === "Yes",
           promo_code: values.promo_code || null,
@@ -598,6 +622,13 @@ export default function ApplicationDetailPage() {
           label: "Security deposit",
           value: lease.security_deposit,
           validate: (v) => validateMoney(v, "Security deposit"),
+        },
+        {
+          key: "billing_cycle",
+          label: "Billing cycle",
+          value: lease.billing_cycle ?? "Customer chooses",
+          type: "select",
+          options: ["Customer chooses", "1st", "15th"],
         },
         { key: "autopay_enabled", label: "AutoPay", value: lease.autopay_enabled ? "Yes" : "No", type: "select", options: ["Yes", "No"] },
         { key: "ldw_selected", label: "LDW selected", value: lease.ldw_selected ? "Yes" : "No", type: "select", options: ["Yes", "No"] },
@@ -912,8 +943,8 @@ export default function ApplicationDetailPage() {
           <p className="text-sm font-bold text-green-700">
             {paidPayment ? `Payment received: ${money(num(paidPayment.amount))}` : "Lease active. Delivered and first payment made"}
           </p>
-          {paidPayment?.paid_date && <p className="text-xs text-neutral-500">{new Date(paidPayment.paid_date).toLocaleDateString()}</p>}
-          {equipment?.delivery_date && <p className="text-xs text-neutral-500">Delivered {new Date(equipment.delivery_date).toLocaleDateString()}</p>}
+          {paidPayment?.paid_date && <p className="text-xs text-neutral-500">{formatDateOnly(paidPayment.paid_date)}</p>}
+          {equipment?.delivery_date && <p className="text-xs text-neutral-500">Delivered {formatDateOnly(equipment.delivery_date)}</p>}
         </div>
       )}
 
@@ -1015,7 +1046,9 @@ export default function ApplicationDetailPage() {
                       { label: "Total monthly", value: money(num(lease.total_monthly_payment)) },
                       { label: "Security deposit", value: money(num(lease.security_deposit)) },
                       { label: "Tracking device fee", value: money(TRACKING_DEVICE_FEE) },
-                      { label: "Total due", value: money(totalDue) },
+                      { label: "Total due (bank price)", value: money(totalDue) },
+                      ...(lease.pricing ? [{ label: `Total due (card, +${lease.pricing.card_fee_percent}%)`, value: money(lease.pricing.full.card) }] : []),
+                      { label: "Billing cycle", value: lease.billing_cycle ? `The ${lease.billing_cycle} of each month` : "Not chosen yet" },
                       { label: "AutoPay", value: lease.autopay_enabled ? "Yes" : "No" },
                       { label: "LDW selected", value: lease.ldw_selected ? "Yes" : "No" },
                       { label: "Promo applied", value: lease.promo_code ?? "—" },
@@ -1152,7 +1185,7 @@ export default function ApplicationDetailPage() {
                 {depositPayment.status === "paid" ? (
                   <span className="font-medium text-green-700">
                     Charged via Stripe — {money(Number(depositPayment.amount))} on{" "}
-                    {depositPayment.paid_date ? new Date(depositPayment.paid_date).toLocaleDateString() : "—"}
+                    {formatDateOnly(depositPayment.paid_date)}
                   </span>
                 ) : depositPayment.status === "failed" ? (
                   <span className="font-medium text-red-600">
@@ -1258,6 +1291,77 @@ export default function ApplicationDetailPage() {
                 className="font-heading rounded-md bg-red-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {acting ? "Declining…" : "Decline"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showDeliveryConfirm && (
+        <Modal title="Mark delivered" onClose={() => setShowDeliveryConfirm(false)} maxWidthClassName="max-w-sm">
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-600">
+              This starts the lease. The customer&rsquo;s first month is recorded as paid on the pickup date and the
+              monthly payment schedule is built from it.
+            </p>
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-neutral-500" htmlFor="pickup-date">
+                Pickup date
+              </label>
+              <input
+                id="pickup-date"
+                type="date"
+                value={pickupDate}
+                min={(() => {
+                  const d = new Date();
+                  d.setDate(d.getDate() - 7);
+                  const pad = (n: number) => String(n).padStart(2, "0");
+                  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                })()}
+                max={localToday()}
+                onChange={(e) => setPickupDate(e.target.value)}
+                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-red-600 focus:outline-none"
+              />
+              <p className="mt-1 text-xs text-neutral-400">Today by default. Up to a week back if the delivery is being recorded late.</p>
+            </div>
+            {!lease?.billing_cycle && (
+              <div>
+                <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-neutral-500" htmlFor="delivery-cycle">
+                  Billing cycle
+                </label>
+                <select
+                  id="delivery-cycle"
+                  value={deliveryCycle}
+                  onChange={(e) => setDeliveryCycle(e.target.value as "" | "1st" | "15th")}
+                  className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-red-600 focus:outline-none"
+                >
+                  <option value="">Choose…</option>
+                  <option value="1st">The 1st of each month</option>
+                  <option value="15th">The 15th of each month</option>
+                </select>
+                <p className="mt-1 text-xs text-neutral-400">This lease has no billing cycle yet. Confirm the customer&rsquo;s choice.</p>
+              </div>
+            )}
+            {actionError && <p className="text-xs text-red-600">{actionError}</p>}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowDeliveryConfirm(false)}
+                disabled={acting}
+                className="font-heading rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() =>
+                  advance(undefined, {
+                    pickup_date: pickupDate,
+                    ...(!lease?.billing_cycle && deliveryCycle ? { billing_cycle: deliveryCycle } : {}),
+                  })
+                }
+                disabled={acting || !pickupDate || (!lease?.billing_cycle && !deliveryCycle)}
+                className="font-heading rounded-md bg-red-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {acting ? "Saving…" : "Mark delivered"}
               </button>
             </div>
           </div>

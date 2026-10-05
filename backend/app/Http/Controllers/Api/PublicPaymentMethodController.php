@@ -55,13 +55,13 @@ class PublicPaymentMethodController extends Controller
         $customer = $this->resolveSignedCustomer($request);
         $data = $request->validate([
             'type' => ['required', Rule::in(['card', 'bank'])],
-            'payment_method_id' => ['required', 'string'],
+            'setup_intent_id' => ['required', 'string'],
         ]);
 
         $lease = LeaseAgreement::findOrFail($request->integer('lease'));
         abort_unless($lease->customer_id === $customer->id, 404);
 
-        $this->paymentMethods->attachPaymentMethod($lease, $data['type'], $data['payment_method_id']);
+        $this->paymentMethods->attachPaymentMethod($lease, $data['type'], $data['setup_intent_id']);
 
         return response()->json(['data' => $this->present($lease->fresh())]);
     }
@@ -85,10 +85,15 @@ class PublicPaymentMethodController extends Controller
 
     private function present(LeaseAgreement $lease): array
     {
+        $pricing = $lease->pricingSummary();
+
         return [
             'bank_account_added' => (bool) $lease->stripe_bank_payment_method_id,
             'card_added' => (bool) $lease->stripe_card_payment_method_id,
             'autopay_primary_method' => $lease->autopay_primary_method,
+            // Dual pricing (client, 2026-10-05): what the monthly payment costs by
+            // bank vs by card, shown next to each AutoPay choice.
+            'monthly_prices' => $pricing['monthly'] + ['card_fee_percent' => $pricing['card_fee_percent']],
         ];
     }
 

@@ -22,6 +22,7 @@ class LeaseAgreementFactory extends Factory
             'term_months' => 36,
             'start_date' => now()->toDateString(),
             'renewal_date' => now()->addMonthNoOverflow()->toDateString(),
+            'billing_cycle' => '15th',
             'monthly_rental_payment' => 150,
             'sales_tax_rate' => 0.0825,
             'security_deposit' => 0,
@@ -29,5 +30,18 @@ class LeaseAgreementFactory extends Factory
             'total_rental_purchase_price' => 5400,
             'ownership_status' => LeaseAgreement::OWNERSHIP_LEASING,
         ];
+    }
+
+    /**
+     * A lease whose equipment has been picked up (application "finished"):
+     * the only kind that has a real payment schedule, and the only kind the
+     * daily payment commands (reminders, late fees, missed-payment flags,
+     * renewals, AutoPay charging) act on.
+     */
+    public function pickedUp(): static
+    {
+        return $this->state(fn () => [
+            'application_id' => Application::factory()->state(['status' => Application::STATUS_FINISHED]),
+        ]);
     }
 }

@@ -131,8 +131,8 @@ function SetupAutopayFlow() {
               <DepositPaymentCard
                 status={depositStatus}
                 onStatusChange={setDepositStatus}
-                onChargeDeposit={() => chargeSignedDepositPayment(params)}
-                onChargeBalance={() => chargeSignedBalancePayment(params)}
+                onChargeDeposit={(choice) => chargeSignedDepositPayment(params, choice)}
+                onChargeBalance={(choice) => chargeSignedBalancePayment(params, choice)}
                 onRefreshStatus={() => getSignedDepositPaymentStatus(params)}
               />
             )}

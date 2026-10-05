@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\LeaseAgreement;
 use App\Models\Payment;
+use App\Services\BillingSchedule;
 use App\Services\LeaseEngine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -46,28 +47,30 @@ class LeaseAgreementController extends Controller
             'security_deposit' => ['sometimes', 'numeric', 'min:0'],
             'additional_funds' => ['sometimes', 'numeric', 'min:0'],
             'autopay_enabled' => ['sometimes', 'boolean'],
+            'billing_cycle' => ['sometimes', 'nullable', Rule::in(BillingSchedule::CYCLES)],
         ]);
+
+        $termsChanged = isset($data['term_months']) || isset($data['monthly_rental_payment']);
+
+        // No schedule exists before pickup any more (see LeaseEngine::startLease),
+        // so there is nothing to rebuild on a terms edit. But money already
+        // collected against the old numbers still blocks it, checked before
+        // anything is saved.
+        abort_if(
+            $termsChanged && $leaseAgreement->payments()->where('status', Payment::STATUS_PAID)->exists(),
+            422,
+            'Cannot change the term or rental amount once a payment has been made against this lease.',
+        );
 
         $leaseAgreement->update(array_merge($data, ['updated_by' => Auth::id()]));
 
-        if (isset($data['term_months']) || isset($data['monthly_rental_payment'])) {
+        if ($termsChanged) {
             $leaseAgreement->update([
                 'total_rental_purchase_price' => LeaseEngine::totalRentalPurchasePrice(
                     (float) $leaseAgreement->monthly_rental_payment,
                     (int) $leaseAgreement->term_months,
                 ),
             ]);
-
-            // A schedule may already exist from the approval step — rebuild it
-            // at the new terms rather than leaving stale rows on the books.
-            if ($leaseAgreement->payments()->exists()) {
-                abort_if(
-                    $leaseAgreement->payments()->where('status', Payment::STATUS_PAID)->exists(),
-                    422,
-                    'Cannot change the term or rental amount once a payment has been made against this lease.',
-                );
-                LeaseEngine::regeneratePaymentSchedule($leaseAgreement);
-            }
         }
 
         return response()->json(['data' => $this->present($leaseAgreement->fresh(), includeSchedule: true)]);
@@ -80,6 +83,8 @@ class LeaseAgreementController extends Controller
             'total_monthly_payment' => $lease->totalMonthlyPayment(),
             'payments_made' => $lease->paymentsMadeCount(),
             'epo_today' => LeaseEngine::epoToday($lease),
+            // Dual pricing (client, 2026-10-05): the bank and card price of every charge.
+            'pricing' => $lease->pricingSummary(),
         ]);
 
         if ($includeSchedule) {

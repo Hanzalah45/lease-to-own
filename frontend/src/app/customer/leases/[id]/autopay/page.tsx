@@ -89,8 +89,8 @@ export default function AutopaySetupPage() {
         <DepositPaymentCard
           status={depositStatus}
           onStatusChange={setDepositStatus}
-          onChargeDeposit={() => chargeDepositPayment(leaseId)}
-          onChargeBalance={() => chargeBalancePayment(leaseId)}
+          onChargeDeposit={(choice) => chargeDepositPayment(leaseId, choice)}
+          onChargeBalance={(choice) => chargeBalancePayment(leaseId, choice)}
           onRefreshStatus={() => getDepositPaymentStatus(leaseId)}
         />
       )}

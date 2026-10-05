@@ -120,7 +120,7 @@
 <div class="sub">Lease details</div>
 <table class="rows">
     <tr><td class="label">Months to Ownership</td><td class="value">{{ $lease->term_months }}</td></tr>
-    <tr><td class="label">Payment Due Day</td><td class="value">{{ $lease->payment_due_day ?? '—' }}</td></tr>
+    <tr><td class="label">Billing Cycle</td><td class="value">{{ $billingCycleLabel }}</td></tr>
     <tr><td class="label">Rental Payment</td><td class="value">${{ number_format($monthlyRental, 2) }}</td></tr>
     <tr>
         <td class="label">{{ $lease->ldw_selected ? 'LDW (monthly)' : 'LDW Declined (monthly)' }}</td>
@@ -135,6 +135,22 @@
     <tr><td class="label">Total Rental-Purchase Price</td><td class="value">${{ number_format($totalRentalPurchasePrice, 2) }}</td></tr>
 </table>
 
+<div class="sub">Payment price by method</div>
+<table class="rows">
+    <tr><td class="label">&nbsp;</td><td class="value">Bank account (ACH)</td><td class="value">Card</td></tr>
+    <tr><td class="label">Total Monthly Payment</td><td class="value">${{ number_format($pricing['monthly']['bank'], 2) }}</td><td class="value">${{ number_format($pricing['monthly']['card'], 2) }}</td></tr>
+    <tr><td class="label">Security Deposit</td><td class="value">${{ number_format($pricing['deposit']['bank'], 2) }}</td><td class="value">${{ number_format($pricing['deposit']['card'], 2) }}</td></tr>
+    <tr><td class="label">Tracking Device Fee + First Month's Payment</td><td class="value">${{ number_format($pricing['pickup_balance']['bank'], 2) }}</td><td class="value">${{ number_format($pricing['pickup_balance']['card'], 2) }}</td></tr>
+    <tr><td class="label">TOTAL DUE TODAY</td><td class="value">${{ number_format($pricing['full']['bank'], 2) }}</td><td class="value">${{ number_format($pricing['full']['card'], 2) }}</td></tr>
+</table>
+<p class="terms">
+    <strong>Payment prices.</strong> The amounts in the Lease details table above are the bank (ACH) prices. Our listed
+    price for each payment is the card price shown here. When you pay by bank account (ACH) you receive a discount and
+    pay the lower bank price; paying by credit or debit card costs {{ $cardFeePercent }}% more than paying by bank. You
+    choose how to pay each payment. The difference is a card processing cost: it does not count toward the Total
+    Rental-Purchase Price, your Months to Ownership, or the Early Purchase Option.
+</p>
+
 <p class="terms">
     <strong>Security Deposit &amp; Unit Hold.</strong> Your Security Deposit of ${{ number_format($securityDeposit, 2) }}
     is non-refundable and holds the Property exclusively for you for thirty (30) days from the date of this
@@ -147,6 +163,13 @@
     one-month terms at your option by making a monthly rental renewal payment on or before the expiration date. The
     Agreement will also renew if you continue to possess the Property until you notify us that you want to end the
     rental and make the Property available for pickup.
+    <strong>Billing cycle.</strong> Your Rental Payments are due on the billing cycle shown above (the 1st or the 15th
+    of each month). Your first Rental Payment, a full month, is due on the day you pick up the Property. If your first
+    billing cycle date falls fewer than thirty (30) days after pickup, your second Rental Payment is prorated: your
+    monthly payment divided by 30, multiplied by the number of days from pickup to that date. Every later payment is
+    the full monthly amount, due on your billing cycle date. The prorated payment counts as one of your Rental
+    Payments toward the Months to Ownership shown above, and there is no final catch-up payment, so the total of your
+    scheduled Rental Payments is slightly less than the Months to Ownership multiplied by your monthly payment.
 </p>
 <p class="terms">
     <strong>3. Rental-Purchase Ownership.</strong> If you renew this Agreement for {{ $lease->term_months }} months in
@@ -499,8 +522,9 @@
     Agreement, using the bank account or payment method you verified and connected during your application.
 </p>
 <table class="rows">
-    <tr><td class="label">Payment Amount</td><td class="value">${{ number_format($totalMonthly, 2) }}</td></tr>
-    <tr><td class="label">Payment Due Day</td><td class="value">{{ $lease->payment_due_day ?? '—' }}</td></tr>
+    <tr><td class="label">Payment Amount, paid by bank account (ACH)</td><td class="value">${{ number_format($pricing['monthly']['bank'], 2) }}</td></tr>
+    <tr><td class="label">Payment Amount, paid by card</td><td class="value">${{ number_format($pricing['monthly']['card'], 2) }}</td></tr>
+    <tr><td class="label">Billing Cycle</td><td class="value">{{ $billingCycleLabel }}</td></tr>
     <tr><td class="label">Payment Frequency</td><td class="value">Monthly</td></tr>
 </table>
 </div>
@@ -509,6 +533,12 @@
     method on or after each Payment Due Date, in the amount described above, plus any accrued but unpaid rental
     charges, up to a maximum of $30.00 more than your regularly-scheduled payment amount. You will receive notice at
     least 10 days before a payment is deducted if it falls outside that range.
+</p>
+<p class="terms">
+    <strong>Payment Method &amp; Price.</strong> Each payment is charged to the AutoPay method you choose as primary.
+    If a payment cannot be collected from your primary method, AutoPay will charge your other method instead, and the
+    price for that method applies (the card price is {{ $cardFeePercent }}% higher than the bank price). Your second
+    Rental Payment may be a prorated, lower amount as described in Section 2.
 </p>
 <p class="terms">
     <strong>Revocation.</strong> This Payment Authorization applies until you revoke it. You may revoke it by

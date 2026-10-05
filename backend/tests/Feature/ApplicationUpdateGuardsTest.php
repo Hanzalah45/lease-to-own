@@ -224,10 +224,9 @@ class ApplicationUpdateGuardsTest extends TestCase
         $response->assertStatus(422);
     }
 
-    public function test_changing_rental_terms_regenerates_an_already_generated_payment_schedule(): void
+    public function test_changing_rental_terms_before_pickup_updates_the_price_and_builds_no_schedule(): void
     {
         $lease = LeaseAgreement::factory()->create(['monthly_rental_payment' => 150, 'term_months' => 36]);
-        Payment::create(['lease_agreement_id' => $lease->id, 'amount' => 150, 'due_date' => now()->addMonth(), 'status' => Payment::STATUS_PENDING]);
         $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
 
         $response = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$lease->application_id}", [
@@ -236,9 +235,10 @@ class ApplicationUpdateGuardsTest extends TestCase
 
         $response->assertOk();
         $fresh = $lease->fresh();
-        $this->assertSame(36, $fresh->payments()->count());
-        // Schedule rows are billed at rent + tax, not the bare rental figure.
-        $this->assertSame($fresh->totalMonthlyPayment(), (float) $fresh->payments()->first()->amount);
+        $this->assertSame('7200.00', $fresh->total_rental_purchase_price);
+        // The monthly schedule only exists once the equipment is picked up
+        // (LeaseEngine::startLease), so a terms edit has nothing to rebuild.
+        $this->assertSame(0, $fresh->payments()->count());
     }
 
     public function test_changing_rental_terms_is_blocked_once_a_payment_has_been_paid(): void

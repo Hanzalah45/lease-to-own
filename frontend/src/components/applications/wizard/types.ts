@@ -6,7 +6,6 @@ import {
   validateDob,
   validateEmail,
   validateEquipmentModel,
-  validateIntegerInRange,
   validateMoney,
   validateName,
   validatePercent,
@@ -42,7 +41,7 @@ export const FIELD_TO_STEP: Record<string, StepKey> = {
   tax_rate: "lease",
   monthly_rental: "lease",
   security_deposit: "lease",
-  payment_due_day: "lease",
+  billing_cycle: "lease",
   autopay: "lease",
 
   registered_customer_id: "customer",
@@ -93,7 +92,7 @@ export const STATE_TO_FIELD: Record<keyof WizardState, string> = {
   monthlyRental: "monthly_rental",
   taxRate: "tax_rate",
   securityDeposit: "security_deposit",
-  paymentDueDay: "payment_due_day",
+  billingCycle: "billing_cycle",
   autopay: "autopay",
   registeredCustomerId: "registered_customer_id",
   name: "name",
@@ -179,7 +178,8 @@ export function validateLeaseStep(state: WizardState): Record<string, string[]> 
     errors.term_months = ["Lease term must be 12, 24, or 36 months."];
   }
   put(errors, "tax_rate", validatePercent(state.taxRate, "Sales tax rate"));
-  put(errors, "payment_due_day", validateIntegerInRange(state.paymentDueDay, "Payment due day", 1, 31));
+  // Optional (the customer confirms it before signing), but never anything but the 1st or the 15th.
+  put(errors, "billing_cycle", state.billingCycle && state.billingCycle !== "1st" && state.billingCycle !== "15th" ? "Choose the 1st or the 15th." : undefined);
 
   return errors;
 }
@@ -302,7 +302,8 @@ export interface WizardState {
   monthlyRental: string;
   taxRate: string;
   securityDeposit: string;
-  paymentDueDay: string;
+  /** Optional pre-select (client, 2026-10-05): the customer confirms the 1st or 15th right before signing. */
+  billingCycle: "" | "1st" | "15th";
   autopay: "yes" | "no";
   // Step 3 — Customer info
   registeredCustomerId: string;
@@ -354,7 +355,7 @@ export const INITIAL_WIZARD_STATE: WizardState = {
   monthlyRental: "",
   taxRate: "8.25",
   securityDeposit: "",
-  paymentDueDay: "15",
+  billingCycle: "",
   autopay: "no",
   registeredCustomerId: "",
   name: "",

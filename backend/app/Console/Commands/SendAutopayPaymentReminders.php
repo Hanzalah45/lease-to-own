@@ -2,8 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Application;
 use App\Models\Payment;
 use App\Notifications\AutopayPaymentReminderNotification;
+use App\Services\BillingClock;
 use Illuminate\Console\Command;
 
 /**
@@ -21,11 +23,15 @@ class SendAutopayPaymentReminders extends Command
 
     public function handle(): int
     {
-        $dueDate = now()->addDays(7)->toDateString();
+        $dueDate = BillingClock::today()->addDays(7)->toDateString();
 
-        $payments = Payment::where('status', Payment::STATUS_PENDING)
+        // Monthly rent only (a pending pickup_balance or late fee is not an
+        // AutoPay monthly charge), and only for leases already picked up.
+        $payments = Payment::where('type', Payment::TYPE_RENTAL)
+            ->where('status', Payment::STATUS_PENDING)
             ->whereDate('due_date', $dueDate)
             ->whereHas('leaseAgreement', fn ($query) => $query->where('autopay_enabled', true))
+            ->whereHas('leaseAgreement.application', fn ($query) => $query->where('status', Application::STATUS_FINISHED))
             ->with('leaseAgreement.customer.customerProfile')
             ->get();
 

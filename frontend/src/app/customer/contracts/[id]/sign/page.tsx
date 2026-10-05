@@ -9,7 +9,8 @@ import { getMyLeaseAgreement } from "@/lib/lease-agreements";
 import { previewLease, signLease } from "@/lib/contracts";
 import { ApiError } from "@/lib/api";
 import { validateName } from "@/lib/validation";
-import type { LeaseAgreement } from "@/types/lease-agreement";
+import { BillingCycleCard } from "@/components/contracts/BillingCycleCard";
+import type { BillingCycle, LeaseAgreement } from "@/types/lease-agreement";
 
 function num(value: string | number | null | undefined): number {
   const n = Number(value ?? 0);
@@ -32,13 +33,17 @@ export default function SignLeaseAgreementPage() {
   const [signError, setSignError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // Billing cycle (client, 2026-10-05): picked right before signing so the
+  // contract states it; pre-selected if an admin already set one.
+  const [billingCycle, setBillingCycle] = useState<BillingCycle | null>(null);
+  const [cycleTouched, setCycleTouched] = useState(false);
 
   async function handlePreview() {
     if (!lease) return;
     setPreviewing(true);
     setPreviewError(null);
     try {
-      await previewLease(lease.id);
+      await previewLease(lease.id, billingCycle ?? undefined);
     } catch (err) {
       setPreviewError(err instanceof ApiError ? err.message : "Could not load the agreement.");
     } finally {
@@ -48,25 +53,30 @@ export default function SignLeaseAgreementPage() {
 
   useEffect(() => {
     getMyLeaseAgreement(params.id)
-      .then(setLease)
+      .then((loaded) => {
+        setLease(loaded);
+        setBillingCycle(loaded.billing_cycle);
+      })
       .catch((err) => setLoadError(err instanceof ApiError ? err.message : "Could not load this lease."))
       .finally(() => setLoading(false));
   }, [params.id]);
 
   const nameError = validateName(typedName, "Full legal name");
-  const isValid = agreed && !nameError;
+  const cycleError = billingCycle ? null : "Choose your billing day before signing.";
+  const isValid = agreed && !nameError && !cycleError;
 
   async function handleSign() {
     if (!lease) return;
     if (!isValid) {
       setNameTouched(true);
       setAgreedTouched(true);
+      setCycleTouched(true);
       return;
     }
     setSigning(true);
     setSignError(null);
     try {
-      await signLease(lease.id, typedName.trim());
+      await signLease(lease.id, typedName.trim(), billingCycle ?? undefined);
       // Automatically continues into AutoPay setup (client, Joel, 2026-10-02)
       // — no further email/link needed, the customer is already logged in.
       router.push(`/customer/leases/${lease.id}/autopay`);
@@ -81,7 +91,9 @@ export default function SignLeaseAgreementPage() {
   if (loadError || !lease) return <p className="text-sm text-red-600">{loadError ?? "Lease not found."}</p>;
 
   const totalMonthly = num(lease.total_monthly_payment);
-  const totalDueToday = num(lease.security_deposit) + TRACKING_DEVICE_FEE + totalMonthly;
+  // Both prices come from the server (dual pricing, client 2026-10-05); the old client-side sum is only a fallback.
+  const pricing = lease.pricing;
+  const totalDueToday = pricing?.full.bank ?? num(lease.security_deposit) + TRACKING_DEVICE_FEE + totalMonthly;
   const signed = !!lease.contract;
 
   return (
@@ -116,11 +128,17 @@ export default function SignLeaseAgreementPage() {
           </div>
           <div className="flex items-center justify-between border-b border-neutral-100 py-1">
             <span className="text-neutral-500">Total monthly payment</span>
-            <span className="font-semibold text-neutral-900">{money(totalMonthly)}</span>
+            <span className="text-right font-semibold text-neutral-900">
+              {money(totalMonthly)} by bank
+              {pricing && <span className="block text-xs font-normal text-neutral-500">{money(pricing.monthly.card)} by card</span>}
+            </span>
           </div>
           <div className="flex items-center justify-between py-1">
             <span className="text-neutral-500">Total due today</span>
-            <span className="font-semibold text-neutral-900">{money(totalDueToday)}</span>
+            <span className="text-right font-semibold text-neutral-900">
+              {money(totalDueToday)} by bank
+              {pricing && <span className="block text-xs font-normal text-neutral-500">{money(pricing.full.card)} by card</span>}
+            </span>
           </div>
         </div>
       </div>
@@ -139,6 +157,16 @@ export default function SignLeaseAgreementPage() {
           </Link>
         </div>
       ) : (
+        <>
+        <BillingCycleCard
+          preview={lease.billing_preview}
+          value={billingCycle}
+          onChange={(cycle) => {
+            setBillingCycle(cycle);
+            setCycleTouched(true);
+          }}
+          error={cycleTouched ? cycleError : null}
+        />
         <div className="rounded-xl border border-neutral-200 bg-white p-5">
           <div className="mb-4 flex items-center gap-2">
             <span className="h-4 w-1 shrink-0 rounded-full bg-red-600" />
@@ -205,6 +233,7 @@ export default function SignLeaseAgreementPage() {
             {signing ? "Signing…" : "Sign & Complete →"}
           </button>
         </div>
+        </>
       )}
     </div>
   );

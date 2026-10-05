@@ -1,12 +1,17 @@
 import { API_BASE_URL, apiFetch, ApiError } from "@/lib/api";
 import { getToken } from "@/lib/auth";
-import type { Contract, LeaseAgreement } from "@/types/lease-agreement";
+import type { BillingCycle, Contract, LeaseAgreement } from "@/types/lease-agreement";
 
-export async function signLease(leaseAgreementId: number, signerName: string): Promise<Contract> {
+/** The billing cycle is chosen right before signing and saved together with the signature (client, 2026-10-05). */
+export async function signLease(leaseAgreementId: number, signerName: string, billingCycle?: BillingCycle): Promise<Contract> {
   const data = await apiFetch<{ data: Contract }>("/customer/contracts", {
     method: "POST",
     token: getToken(),
-    body: { lease_agreement_id: leaseAgreementId, signer_name: signerName },
+    body: {
+      lease_agreement_id: leaseAgreementId,
+      signer_name: signerName,
+      ...(billingCycle ? { billing_cycle: billingCycle } : {}),
+    },
   });
   return data.data;
 }
@@ -80,10 +85,11 @@ async function viewFile(request: Promise<Response>, errorMessage: string): Promi
   window.open(URL.createObjectURL(blob), "_blank");
 }
 
-/** The full agreement text, readable before signing — authenticated counterpart of previewSignedLease(). */
-export function previewLease(leaseAgreementId: number): Promise<void> {
+/** The full agreement text, readable before signing — authenticated counterpart of previewSignedLease(). Pass the cycle being considered so the preview states it before it is saved. */
+export function previewLease(leaseAgreementId: number, billingCycle?: BillingCycle): Promise<void> {
+  const query = billingCycle ? `?billing_cycle=${encodeURIComponent(billingCycle)}` : "";
   return viewFile(
-    fetch(`${API_BASE_URL}/customer/lease-agreements/${leaseAgreementId}/contract-preview`, {
+    fetch(`${API_BASE_URL}/customer/lease-agreements/${leaseAgreementId}/contract-preview${query}`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     }),
     "Could not load the agreement.",

@@ -7,6 +7,8 @@ export interface PaymentMethodsStatus {
   bank_account_added: boolean;
   card_added: boolean;
   autopay_primary_method: "ach" | "card" | null;
+  /** Dual pricing (client, 2026-10-05): the monthly payment by bank vs by card. Absent on a few admin-only responses. */
+  monthly_prices?: { bank: number; card: number; card_fee: number; card_fee_percent: number };
 }
 
 /** Only present on the guest signed-link show() response — see PublicPaymentMethodController::show(). */
@@ -46,11 +48,11 @@ export async function createSignedSetupIntent(
 export async function confirmSignedPaymentMethod(
   params: SignedPaymentMethodLinkParams,
   type: AutopayMethodType,
-  paymentMethodId: string,
+  setupIntentId: string,
 ): Promise<PaymentMethodsStatus> {
   const data = await apiFetch<{ data: PaymentMethodsStatus }>("/payment-methods/verify-confirm", {
     method: "POST",
-    body: { ...params, type, payment_method_id: paymentMethodId },
+    body: { ...params, type, setup_intent_id: setupIntentId },
   });
   return data.data;
 }
@@ -84,11 +86,11 @@ export async function createSetupIntent(leaseAgreementId: number, type: AutopayM
 export async function confirmPaymentMethod(
   leaseAgreementId: number,
   type: AutopayMethodType,
-  paymentMethodId: string,
+  setupIntentId: string,
 ): Promise<PaymentMethodsStatus> {
   const data = await apiFetch<{ data: PaymentMethodsStatus }>(
     `/customer/lease-agreements/${leaseAgreementId}/payment-methods/confirm`,
-    { method: "POST", token: getToken(), body: { type, payment_method_id: paymentMethodId } },
+    { method: "POST", token: getToken(), body: { type, setup_intent_id: setupIntentId } },
   );
   return data.data;
 }

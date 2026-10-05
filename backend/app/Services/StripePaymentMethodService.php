@@ -53,6 +53,9 @@ class StripePaymentMethodService
 
         return $this->stripe->setupIntents->create([
             'customer' => $stripeCustomerId,
+            // Explicit (it is also Stripe's default): the saved method is
+            // charged later with the customer absent — see AutopayCharger.
+            'usage' => 'off_session',
             'payment_method_types' => [$type === 'bank' ? 'us_bank_account' : 'card'],
             ...($type === 'bank' ? [
                 'payment_method_options' => [
@@ -65,13 +68,42 @@ class StripePaymentMethodService
     }
 
     /**
-     * Attaches a confirmed PaymentMethod to the lease. For a bank account,
-     * also checks it against the Plaid-verified one on file and flags a
-     * mismatch — Joel, 2026-10-01.
+     * Attaches the PaymentMethod from a COMPLETED SetupIntent to the lease.
+     * AutoPay charges this method later with the customer absent
+     * (off-session), so only a method Stripe has fully set up for the
+     * customer is acceptable: the SetupIntent must have succeeded (a bank
+     * account still waiting on microdeposit verification, or a card needing
+     * authentication, would fail every future charge) and must belong to this
+     * customer's Stripe profile. For a bank account, also checks it against
+     * the Plaid-verified one on file and flags a mismatch — Joel, 2026-10-01.
      */
-    public function attachPaymentMethod(LeaseAgreement $lease, string $type, string $paymentMethodId): void
+    public function attachPaymentMethod(LeaseAgreement $lease, string $type, string $setupIntentId): void
     {
+        $stripeCustomerId = $lease->customer->customerProfile?->stripe_customer_id;
+        $setupIntent = $this->stripe->setupIntents->retrieve($setupIntentId);
+
+        abort_unless(
+            $stripeCustomerId && $setupIntent->customer === $stripeCustomerId,
+            422,
+            'That payment method does not belong to this account.',
+        );
+        abort_unless(
+            $setupIntent->status === 'succeeded',
+            422,
+            $type === 'bank'
+                ? 'Your bank account could not be verified instantly. Please try a different bank account or add a card.'
+                : 'Your card could not be verified. Please try again or use a different card.',
+        );
+
+        $paymentMethodId = is_string($setupIntent->payment_method) ? $setupIntent->payment_method : $setupIntent->payment_method?->id;
+        abort_unless($paymentMethodId, 422, 'No payment method was saved. Please try again.');
+
         $paymentMethod = $this->stripe->paymentMethods->retrieve($paymentMethodId);
+        abort_unless(
+            $paymentMethod->type === ($type === 'bank' ? 'us_bank_account' : 'card'),
+            422,
+            'That is not the type of payment method you selected.',
+        );
 
         $lease->update([
             $type === 'bank' ? 'stripe_bank_payment_method_id' : 'stripe_card_payment_method_id' => $paymentMethodId,

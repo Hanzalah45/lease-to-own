@@ -34,6 +34,7 @@ class Payment extends Model
         'type',
         'late_fee_for_payment_id',
         'amount',
+        'card_fee_amount',
         'due_date',
         'paid_date',
         'method',
@@ -49,7 +50,18 @@ class Payment extends Model
             'due_date' => 'date',
             'paid_date' => 'date',
             'amount' => 'decimal:2',
+            'card_fee_amount' => 'decimal:2',
         ];
+    }
+
+    /**
+     * What the customer is actually charged: the bank price (`amount`) plus
+     * the card fee when it was paid by card (dual pricing, 2026-10-05).
+     * `amount` alone stays the bank price on purpose — see CardPricing.
+     */
+    public function totalCharged(): float
+    {
+        return round((float) $this->amount + (float) $this->card_fee_amount, 2);
     }
 
     public function leaseAgreement(): BelongsTo
@@ -65,6 +77,12 @@ class Payment extends Model
     public function riskRedFlags(): HasMany
     {
         return $this->hasMany(RiskRedFlag::class);
+    }
+
+    /** Every try at collecting this payment through Stripe, oldest first (automatic monthly charging only). */
+    public function attempts(): HasMany
+    {
+        return $this->hasMany(PaymentAttempt::class)->orderBy('attempt_no');
     }
 
     /** Set only on a late_fee row: the overdue rental payment it was charged against. */

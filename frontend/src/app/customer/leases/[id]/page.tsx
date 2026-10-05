@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { money } from "@/components/applications/wizard/types";
+import { formatDateOnly } from "@/lib/dates";
 import { getMyLeaseAgreement } from "@/lib/lease-agreements";
 import { ApiError } from "@/lib/api";
 import type { LeaseAgreement } from "@/types/lease-agreement";
@@ -66,7 +67,10 @@ export default function CustomerLeaseDetailPage() {
       </div>
 
       <div className="rounded-xl border border-neutral-200 bg-neutral-100 px-5 py-3.5 text-sm text-neutral-700">
-        <span className="font-bold">Renewal due day: {lease.payment_due_day ?? "—"}</span> · Individual lease term is 1
+        <span className="font-bold">
+          Billing cycle: {lease.billing_cycle ? `the ${lease.billing_cycle} of each month` : "—"}
+        </span>{" "}
+        · Individual lease term is 1
         month. Keeping the equipment past your due date without notice automatically renews the lease for another
         month at the same terms.
       </div>
@@ -201,7 +205,7 @@ export default function CustomerLeaseDetailPage() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-neutral-500">Delivered</span>
-              <span className="font-semibold text-neutral-900">{lease.equipment_unit?.delivery_date ?? "—"}</span>
+              <span className="font-semibold text-neutral-900">{formatDateOnly(lease.equipment_unit?.delivery_date)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-neutral-500">Cash price</span>

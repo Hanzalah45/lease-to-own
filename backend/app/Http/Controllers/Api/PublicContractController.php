@@ -10,6 +10,7 @@ use App\Models\LeaseAgreement;
 use App\Models\User;
 use App\Notifications\ContractPdfGenerationFailedNotification;
 use App\Notifications\ContractSignedNotification;
+use App\Services\BillingSchedule;
 use App\Services\CommonValidationRules;
 use App\Services\ContractPdfService;
 use App\Services\ContractSigner;
@@ -17,6 +18,7 @@ use App\Services\LeaseEngine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Validation\Rule;
 
 /**
  * The signed-link counterpart to Customer\ContractController — reached from
@@ -42,6 +44,8 @@ class PublicContractController extends Controller
             'total_monthly_payment' => $lease->totalMonthlyPayment(),
             'payments_made' => $lease->paymentsMadeCount(),
             'epo_today' => LeaseEngine::epoToday($lease),
+            // Dual pricing (client, 2026-10-05): the bank and card price of every charge.
+            'pricing' => $lease->pricingSummary(),
             // Tells the frontend whether the account-creation step is still
             // needed (client, Joel, 2026-10-02 consolidated onboarding) — a
             // re-visit after already activating should skip straight to
@@ -68,6 +72,11 @@ class PublicContractController extends Controller
         $lease = LeaseAgreement::with('equipmentUnit', 'customer.customerProfile')->findOrFail($request->integer('lease'));
         abort_unless($lease->customer_id === $customer->id, 404);
 
+        $preview = $request->validate(['billing_cycle' => ['nullable', Rule::in(BillingSchedule::CYCLES)]]);
+        if (! empty($preview['billing_cycle'])) {
+            $lease->billing_cycle = $preview['billing_cycle'];
+        }
+
         return response(ContractPdfService::preview($lease), 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'inline; filename="lease-agreement-preview.pdf"',
@@ -80,6 +89,8 @@ class PublicContractController extends Controller
 
         $data = $request->validate([
             'signer_name' => ['required', 'string', 'min:'.CommonValidationRules::NAME_MIN, 'max:'.CommonValidationRules::NAME_MAX],
+            // Same rule as Customer\ContractController::store().
+            'billing_cycle' => ['nullable', Rule::in(BillingSchedule::CYCLES)],
         ]);
 
         $lease = LeaseAgreement::findOrFail($request->integer('lease'));
@@ -99,6 +110,12 @@ class PublicContractController extends Controller
         $contract = DB::transaction(function () use ($lease, $data, $customer, $request) {
             $lockedLease = LeaseAgreement::whereKey($lease->id)->lockForUpdate()->firstOrFail();
             abort_if($lockedLease->contract()->exists(), 422, 'This lease agreement has already been signed.');
+
+            $cycle = $data['billing_cycle'] ?? $lockedLease->billing_cycle;
+            abort_unless($cycle, 422, 'Choose your billing cycle (the 1st or the 15th) before signing.');
+            if ($lockedLease->billing_cycle !== $cycle) {
+                $lockedLease->update(['billing_cycle' => $cycle]);
+            }
 
             return Contract::create([
                 'lease_agreement_id' => $lockedLease->id,
