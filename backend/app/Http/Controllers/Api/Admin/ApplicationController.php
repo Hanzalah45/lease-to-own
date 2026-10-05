@@ -120,6 +120,28 @@ class ApplicationController extends Controller
     }
 
     /**
+     * Swaps the mower on an application that already has equipment and
+     * pricing and re-prices the lease (client, Joel, 2026-10-06) — see
+     * ApplicationCreationService::changeEquipment() for what it refuses and
+     * how a signed contract is handled. It edits both the lease terms and the
+     * equipment record, so it needs both permissions the individual edits do.
+     */
+    public function changeEquipment(Request $request, Application $application)
+    {
+        abort_unless($request->user()->hasAdminPermission(AdminPermission::CONTRACT_GENERATION), 403, 'You do not have permission to edit lease terms.');
+        abort_unless($request->user()->hasAdminPermission(AdminPermission::EQUIPMENT_TRACKING), 403, 'You do not have permission to edit equipment records.');
+
+        $data = $request->validate(ApplicationValidationRules::changeEquipment());
+
+        $result = ApplicationCreationService::changeEquipment($application, $data, Auth::id());
+
+        return response()->json([
+            'data' => $this->present($application->fresh()),
+            'meta' => ['contract_voided' => $result['contract_voided']],
+        ]);
+    }
+
+    /**
      * Manually resends the guest signing-link email — a safety net for when
      * the automatic send at the waiting_deposit transition was skipped (e.g.
      * the lease was attached out of order — see attachLease()) or simply

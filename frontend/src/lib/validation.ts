@@ -350,6 +350,9 @@ export function validateYear(value: string, label = "Year"): string | undefined 
 
 // Both mirror ApplicationController's own `max:60` rules.
 export const PROMO_CODE_MAX = 60;
+
+/** Largest cash price accepted anywhere: well above any mower. Mirrors LeasePricing::CASH_PRICE_MAX on the server. */
+export const CASH_PRICE_MAX = 1000000;
 export const DRIVERS_LICENSE_MAX = 60;
 export const PROMO_CODE_PATTERN = /^[A-Za-z0-9_-]+$/;
 

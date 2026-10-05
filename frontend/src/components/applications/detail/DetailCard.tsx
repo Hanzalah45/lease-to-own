@@ -9,6 +9,7 @@ export function DetailCard({
   onEdit,
   rows,
   note,
+  action,
 }: {
   title: string;
   editable?: boolean;
@@ -16,6 +17,8 @@ export function DetailCard({
   onEdit?: () => void;
   rows: { label: string; value: ReactNode }[];
   note?: ReactNode;
+  /** A call-to-action button shown under the rows, above the note. */
+  action?: ReactNode;
 }) {
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-5">
@@ -42,6 +45,7 @@ export function DetailCard({
           </div>
         ))}
       </div>
+      {action && <div className="mt-4">{action}</div>}
       {note && <div className="mt-3 text-xs text-neutral-500">{note}</div>}
     </div>
   );

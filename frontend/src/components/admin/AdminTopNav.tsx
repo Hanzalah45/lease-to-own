@@ -12,6 +12,7 @@ import { Avatar } from "@/components/account/Avatar";
 import {
   BellIcon,
   BriefcaseIcon,
+  CalculatorIcon,
   CheckCircleIcon,
   ChevronDownIcon,
   CreditCardIcon,
@@ -31,6 +32,10 @@ const BASE_NAV_ITEMS = [{ label: "Dashboard", href: "/admin/dashboard", icon: Ho
 // — same gate the backend puts on the applications and customers resources.
 const APPLICATIONS_ITEM = { label: "My Applications", href: "/admin/applications", icon: DocumentIcon };
 const CUSTOMERS_ITEM = { label: "Customer Accounts", href: "/admin/customers", icon: UserIcon };
+
+// Quotes a mower's price with no customer attached; behind the same
+// application_review gate as the backend's /admin/pricing/quote.
+const CALCULATOR_ITEM = { label: "Calculator", href: "/admin/calculator", icon: CalculatorIcon };
 
 // Requires the equipment_tracking permission (or full/super-admin access).
 const EQUIPMENT_ITEM = { label: "Equipment", href: "/admin/equipment", icon: BriefcaseIcon };
@@ -78,7 +83,7 @@ export function AdminTopNav() {
 
   const navItems = [
     ...BASE_NAV_ITEMS,
-    ...(canSeeCustomers ? [APPLICATIONS_ITEM, CUSTOMERS_ITEM] : []),
+    ...(canSeeCustomers ? [APPLICATIONS_ITEM, CUSTOMERS_ITEM, CALCULATOR_ITEM] : []),
     ...(canSeeContracts ? [CONTRACTS_ITEM] : []),
     ...(canSeeEquipment ? [EQUIPMENT_ITEM] : []),
     ...(canSeePayments ? [PAYMENTS_ITEM] : []),

@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\Admin\EquipmentUnitController as AdminEquipmentUnit
 use App\Http\Controllers\Api\Admin\LeaseAgreementController as AdminLeaseAgreementController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\Api\Admin\PaymentMethodController as AdminPaymentMethodController;
+use App\Http\Controllers\Api\Admin\PricingController as AdminPricingController;
 use App\Http\Controllers\Api\Admin\QuickbooksConnectionController;
 use App\Http\Controllers\Api\Admin\RiskProfileController;
 use App\Http\Controllers\Api\Auth\AccountSetupController;
@@ -192,6 +193,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware('permission:application_review')->group(function () {
             Route::apiResource('applications', AdminApplicationController::class);
             Route::post('/applications/{application}/lease', [AdminApplicationController::class, 'attachLease']);
+            Route::post('/applications/{application}/change-equipment', [AdminApplicationController::class, 'changeEquipment']);
+            Route::post('/pricing/quote', [AdminPricingController::class, 'quote']);
             Route::post('/applications/{application}/resend-signing-link', [AdminApplicationController::class, 'resendContractSigningLink']);
             Route::post('/lease-agreements/{leaseAgreement}/payment-methods/clear', [AdminPaymentMethodController::class, 'clear']);
             Route::get('/applications/{application}/id-document', [AdminApplicationController::class, 'idDocument']);

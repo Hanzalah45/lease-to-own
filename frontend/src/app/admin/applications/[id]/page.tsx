@@ -14,6 +14,7 @@ import { ChecklistCard } from "@/components/applications/detail/ChecklistCard";
 import { AssignmentCard } from "@/components/applications/detail/AssignmentCard";
 import { EditDetailModal, type EditField } from "@/components/applications/detail/EditDetailModal";
 import { AddLeaseModal } from "@/components/applications/detail/AddLeaseModal";
+import { ChangeMowerModal } from "@/components/applications/detail/ChangeMowerModal";
 import { FileInput } from "@/components/applications/wizard/fields";
 import { EpoChart } from "@/components/applications/wizard/EpoChart";
 import { Modal } from "@/components/ui/Modal";
@@ -141,6 +142,8 @@ export default function ApplicationDetailPage() {
 
   const [editingCard, setEditingCard] = useState<"customer" | "lease" | "equipment" | "risk" | null>(null);
   const [showAddLeaseModal, setShowAddLeaseModal] = useState(false);
+  const [showChangeMower, setShowChangeMower] = useState(false);
+  const [changeNotice, setChangeNotice] = useState<string | null>(null);
   const [postingNote, setPostingNote] = useState(false);
   const [togglingChecklist, setTogglingChecklist] = useState(false);
 
@@ -525,6 +528,15 @@ export default function ApplicationDetailPage() {
   const paidPayment = lease?.payments?.slice().reverse().find((p) => p.status === "paid");
 
   const signed = !!lease?.contract;
+  // Changing the mower edits both the lease terms and the equipment record,
+  // and only makes sense before pickup (the server enforces all of this too).
+  const canChangeMower =
+    status !== "finished" &&
+    status !== "declined" &&
+    status !== "withdrawn" &&
+    can("application_review") &&
+    can("contract_generation") &&
+    can("equipment_tracking");
 
   const salesTaxPct = lease ? (num(lease.sales_tax_rate) * 100).toFixed(2) : "0";
   const totalDue = lease ? num(lease.total_monthly_payment) + num(lease.security_deposit) + TRACKING_DEVICE_FEE : 0;
@@ -707,6 +719,19 @@ export default function ApplicationDetailPage() {
             onClick={() => setActionError(null)}
             aria-label="Dismiss"
             className="shrink-0 text-xs font-bold text-red-500 hover:text-red-700"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {changeNotice && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+          <p className="text-sm text-green-800">{changeNotice}</p>
+          <button
+            onClick={() => setChangeNotice(null)}
+            aria-label="Dismiss"
+            className="shrink-0 text-xs font-bold text-green-600 hover:text-green-800"
           >
             ✕
           </button>
@@ -1062,6 +1087,16 @@ export default function ApplicationDetailPage() {
               editable
               canEdit={lease ? can("equipment_tracking") : can("application_review")}
               onEdit={() => (lease ? setEditingCard("equipment") : setShowAddLeaseModal(true))}
+              action={
+                lease && canChangeMower ? (
+                  <button
+                    onClick={() => setShowChangeMower(true)}
+                    className="font-heading w-full rounded-md border border-red-600 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-50"
+                  >
+                    Customer changed their mind? Change mower
+                  </button>
+                ) : undefined
+              }
               rows={[
                 { label: "Make / model", value: equipment?.model ?? "—" },
                 { label: "Cash price", value: lease ? money(num(lease.cash_price)) : "—" },
@@ -1227,6 +1262,22 @@ export default function ApplicationDetailPage() {
           <p className="mb-6 text-xs text-neutral-400">Early Purchase Option price by month, updated live as payments post. Excludes tax.</p>
           <EpoChart schedule={lease.epo_schedule.filter((p) => p.month === 1 || p.month % 3 === 0)} />
         </div>
+      )}
+
+      {showChangeMower && lease && (
+        <ChangeMowerModal
+          application={application}
+          onClose={() => setShowChangeMower(false)}
+          onSaved={(updated, contractVoided) => {
+            setApplication(updated);
+            setShowChangeMower(false);
+            setChangeNotice(
+              contractVoided
+                ? "Mower changed and the lease re-priced. The signed contract was cancelled and the customer has been asked to sign the new one."
+                : "Mower changed and the lease re-priced.",
+            );
+          }}
+        />
       )}
 
       {showAddLeaseModal && (

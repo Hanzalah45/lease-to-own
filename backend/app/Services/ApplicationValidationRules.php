@@ -108,14 +108,14 @@ class ApplicationValidationRules
             'serial' => ['nullable', 'string', 'min:'.self::SERIAL_MIN, 'max:'.self::SERIAL_MAX],
             'description' => ['nullable', 'string', 'max:'.self::NOTES_MAX],
             'ldw' => ['nullable', 'in:yes,no'],
-            'cash_price' => ['required', 'numeric', 'min:0'],
+            'cash_price' => ['required', 'numeric', 'min:0', 'max:'.LeasePricing::CASH_PRICE_MAX],
             'year' => ['nullable', 'string', 'max:10'],
             'promo_code' => ['nullable', 'string', 'max:'.self::PROMO_CODE_MAX],
 
             // Only these three terms have a defined monthly-payment divisor
-            // (see ApplicationCreationService::monthlyPaymentDivisor) — the
-            // official 12/24/36-month lease terms sheet, 2026-09-04.
-            'term_months' => ['required', 'integer', Rule::in([12, 24, 36])],
+            // (see LeasePricing::monthlyPaymentDivisor) — the official
+            // 12/24/36-month lease terms sheet, 2026-09-04.
+            'term_months' => ['required', 'integer', Rule::in(LeasePricing::TERMS)],
             'monthly_rental' => ['required', 'numeric', 'min:0'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'security_deposit' => ['nullable', 'numeric', 'min:0'],
@@ -127,6 +127,40 @@ class ApplicationValidationRules
             // before signing if the admin leaves it blank.
             'billing_cycle' => ['nullable', Rule::in(BillingSchedule::CYCLES)],
             'autopay' => ['nullable', 'in:yes,no'],
+        ];
+    }
+
+    /**
+     * Fields for swapping the mower on an existing application and re-pricing
+     * its lease. The same rules as a new application's equipment and pricing,
+     * except the mower must be identified by a make or a model.
+     */
+    public static function changeEquipment(): array
+    {
+        $rules = collect(self::equipmentAndLease())->only([
+            'condition', 'make', 'model', 'serial', 'description', 'ldw', 'cash_price', 'year', 'term_months', 'tax_rate',
+        ])->all();
+
+        $rules['make'] = ['required_without:model', 'nullable', 'string', 'min:'.self::EQUIPMENT_MODEL_MIN, 'max:'.self::EQUIPMENT_MODEL_MAX];
+        $rules['model'] = ['required_without:make', 'nullable', 'string', 'min:'.self::EQUIPMENT_MODEL_MIN, 'max:'.self::EQUIPMENT_MODEL_MAX];
+        // A new application tolerates 0 here; re-pricing an existing lease at $0 is always a typo.
+        $rules['cash_price'] = ['required', 'numeric', 'gt:0', 'max:'.LeasePricing::CASH_PRICE_MAX];
+
+        return $rules + [
+            // Required only when the lease already has a signed contract: the
+            // price changes, so that signature is voided and must be redone.
+            'void_signed_contract' => ['nullable', 'boolean'],
+        ];
+    }
+
+    /** Inputs for the standalone price calculator: no customer, no application. */
+    public static function priceQuote(): array
+    {
+        return [
+            'cash_price' => ['required', 'numeric', 'gt:0', 'max:'.LeasePricing::CASH_PRICE_MAX],
+            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'term_months' => ['required', 'integer', Rule::in(LeasePricing::TERMS)],
+            'ldw' => ['nullable', 'in:yes,no'],
         ];
     }
 

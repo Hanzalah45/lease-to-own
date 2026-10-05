@@ -1,5 +1,6 @@
 import type { StepKey } from "@/components/applications/wizard/WizardSteps";
 import {
+  CASH_PRICE_MAX,
   DRIVERS_LICENSE_MAX,
   validateCity,
   validateConditionNotes,
@@ -153,7 +154,7 @@ export function validateEquipmentStep(state: WizardState): Record<string, string
   const errors: Record<string, string[]> = {};
 
   put(errors, "sales_person", optional((v) => validateName(v, "Sales person name"))(state.salesPerson));
-  put(errors, "cash_price", validateMoney(state.cashPrice, "Cash price", { aboveZero: true }));
+  put(errors, "cash_price", validateMoney(state.cashPrice, "Cash price", { aboveZero: true, max: CASH_PRICE_MAX }));
   if (!state.condition) {
     errors.condition = ["Equipment condition is required."];
   }

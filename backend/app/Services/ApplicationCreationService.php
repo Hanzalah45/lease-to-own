@@ -4,11 +4,16 @@ namespace App\Services;
 
 use App\Models\AdminPermission;
 use App\Models\Application;
+use App\Models\DealerNote;
 use App\Models\EquipmentUnit;
 use App\Models\LeaseAgreement;
+use App\Models\Payment;
 use App\Models\User;
+use App\Notifications\ContractVoidedNotification;
 use App\Notifications\NewApplicationSubmittedNotification;
+use App\Notifications\RequestContractSignatureNotification;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
@@ -120,6 +125,181 @@ class ApplicationCreationService
         return $application->fresh();
     }
 
+    /**
+     * Swaps the mower on an application that already has equipment and
+     * pricing, and re-prices its lease (client, Joel, 2026-10-06: a customer
+     * often changes their mind, usually over the price). Only possible while
+     * nothing has been collected and the equipment has not gone out: once a
+     * deposit or payment exists, the new price would not match what was paid,
+     * so that case is refused until the client decides how to handle it.
+     *
+     * A signed contract states the old price, so it has to be voided and
+     * signed again; that is only done when the caller confirms it
+     * (`void_signed_contract`), never silently.
+     *
+     * @return array{contract_voided: bool}
+     */
+    public static function changeEquipment(Application $application, array $data, ?int $actorUserId = null): array
+    {
+        $voidSigned = (bool) ($data['void_signed_contract'] ?? false);
+        $voided = null;
+
+        DB::transaction(function () use ($application, $data, $actorUserId, $voidSigned, &$voided) {
+            $locked = Application::whereKey($application->id)->lockForUpdate()->firstOrFail();
+            $lease = LeaseAgreement::where('application_id', $locked->id)->lockForUpdate()->first();
+
+            abort_unless($lease, 422, 'This application has no equipment or pricing yet. Use Add Equipment & Pricing instead.');
+            abort_if(
+                in_array($locked->status, [Application::STATUS_FINISHED, Application::STATUS_DECLINED, Application::STATUS_WITHDRAWN], true),
+                422,
+                'The mower can only be changed before the equipment is picked up, and not on a declined or withdrawn application.',
+            );
+
+            $moneyCollected = $locked->deposit_received
+                || $locked->pickup_balance_received
+                || $lease->payments()->where('status', Payment::STATUS_PAID)->exists()
+                || $lease->payments()->where('status', Payment::STATUS_PENDING)->whereNotNull('stripe_payment_intent_id')->exists();
+            abort_if($moneyCollected, 422, 'A deposit or payment has already been collected on this application, so the mower cannot be changed here. The price would no longer match what was paid.');
+
+            $contract = $lease->contract()->first();
+            abort_if(
+                $contract && ! $voidSigned,
+                422,
+                'This lease is already signed. Changing the mower changes the price, so the signed contract has to be cancelled and the customer must sign again. Confirm that to continue.',
+            );
+
+            $ldwSelected = ($data['ldw'] ?? 'no') === 'yes';
+            $termMonths = (int) $data['term_months'];
+            $cashPrice = (float) $data['cash_price'];
+            $terms = LeasePricing::terms($cashPrice, $termMonths, $ldwSelected);
+
+            $oldModel = $lease->equipmentUnit?->model ?? 'the previous mower';
+            $oldMonthly = $lease->totalMonthlyPayment();
+
+            $unit = self::swapEquipmentUnit($lease, $data, $actorUserId);
+
+            $lease->update(array_merge($terms, [
+                'equipment_unit_id' => $unit->id,
+                'term_months' => $termMonths,
+                'cash_price' => $cashPrice,
+                'sales_tax_rate' => isset($data['tax_rate']) ? (float) $data['tax_rate'] / 100 : $lease->sales_tax_rate,
+                'ldw_selected' => $ldwSelected,
+                'updated_by' => $actorUserId,
+            ]));
+            $unit->update(['expected_return_or_ownership_date' => now()->addMonthsNoOverflow($termMonths)->toDateString()]);
+
+            // The same mower at a new price (a customer renegotiating) reads
+            // differently from a different mower.
+            $sameMower = $oldModel === $unit->model;
+            $newMonthly = $lease->fresh()->totalMonthlyPayment();
+
+            if ($contract) {
+                $contract->update([
+                    'voided_at' => now(),
+                    'voided_by' => $actorUserId,
+                    'void_reason' => $sameMower
+                        ? "The lease for {$unit->model} was re-priced."
+                        : "The mower was changed from {$oldModel} to {$unit->model} and the lease was re-priced.",
+                ]);
+                $voided = $contract;
+
+                $locked->signature_received = false;
+                // "Ready for pickup" requires a signed contract.
+                if ($locked->status === Application::STATUS_WAITING_DELIVERY) {
+                    $locked->status = Application::STATUS_WAITING_DEPOSIT;
+                }
+                $locked->save();
+            }
+
+            // Leaves a visible trail on the application for the rest of the team.
+            DealerNote::create([
+                'application_id' => $locked->id,
+                'author_user_id' => $actorUserId,
+                'text' => sprintf(
+                    '%s ($%s/mo before, $%s/mo now, cash price $%s).%s',
+                    $sameMower ? "Lease re-priced for {$unit->model}" : "Mower changed from {$oldModel} to {$unit->model}",
+                    number_format($oldMonthly, 2),
+                    number_format($newMonthly, 2),
+                    number_format($cashPrice, 2),
+                    $contract ? ' The signed contract was voided and must be signed again.' : '',
+                ),
+            ]);
+        });
+
+        if ($voided) {
+            $application->refresh();
+            $customer = $application->customer;
+            try {
+                if ($customer->status === 'pending') {
+                    // A guest has no portal login, so they get a fresh signed link.
+                    if ($application->status === Application::STATUS_WAITING_DEPOSIT) {
+                        $customer->notify(new RequestContractSignatureNotification(ContractSigner::urlFor($customer, $application->leaseAgreement)));
+                    }
+                } elseif ($customer->customerProfile?->status_change_emails ?? true) {
+                    $customer->notify(new ContractVoidedNotification($voided->fresh()));
+                }
+            } catch (\Throwable $e) {
+                // The change is already saved; a mail hiccup must not undo it or report failure.
+                report($e);
+            }
+        }
+
+        return ['contract_voided' => (bool) $voided];
+    }
+
+    /**
+     * Points the lease at the new mower. A unit that only exists because this
+     * application created it (still "leased", never delivered) is just edited
+     * in place. A real fleet unit that was already assigned is released back
+     * to stock and a fresh unit is created for the new mower.
+     */
+    private static function swapEquipmentUnit(LeaseAgreement $lease, array $data, ?int $actorUserId): EquipmentUnit
+    {
+        $current = $lease->equipmentUnit;
+        $isPlaceholder = $current
+            && $current->status === EquipmentUnit::STATUS_LEASED
+            && $current->delivery_date === null;
+
+        $serial = trim($data['serial'] ?? '') ?: 'NA';
+        $serialTaken = EquipmentUnit::where('serial_number', $serial)
+            ->when($isPlaceholder, fn ($q) => $q->where('id', '!=', $current->id))
+            ->exists();
+        if ($serialTaken) {
+            $serial = $serial.'-'.Str::upper(Str::random(5));
+        }
+
+        $attributes = [
+            'model' => trim(($data['make'] ?? '').' '.($data['model'] ?? '')) ?: 'Unspecified',
+            'serial_number' => $serial,
+            'vin' => null,
+            'gps_device_id' => null,
+            'condition_notes' => trim(sprintf(
+                'Condition: %s · Year: %s%s',
+                $data['condition'] ?? 'unspecified',
+                $data['year'] ?? 'unspecified',
+                ! empty($data['description']) ? " · {$data['description']}" : '',
+            )),
+            'updated_by' => $actorUserId,
+        ];
+
+        if ($isPlaceholder) {
+            $current->update($attributes);
+
+            return $current->fresh();
+        }
+
+        if ($current) {
+            $current->update([
+                'status' => EquipmentUnit::STATUS_IN_STOCK,
+                'delivery_date' => null,
+                'expected_return_or_ownership_date' => null,
+                'updated_by' => $actorUserId,
+            ]);
+        }
+
+        return EquipmentUnit::create($attributes + ['status' => EquipmentUnit::STATUS_LEASED]);
+    }
+
     private static function buildEquipmentAndLease(Application $application, User $customer, array $data): void
     {
         // Equipment unit — reuse-by-serial where possible, disambiguate on collision
@@ -147,37 +327,11 @@ class ApplicationCreationService
         $startDate = now()->toDateString();
         $ldwSelected = ($data['ldw'] ?? 'no') === 'yes';
 
-        // Monthly payment auto-calculates from cash price and term — never
-        // admin-typed (client requirement, 2026-09-04) — using the official
-        // divisor table from Prostart Leasing's own customer-facing lease terms
-        // sheet: "Divide the cash price (excluding tax) by 19.8 for
-        // 36-months, 16.0 for 24-months, or 10.0 for 12-months." These are
-        // NOT proportional to term (10/12, 16/24, 19.8/36 are different
-        // ratios), so it's a lookup, not a formula — only these three terms
-        // are priced. Computed server-side, not trusted from the client, so
-        // it stays locked regardless of what's posted.
-        $monthlyRental = round($cashPrice / self::monthlyPaymentDivisor($termMonths), 2);
-
-        // Official pricing blueprint (client, 2026-09-04): taking LDW adds a
-        // recurring 0.75%/month charge. Declining LDW does NOT add a
-        // surcharge — the blueprint's original 0.35%/month "no-LDW
-        // surcharge" was a typo, not an intended charge (client, 2026-09-15).
-        // $ldwAmount stays the one column that holds the LDW charge when it
-        // applies (nullable decimal; 0/null when LDW is declined) — see
-        // LeaseAgreement::ldwMonthlyAmount()/totalMonthlyPayment().
-        $ldwAmount = $ldwSelected
-            ? round($cashPrice * 0.0075, 2)
-            : 0.0;
-
-        // Security deposit (blueprint, 2026-09-04): 7% of cash price when LDW
-        // is taken, or 3x the base monthly payment when declined (no
-        // surcharge to add now — see $ldwAmount above). The $150 tracking
-        // device fee is a SEPARATE line item — due alongside the deposit,
-        // but not part of it (see LeaseAgreement::TRACKING_DEVICE_FEE, added
-        // wherever "total due today" is shown, not here).
-        $securityDeposit = $ldwSelected
-            ? round($cashPrice * 0.07, 2)
-            : round(($monthlyRental + $ldwAmount) * 3, 2);
+        // Monthly payment, LDW and deposit are auto-calculated from cash
+        // price, term and LDW, never admin-typed (client requirement,
+        // 2026-09-04), and computed server-side so they stay locked
+        // regardless of what's posted. See LeasePricing for the formulas.
+        $terms = LeasePricing::terms($cashPrice, $termMonths, $ldwSelected);
 
         LeaseAgreement::create([
             'application_id' => $application->id,
@@ -189,36 +343,22 @@ class ApplicationCreationService
             'payment_due_day' => $data['payment_due_day'] ?? null,
             'billing_cycle' => $data['billing_cycle'] ?? null,
             'autopay_enabled' => ($data['autopay'] ?? 'no') === 'yes',
-            'monthly_rental_payment' => $monthlyRental,
+            'monthly_rental_payment' => $terms['monthly_rental_payment'],
             'sales_tax_rate' => $taxRate,
-            'security_deposit' => $securityDeposit,
+            'security_deposit' => $terms['security_deposit'],
             'cash_price' => $cashPrice,
-            'total_rental_purchase_price' => LeaseEngine::totalRentalPurchasePrice($monthlyRental, $termMonths),
+            'total_rental_purchase_price' => $terms['total_rental_purchase_price'],
             'rental_payments_paid_to_date' => 0,
             'additional_funds' => 0,
             'ownership_status' => LeaseAgreement::OWNERSHIP_LEASING,
             'ldw_selected' => $ldwSelected,
-            'ldw_amount' => $ldwAmount,
+            'ldw_amount' => $terms['ldw_amount'],
             'promo_code' => $data['promo_code'] ?? null,
         ]);
 
         $equipmentUnit->update([
             'expected_return_or_ownership_date' => now()->addMonthsNoOverflow($termMonths)->toDateString(),
         ]);
-    }
-
-    /**
-     * Official divisor table from Prostart Leasing's customer-facing lease terms
-     * sheet (2026-09-04) — only 12/24/36-month terms are priced.
-     */
-    private static function monthlyPaymentDivisor(int $termMonths): float
-    {
-        return match ($termMonths) {
-            12 => 10.0,
-            24 => 16.0,
-            36 => 19.8,
-            default => throw new \InvalidArgumentException("Unsupported lease term: {$termMonths} months. Only 12, 24, or 36 are priced."),
-        };
     }
 
     /** @return string|null the mapped (coarse) residence type, so callers can run the auto-decline check without re-mapping it themselves. */
