@@ -155,7 +155,29 @@ class BillingCycleTest extends TestCase
         // Dual pricing (2026-10-05): the contract states both prices. $200 monthly -> $206.00 by card.
         $this->assertStringContainsString('Payment price by method', $html);
         $this->assertStringContainsString('$206.00', $html);
-        $this->assertStringContainsString('costs 3% more than paying by bank', $html);
+        // The client's approved wording (2026-10-06); line breaks in the template are not part of the text.
+        $text = preg_replace('/\s+/', ' ', strip_tags($html));
+        $this->assertStringContainsString('the card payment amount will be 3% higher than the applicable ACH payment amount', $text);
+        $this->assertStringContainsString('the applicable 3% card processing fee will be added to the ACH payment amount', $text);
+        $this->assertStringContainsString('Your first Rental Payment, equal to one full monthly payment, is due on the date you take possession of the Property.', $text);
+        $this->assertStringContainsString('There will be no final catch-up payment at the end of the scheduled term.', $text);
+    }
+
+    public function test_the_autopay_page_carries_the_clients_card_price_and_fallback_wording(): void
+    {
+        Notification::fake();
+        $lease = $this->lease(['billing_cycle' => null, 'autopay_enabled' => true]);
+
+        $this->actingAs($lease->customer, 'sanctum')
+            ->postJson('/api/customer/contracts', ['lease_agreement_id' => $lease->id, 'signer_name' => 'Pat Customer', 'billing_cycle' => '15th'])
+            ->assertCreated();
+
+        $html = Contract::where('lease_agreement_id', $lease->id)->firstOrFail()->document_html;
+        $text = preg_replace('/\s+/', ' ', html_entity_decode(strip_tags($html)));
+        $this->assertStringContainsString('AutoPay Notice. If a payment charged through AutoPay is more than $30 above the regular payment amount', $text);
+        $this->assertStringContainsString('the applicable card payment price, including the 3% card processing fee, will apply.', $text);
+        $this->assertStringContainsString('as described in Section 2, Lease Term & Payment Schedule.', $text);
+        $this->assertStringContainsString('AutoPay Revocation. You may revoke your AutoPay authorization by providing written notice at least three (3) business days', $text);
     }
 
     public function test_signing_is_refused_without_a_billing_cycle(): void

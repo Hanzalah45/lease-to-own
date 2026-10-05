@@ -267,13 +267,26 @@ export function LeaseAgreementDocument({
                 <PriceRow label="TOTAL DUE TODAY" option={lease.pricing.full} />
               </div>
             </div>
+            <div className="mt-5">
+              <SubHeader>Payment prices: ACH and credit/debit card</SubHeader>
+            </div>
             <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
-              <strong>Payment prices.</strong> The amounts in the Lease details table above are the bank (ACH) prices.
-              Our listed price for each payment is the card price shown here. When you pay by bank account (ACH) you
-              receive a discount and pay the lower bank price; paying by credit or debit card costs{" "}
-              {lease.pricing.card_fee_percent}% more than paying by bank. You choose how to pay each payment. The
-              difference is a card processing cost: it does not count toward the Total Rental-Purchase Price, your
-              Months to Ownership, or the Early Purchase Option.
+              <strong>Payment Prices.</strong> The payment amounts shown in the Lease Details table above are the
+              discounted prices available when payments are made from a bank account by ACH.
+            </p>
+            <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
+              If you choose to make a payment using a credit or debit card, the card payment amount will be{" "}
+              {lease.pricing.card_fee_percent}% higher than the applicable ACH payment amount. This additional amount
+              is a card processing fee associated with the use of a credit or debit card.
+            </p>
+            <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
+              You may choose your payment method for each Rental Payment. If you pay by ACH, you will receive the
+              applicable ACH discount and pay the lower ACH price. If you pay by credit or debit card, the applicable{" "}
+              {lease.pricing.card_fee_percent}% card processing fee will be added to the ACH payment amount.
+            </p>
+            <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
+              The card processing fee is not part of the Total Rental-Purchase Price and does not count toward your
+              Months to Ownership, Total Rental-Purchase Price, or any Early Purchase Option amount.
             </p>
           </>
         )}
@@ -289,15 +302,28 @@ export function LeaseAgreementDocument({
           begins on the date you pick up the Property and expires one month later. You can renew the Agreement for
           additional one-month terms at your option by making a monthly rental renewal payment on or before the
           expiration date. The Agreement will also renew if you continue to possess the Property until you notify us
-          that you want to end the rental and make the Property available for pickup.{" "}
-          <strong>Billing cycle.</strong> Your Rental Payments are due on the billing cycle shown above (the 1st or
-          the 15th of each month). Your first Rental Payment, a full month, is due on the day you pick up the
-          Property. If your first billing cycle date falls fewer than thirty (30) days after pickup, your second
-          Rental Payment is prorated: your monthly payment divided by 30, multiplied by the number of days from
-          pickup to that date. Every later payment is the full monthly amount, due on your billing cycle date. The
-          prorated payment counts as one of your Rental Payments toward the Months to Ownership shown above, and
-          there is no final catch-up payment, so the total of your scheduled Rental Payments is slightly less than
-          the Months to Ownership multiplied by your monthly payment.
+          that you want to end the rental and make the Property available for pickup.
+        </p>
+        <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
+          <strong>Billing Cycle and Rental Payments.</strong> Your Rental Payments are due on the billing-cycle date
+          shown above (the 1st or 15th of each month). Your first Rental Payment, equal to one full monthly payment,
+          is due on the date you take possession of the Property.
+        </p>
+        <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
+          If the next billing-cycle date occurs fewer than thirty (30) days after the date you take possession of the
+          Property, your next scheduled Rental Payment will be prorated. The prorated payment will be calculated by
+          dividing your regular monthly Rental Payment by thirty (30) and multiplying that amount by the applicable
+          number of days from the date of pickup through the applicable billing-cycle date.
+        </p>
+        <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
+          All subsequent Rental Payments will be the full monthly amount and will be due on the applicable
+          billing-cycle date. The prorated payment will count as one (1) Rental Payment toward the Months to
+          Ownership stated in this Agreement.
+        </p>
+        <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
+          There will be no final catch-up payment at the end of the scheduled term. As a result, the total amount of
+          scheduled Rental Payments may be slightly less than the number of Months to Ownership multiplied by the
+          regular monthly Rental Payment.
         </p>
         <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
           <strong>3. Rental-Purchase Ownership.</strong> If you renew this Agreement for {lease.term_months} months
@@ -789,19 +815,39 @@ export function LeaseAgreementDocument({
             unpaid rental charges, up to a maximum of $30.00 more than your regularly-scheduled payment amount. You
             will receive notice at least 10 days before a payment is deducted if it falls outside that range.
           </p>
+          <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
+            <strong>AutoPay Notice.</strong> If a payment charged through AutoPay is more than $30 above the regular
+            payment amount, you will receive at least ten (10) days&rsquo; notice before the additional amount is
+            charged, as provided in this Agreement.
+          </p>
           {lease.pricing && (
-            <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
-              <strong>Payment Method &amp; Price.</strong> Each payment is charged to the AutoPay method you choose as
-              primary. If a payment cannot be collected from your primary method, AutoPay will charge your other
-              method instead, and the price for that method applies (the card price is {lease.pricing.card_fee_percent}
-              % higher than the bank price). Your second Rental Payment may be a prorated, lower amount as described in
-              Section 2.
-            </p>
+            <>
+              <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
+                <strong>Payment Method &amp; Price.</strong> Each Rental Payment will be charged to the AutoPay payment
+                method you select as your primary payment method. The price applicable to the payment method used will
+                apply to each payment.
+              </p>
+              <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
+                If a payment cannot be successfully collected from your primary payment method, AutoPay may charge
+                another payment method you have authorized and provided, if one is available. If the alternate payment
+                method is a credit or debit card, the applicable card payment price, including the{" "}
+                {lease.pricing.card_fee_percent}% card processing fee, will apply.
+              </p>
+              <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
+                Your next scheduled Rental Payment may be a prorated, lower payment as described in Section 2, Lease
+                Term &amp; Payment Schedule.
+              </p>
+            </>
           )}
           <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
             <strong>Revocation.</strong> This Payment Authorization applies until you revoke it. You may revoke it by
             notifying us in writing at least 3 business days before a scheduled payment. Revoking this authorization
             does not relieve you of your obligation to make Rental Payments by another method.
+          </p>
+          <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
+            <strong>AutoPay Revocation.</strong> You may revoke your AutoPay authorization by providing written notice
+            at least three (3) business days before the next scheduled payment, subject to the terms and requirements
+            of this Agreement.
           </p>
           <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
             <strong>Acknowledgment.</strong> By signing below, you agree to the terms of this Payment Authorization
