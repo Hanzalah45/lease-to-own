@@ -8,6 +8,7 @@ import { money, TRACKING_DEVICE_FEE } from "@/components/applications/wizard/typ
 import { getMyLeaseAgreement } from "@/lib/lease-agreements";
 import { previewLease, signLease } from "@/lib/contracts";
 import { ApiError } from "@/lib/api";
+import { isBeforeToday } from "@/lib/dates";
 import { validateName } from "@/lib/validation";
 import { BillingCycleCard } from "@/components/contracts/BillingCycleCard";
 import type { BillingCycle, LeaseAgreement } from "@/types/lease-agreement";
@@ -55,7 +56,10 @@ export default function SignLeaseAgreementPage() {
     getMyLeaseAgreement(params.id)
       .then((loaded) => {
         setLease(loaded);
-        setBillingCycle(loaded.billing_cycle);
+        // After pickup, a pre-selected billing day whose next payment date has already passed cannot be signed.
+        const preselected = loaded.billing_cycle ? loaded.billing_preview?.[loaded.billing_cycle] : undefined;
+        const unusable = !!loaded.billing_preview_pickup_date && !!preselected && isBeforeToday(preselected.second_payment_date);
+        setBillingCycle(unusable ? null : loaded.billing_cycle);
       })
       .catch((err) => setLoadError(err instanceof ApiError ? err.message : "Could not load this lease."))
       .finally(() => setLoading(false));
@@ -160,6 +164,7 @@ export default function SignLeaseAgreementPage() {
         <>
         <BillingCycleCard
           preview={lease.billing_preview}
+          pickupDate={lease.billing_preview_pickup_date}
           value={billingCycle}
           onChange={(cycle) => {
             setBillingCycle(cycle);

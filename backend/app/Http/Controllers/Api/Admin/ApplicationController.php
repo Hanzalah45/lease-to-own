@@ -149,7 +149,14 @@ class ApplicationController extends Controller
      */
     public function resendContractSigningLink(Application $application)
     {
-        abort_unless($application->status === Application::STATUS_WAITING_DEPOSIT, 422, 'This application is not waiting on a signature yet.');
+        // A picked-up lease is included: its signature can be voided so the
+        // customer signs the new contract (2026-10-06), and a customer who
+        // never set a password needs the signed link to do that.
+        abort_unless(
+            in_array($application->status, [Application::STATUS_WAITING_DEPOSIT, Application::STATUS_FINISHED], true),
+            422,
+            'This application is not waiting on a signature yet.',
+        );
         $lease = $application->leaseAgreement;
         abort_unless($lease, 422, 'This application has no lease agreement yet.');
         abort_if($lease->contract()->exists(), 422, 'This lease agreement has already been signed.');

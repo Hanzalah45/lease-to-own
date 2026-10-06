@@ -157,6 +157,8 @@ export interface LeaseAgreement {
   pricing?: PricingSummary;
   /** What each billing cycle would look like if equipment were picked up today. Only on an unsigned lease's `show` response. */
   billing_preview?: Record<BillingCycle, BillingCyclePreview>;
+  /** Set when the customer already picked up (re-signing the new contract): the examples are built from this real date instead of "today". */
+  billing_preview_pickup_date?: string | null;
   /** Only present on the guest signed-link endpoint (PublicContractController::show()) — whether step 1 (account creation) is already done. */
   customer_account_active?: boolean;
   /** Only present on the guest signed-link endpoint — `customer` isn't eager-loaded there. */

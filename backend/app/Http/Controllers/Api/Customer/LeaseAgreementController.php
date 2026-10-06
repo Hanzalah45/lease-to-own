@@ -42,11 +42,15 @@ class LeaseAgreementController extends Controller
         if ($includeSchedule) {
             $payload['epo_schedule'] = LeaseEngine::fullSchedule($lease);
 
-            // What each billing cycle would look like if equipment were picked
-            // up today, shown on the signing page where the customer chooses
-            // (before pickup there is no real schedule to show).
+            // What each billing cycle would look like, shown on the signing
+            // page where the customer chooses. Before pickup it is "if you
+            // picked up today" (there is no real schedule yet); for a customer
+            // who already picked up (re-signing the new contract, 2026-10-06)
+            // it is built from their real pickup date.
             if (! $lease->contract) {
-                $payload['billing_preview'] = BillingSchedule::illustrate($lease);
+                $pickup = LeaseEngine::pickupDate($lease);
+                $payload['billing_preview'] = BillingSchedule::illustrate($lease, $pickup);
+                $payload['billing_preview_pickup_date'] = $pickup;
             }
         }
 

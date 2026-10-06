@@ -3,11 +3,14 @@
 namespace App\Services;
 
 use App\Models\AdminPermission;
+use App\Models\Application;
 use App\Models\LeaseAgreement;
 use App\Models\Payment;
+use App\Models\PaymentAttempt;
 use App\Models\RiskRedFlag;
 use App\Models\User;
 use App\Notifications\ActivateAccountNotification;
+use App\Notifications\AutopayNeedsReviewNotification;
 use App\Notifications\PaymentStatusChangedNotification;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -330,6 +333,171 @@ class LeaseEngine
 
             return $first;
         });
+    }
+
+    /**
+     * The day the customer picked up the equipment, for a lease that has been
+     * picked up: the date the pickup payment (the first paid rental row) was
+     * made, falling back to the equipment's delivery date and then the
+     * lease's start date. Null for a lease that has not been picked up.
+     */
+    public static function pickupDate(LeaseAgreement $lease): ?string
+    {
+        if ($lease->application?->status !== Application::STATUS_FINISHED) {
+            return null;
+        }
+
+        $pickupRow = $lease->payments()
+            ->where('type', Payment::TYPE_RENTAL)
+            ->where('status', Payment::STATUS_PAID)
+            ->orderBy('due_date')
+            ->first();
+
+        return $pickupRow?->paid_date?->toDateString()
+            ?? $lease->equipmentUnit?->delivery_date?->toDateString()
+            ?? $lease->start_date?->toDateString();
+    }
+
+    /**
+     * Refuses a billing day that is already behind a customer who has picked
+     * up: the first scheduled payment after pickup would be due in the past
+     * (re-signing after pickup, 2026-10-06). A lease not yet picked up has no
+     * such constraint, its dates are set at pickup.
+     */
+    public static function assertBillingCycleStillAhead(LeaseAgreement $lease, string $cycle): void
+    {
+        $pickup = self::pickupDate($lease);
+        if (! $pickup) {
+            return;
+        }
+
+        $nextDue = BillingSchedule::nextCycleDate($pickup, $cycle)->toDateString();
+        abort_if(
+            $nextDue < BillingClock::todayDate(),
+            422,
+            'That billing day has already passed for your pickup date. Please choose the other billing day.',
+        );
+    }
+
+    /**
+     * Rebuilds the payment schedule of a lease that was picked up under the
+     * old schedule (rows anchored to the creation date, with no proration),
+     * using the new billing-cycle rules from the real pickup date. It only
+     * ever replaces rows that were never touched: exactly one rental payment
+     * (the pickup payment) may be paid, and every other rental row must be
+     * pending with no Stripe activity and no late fee. Anything else is
+     * refused, never guessed at. The pickup payment itself is kept as paid,
+     * its date corrected to the real pickup day.
+     *
+     * With $apply false nothing is saved and the result shows what would change.
+     *
+     * @return array{changed: bool, pickup_date: string, cycle: string, rows_before: int, rows_after: int, old_next_due: ?string, old_next_amount: ?float, next_due: ?string, next_amount: ?float}
+     */
+    public static function rebuildSchedule(LeaseAgreement $lease, ?string $pickupDate = null, bool $apply = true): array
+    {
+        return DB::transaction(function () use ($lease, $pickupDate, $apply) {
+            $locked = LeaseAgreement::whereKey($lease->id)->lockForUpdate()->firstOrFail();
+
+            abort_unless($locked->application?->status === Application::STATUS_FINISHED, 422, 'Only a lease that has already been picked up can have its schedule rebuilt.');
+            abort_unless($locked->billing_cycle, 422, 'Choose a billing cycle (the 1st or the 15th) before rebuilding the schedule.');
+
+            $rental = $locked->payments()->where('type', Payment::TYPE_RENTAL)->orderBy('due_date')->orderBy('id')->get();
+            $paid = $rental->where('status', Payment::STATUS_PAID);
+            abort_unless($paid->count() === 1, 422, 'The schedule can only be rebuilt while exactly one rental payment (the pickup payment) has been made.');
+
+            $pickupRow = $paid->first();
+            $others = $rental->where('id', '!=', $pickupRow->id)->values();
+            abort_if(
+                $others->contains(fn (Payment $p) => $p->status !== Payment::STATUS_PENDING || $p->stripe_payment_intent_id),
+                422,
+                'Some rental payments are in progress or failed, so the schedule cannot be rebuilt automatically.',
+            );
+            $otherIds = $others->pluck('id');
+            abort_if(
+                $otherIds->isNotEmpty() && (Payment::whereIn('late_fee_for_payment_id', $otherIds)->exists() || PaymentAttempt::whereIn('payment_id', $otherIds)->exists()),
+                422,
+                'A late fee or an automatic charge exists on this schedule, so it cannot be rebuilt automatically.',
+            );
+
+            $pickup = $pickupDate ?? ($pickupRow->paid_date?->toDateString() ?? $locked->start_date->toDateString());
+            $rows = BillingSchedule::build($pickup, $locked->billing_cycle, $locked->totalMonthlyPayment(), (int) $locked->term_months);
+            abort_if(empty($rows), 422, 'This lease has no payment term.');
+            $newPending = array_slice($rows, 1);
+
+            $unchanged = $pickupRow->due_date?->toDateString() === $pickup
+                && count($newPending) === $others->count()
+                && $others->every(fn (Payment $p, int $i) => $p->due_date->toDateString() === $newPending[$i]['due_date']
+                    && abs((float) $p->amount - $newPending[$i]['amount']) < 0.005);
+
+            $result = [
+                'changed' => ! $unchanged,
+                'pickup_date' => $pickup,
+                'cycle' => $locked->billing_cycle,
+                'rows_before' => $others->count(),
+                'rows_after' => count($newPending),
+                'old_next_due' => $others->first()?->due_date?->toDateString(),
+                'old_next_amount' => $others->isNotEmpty() ? (float) $others->first()->amount : null,
+                'next_due' => $newPending[0]['due_date'] ?? null,
+                'next_amount' => $newPending[0]['amount'] ?? null,
+            ];
+            if ($unchanged || ! $apply) {
+                return $result;
+            }
+
+            Payment::whereIn('id', $otherIds)->delete();
+            // The pickup payment stays as it was paid; only its due date is corrected to the real pickup day.
+            $pickupRow->update(['due_date' => $pickup]);
+            foreach ($newPending as $row) {
+                Payment::create([
+                    'lease_agreement_id' => $locked->id,
+                    'type' => Payment::TYPE_RENTAL,
+                    'amount' => $row['amount'],
+                    'due_date' => $row['due_date'],
+                    'status' => Payment::STATUS_PENDING,
+                ]);
+            }
+
+            $locked->update([
+                'start_date' => $pickup,
+                'renewal_date' => $newPending[0]['due_date'] ?? $rows[0]['due_date'],
+            ]);
+            $locked->equipmentUnit?->update(['expected_return_or_ownership_date' => end($rows)['due_date']]);
+            self::syncPaymentsPaidToDate($locked);
+
+            return $result;
+        });
+    }
+
+    /**
+     * After a customer re-signs a lease that was already picked up (the
+     * client had every existing customer sign the new contract and choose a
+     * billing day, 2026-10-06), put them on the new schedule. The signature is
+     * already saved, so this never throws: if the schedule cannot be rebuilt
+     * automatically, staff are told why instead of the signing failing.
+     */
+    public static function rebuildScheduleAfterResign(LeaseAgreement $lease): void
+    {
+        $lease->unsetRelation('application');
+        if ($lease->application?->status !== Application::STATUS_FINISHED) {
+            return;
+        }
+
+        try {
+            self::rebuildSchedule($lease);
+        } catch (\Throwable $e) {
+            report($e);
+            $payment = $lease->payments()->where('type', Payment::TYPE_RENTAL)->orderBy('due_date')->first();
+            if ($payment) {
+                try {
+                    Notification::send(PaymentStaff::recipients(), new AutopayNeedsReviewNotification(
+                        $payment,
+                        'the customer signed the new contract but their payment schedule could not be rebuilt automatically: '.$e->getMessage(),
+                    ));
+                } catch (\Throwable $notifyException) {
+                    report($notifyException);
+                }
+            }
+        }
     }
 
     /**

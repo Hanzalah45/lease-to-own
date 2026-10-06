@@ -13,6 +13,7 @@ use App\Notifications\ContractSignedNotification;
 use App\Services\BillingSchedule;
 use App\Services\CommonValidationRules;
 use App\Services\ContractPdfService;
+use App\Services\LeaseEngine;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -87,6 +88,9 @@ class ContractController extends Controller
             // stored (and it is immutable once signed: terms edits are blocked).
             $cycle = $data['billing_cycle'] ?? $lockedLease->billing_cycle;
             abort_unless($cycle, 422, 'Choose your billing cycle (the 1st or the 15th) before signing.');
+            // A customer who already picked up (re-signing the new contract) can
+            // only choose a billing day that is still ahead of them.
+            LeaseEngine::assertBillingCycleStillAhead($lockedLease, $cycle);
             if ($lockedLease->billing_cycle !== $cycle) {
                 $lockedLease->update(['billing_cycle' => $cycle]);
             }
@@ -112,10 +116,17 @@ class ContractController extends Controller
         // 2026-09-05): the customer just agreed to the hold-and-forfeiture
         // clause in the contract itself, so the clock starts now, not at
         // some earlier "waiting on deposit" status change.
+        // A lease that was already picked up has no deposit to hold, so
+        // re-signing it (the new contract, 2026-10-06) must not start a new hold.
+        $pickedUp = $lease->application?->status === Application::STATUS_FINISHED;
         $lease->application?->update([
             'signature_received' => true,
-            'deposit_hold_expires_at' => now()->addDays(30),
+            ...($pickedUp ? [] : ['deposit_hold_expires_at' => now()->addDays(30)]),
         ]);
+
+        // A customer who already picked up moves onto the new billing-cycle
+        // schedule now that they have chosen their billing day.
+        LeaseEngine::rebuildScheduleAfterResign($lease);
 
         $recipients = User::where('role', User::ROLE_SUPER_ADMIN)
             ->orWhere(function ($query) {

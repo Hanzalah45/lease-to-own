@@ -973,6 +973,30 @@ export default function ApplicationDetailPage() {
         </div>
       )}
 
+      {status === "finished" && lease && !lease.contract && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+          <p className="font-heading text-xs font-bold uppercase tracking-wide text-amber-800">Waiting for the new contract</p>
+          <p className="mt-1 text-xs text-neutral-600">
+            The previous signature was voided. Once the customer signs the new contract and picks their billing day, their
+            payment schedule is rebuilt from their pickup date, and they add their bank account and card for AutoPay.
+          </p>
+          {application.customer?.status === "pending" && can("application_review") && (
+            <>
+              <p className="mt-2 text-xs text-neutral-500">This customer has no portal login yet, so they sign from an emailed link.</p>
+              {resendSigningLinkSent && <p className="mt-2 text-xs font-semibold text-green-700">Signing link sent.</p>}
+              {resendSigningLinkError && <p className="mt-2 text-xs text-red-600">{resendSigningLinkError}</p>}
+              <button
+                onClick={resendSigningLink}
+                disabled={resendingSigningLink}
+                className="font-heading mt-3 rounded-md bg-neutral-800 px-4 py-2 text-xs font-bold text-white hover:bg-neutral-900 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {resendingSigningLink ? "Sending…" : "Send Signing Link"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {status === "declined" && (
         <div className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
