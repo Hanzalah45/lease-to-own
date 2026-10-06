@@ -555,12 +555,6 @@
 </table>
 </div>
 <p class="terms">
-    <strong>Payment Dates &amp; Notice of Variation.</strong> We will initiate payments from your verified payment
-    method on or after each Payment Due Date, in the amount described above, plus any accrued but unpaid rental
-    charges, up to a maximum of $30.00 more than your regularly-scheduled payment amount. You will receive notice at
-    least 10 days before a payment is deducted if it falls outside that range.
-</p>
-<p class="terms">
     <strong>AutoPay Notice.</strong> If a payment charged through AutoPay is more than $30 above the regular payment
     amount, you will receive at least ten (10) days&rsquo; notice before the additional amount is charged, as provided
     in this Agreement.
@@ -577,11 +571,6 @@
 <p class="terms">
     Your next scheduled Rental Payment may be a prorated, lower payment as described in Section 2, Lease Term &amp;
     Payment Schedule.
-</p>
-<p class="terms">
-    <strong>Revocation.</strong> This Payment Authorization applies until you revoke it. You may revoke it by
-    notifying us in writing at least 3 business days before a scheduled payment. Revoking this authorization does not
-    relieve you of your obligation to make Rental Payments by another method.
 </p>
 <p class="terms">
     <strong>AutoPay Revocation.</strong> You may revoke your AutoPay authorization by providing written notice at least

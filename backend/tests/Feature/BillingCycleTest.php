@@ -178,6 +178,9 @@ class BillingCycleTest extends TestCase
         $this->assertStringContainsString('the applicable card payment price, including the 3% card processing fee, will apply.', $text);
         $this->assertStringContainsString('as described in Section 2, Lease Term & Payment Schedule.', $text);
         $this->assertStringContainsString('AutoPay Revocation. You may revoke your AutoPay authorization by providing written notice at least three (3) business days', $text);
+        // The client asked for the earlier notice and revocation paragraphs to be removed (2026-10-06): his wording replaces them.
+        $this->assertStringNotContainsString('Notice of Variation', $text);
+        $this->assertStringNotContainsString('This Payment Authorization applies until you revoke it', $text);
     }
 
     public function test_signing_is_refused_without_a_billing_cycle(): void
