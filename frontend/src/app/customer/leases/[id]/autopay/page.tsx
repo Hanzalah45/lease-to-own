@@ -53,6 +53,18 @@ export default function AutopaySetupPage() {
   if (loadError || !status) return <p className="text-sm text-red-600">{loadError ?? "Lease not found."}</p>;
 
   const leaseId = Number(params.id);
+
+  // Adding or changing a payment method changes which methods the deposit card
+  // can charge, and the server works that out. Without reloading it here the
+  // Pay buttons stayed disabled until the page was refreshed (found live
+  // 2026-10-07: a customer added a card and could not pay).
+  function handleMethodsChange(next: PaymentMethodsStatus) {
+    setStatus(next);
+    getDepositPaymentStatus(leaseId)
+      .then(setDepositStatus)
+      .catch(() => {});
+  }
+
   const bothAdded = status.bank_account_added && status.card_added;
   const atLeastOneMethodAdded = status.bank_account_added || status.card_added;
 
@@ -73,7 +85,7 @@ export default function AutopaySetupPage() {
 
       <AutopaySetupCard
         status={status}
-        onStatusChange={setStatus}
+        onStatusChange={handleMethodsChange}
         onCreateSetupIntent={(type) => createSetupIntent(leaseId, type)}
         onConfirm={(type, paymentMethodId) => confirmPaymentMethod(leaseId, type, paymentMethodId)}
         onSetPrimary={(type) => setPrimaryMethod(leaseId, type)}

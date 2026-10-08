@@ -76,6 +76,19 @@ function SetupAutopayFlow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Adding or changing a payment method changes which methods the deposit card
+  // can charge, and the server works that out. Without reloading it here the
+  // Pay buttons stayed disabled until the page was refreshed (found live
+  // 2026-10-07 on the signed-in version of this page).
+  function handleMethodsChange(next: PaymentMethodsStatus) {
+    setStatus(next);
+    if (params) {
+      getSignedDepositPaymentStatus(params)
+        .then(setDepositStatus)
+        .catch(() => {});
+    }
+  }
+
   const bothAdded = status?.bank_account_added && status?.card_added;
   const atLeastOneMethodAdded = status?.bank_account_added || status?.card_added;
 
@@ -113,7 +126,7 @@ function SetupAutopayFlow() {
           <div className="space-y-5">
             <AutopaySetupCard
               status={status}
-              onStatusChange={setStatus}
+              onStatusChange={handleMethodsChange}
               onCreateSetupIntent={(type) => createSignedSetupIntent(params, type)}
               onConfirm={(type, paymentMethodId) => confirmSignedPaymentMethod(params, type, paymentMethodId)}
               onSetPrimary={(type) => setSignedPrimaryMethod(params, type)}
