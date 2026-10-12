@@ -15,6 +15,7 @@ import { AssignmentCard } from "@/components/applications/detail/AssignmentCard"
 import { EditDetailModal, type EditField } from "@/components/applications/detail/EditDetailModal";
 import { AddLeaseModal } from "@/components/applications/detail/AddLeaseModal";
 import { ChangeMowerModal } from "@/components/applications/detail/ChangeMowerModal";
+import { ChargeDepositModal } from "@/components/applications/detail/ChargeDepositModal";
 import { FileInput } from "@/components/applications/wizard/fields";
 import { EpoChart } from "@/components/applications/wizard/EpoChart";
 import { Modal } from "@/components/ui/Modal";
@@ -144,6 +145,7 @@ export default function ApplicationDetailPage() {
   const [showAddLeaseModal, setShowAddLeaseModal] = useState(false);
   const [showChangeMower, setShowChangeMower] = useState(false);
   const [changeNotice, setChangeNotice] = useState<string | null>(null);
+  const [showChargeDeposit, setShowChargeDeposit] = useState(false);
   const [postingNote, setPostingNote] = useState(false);
   const [togglingChecklist, setTogglingChecklist] = useState(false);
 
@@ -528,6 +530,17 @@ export default function ApplicationDetailPage() {
   const paidPayment = lease?.payments?.slice().reverse().find((p) => p.status === "paid");
 
   const signed = !!lease?.contract;
+  // A deposit nobody has collected through the system (client, Joel, 2026-10-12):
+  // the customer's own deposit button closes once the deposit is marked received
+  // or the application moves on, so staff charge the saved method here after the
+  // customer agreed. The server enforces every one of these rules too.
+  const depositOnRecord = !!lease?.payments?.some((p) => p.type === "deposit" && (p.status === "paid" || p.status === "pending"));
+  const canChargeDeposit =
+    can("payment_tracking") &&
+    signed &&
+    !depositOnRecord &&
+    (status === "waiting_deposit" || status === "waiting_delivery" || status === "finished") &&
+    !!(lease?.stripe_card_payment_method_id || lease?.stripe_bank_payment_method_id);
   // Changing the mower edits both the lease terms and the equipment record,
   // and only makes sense before pickup (the server enforces all of this too).
   const canChangeMower =
@@ -1236,28 +1249,51 @@ export default function ApplicationDetailPage() {
             }
             disabled={togglingChecklist}
           />
-          {(() => {
-            const depositPayment = lease?.payments?.find((p) => p.type === "deposit");
-            if (!depositPayment) return null;
+          {(["deposit", "pickup_balance"] as const).map((type) => {
+            // The latest attempt of each kind, and what the customer was really
+            // charged: the bank price plus any card fee (client, Joel, 2026-10-12:
+            // the Stripe receipt showed more than the amount this page listed).
+            const payment = lease?.payments?.slice().reverse().find((p) => p.type === type);
+            if (!payment) return null;
+            const label = type === "deposit" ? "Deposit" : "Tracking fee and first month";
+            const fee = Number(payment.card_fee_amount ?? 0);
+            const total = Number(payment.amount) + fee;
             return (
-              <p className="-mt-3 text-xs text-neutral-500">
-                {depositPayment.status === "paid" ? (
+              <p key={type} className="-mt-3 text-xs text-neutral-500">
+                {payment.status === "paid" ? (
                   <span className="font-medium text-green-700">
-                    Charged via Stripe — {money(Number(depositPayment.amount))} on{" "}
-                    {formatDateOnly(depositPayment.paid_date)}
+                    {label} charged via Stripe: {money(total)}
+                    {fee > 0 ? ` (includes ${money(fee)} card fee)` : ""} on {formatDateOnly(payment.paid_date)}
                   </span>
-                ) : depositPayment.status === "failed" ? (
+                ) : payment.status === "failed" ? (
                   <span className="font-medium text-red-600">
-                    Stripe charge declined — {money(Number(depositPayment.amount))}. Don&rsquo;t mark received twice if you also collect this manually.
+                    {label}: Stripe charge declined, {money(total)}.
+                    {type === "deposit" ? " Don’t mark received twice if you also collect this manually." : ""}
                   </span>
                 ) : (
                   <span className="font-medium text-amber-700">
-                    Stripe charge processing — {money(Number(depositPayment.amount))}
+                    {label}: Stripe charge processing, {money(total)}
                   </span>
                 )}
               </p>
             );
-          })()}
+          })}
+          {canChargeDeposit && (
+            <div className="-mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-900">No deposit payment on record</p>
+              <p className="mt-1 text-xs text-amber-800">
+                {application.deposit_received ? "The deposit is marked received, but no payment for it is recorded. " : ""}
+                Once the customer has agreed, charge it to their saved card or bank account here. If it was paid in cash,
+                leave this alone and add a dealer note instead.
+              </p>
+              <button
+                onClick={() => setShowChargeDeposit(true)}
+                className="font-heading mt-3 rounded-md bg-red-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-red-700"
+              >
+                Charge deposit
+              </button>
+            </div>
+          )}
           {application.deposit_forfeited_at ? (
             <p className="-mt-3 text-xs text-red-600">
               Deposit forfeited {new Date(application.deposit_forfeited_at).toLocaleDateString()} — unit not picked up in time.
@@ -1300,6 +1336,22 @@ export default function ApplicationDetailPage() {
                 ? "Mower changed and the lease re-priced. The signed contract was cancelled and the customer has been asked to sign the new one."
                 : "Mower changed and the lease re-priced.",
             );
+          }}
+        />
+      )}
+
+      {showChargeDeposit && lease && (
+        <ChargeDepositModal
+          application={application}
+          onClose={() => setShowChargeDeposit(false)}
+          onCharged={(payment) => {
+            setShowChargeDeposit(false);
+            setChangeNotice(
+              payment.status === "paid"
+                ? "Deposit charged. The payment is recorded and a note was added to this application."
+                : "Deposit bank debit started. It will show as paid once the bank settles it (a few business days).",
+            );
+            void load();
           }}
         />
       )}

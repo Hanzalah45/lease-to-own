@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Admin\AutopayController as AdminAutopayController;
 use App\Http\Controllers\Api\Admin\ContractController as AdminContractController;
 use App\Http\Controllers\Api\Admin\CustomerController as AdminCustomerController;
 use App\Http\Controllers\Api\Admin\DealerNoteController;
+use App\Http\Controllers\Api\Admin\DepositChargeController as AdminDepositChargeController;
 use App\Http\Controllers\Api\Admin\EquipmentServiceRecordController;
 use App\Http\Controllers\Api\Admin\EquipmentUnitController as AdminEquipmentUnitController;
 use App\Http\Controllers\Api\Admin\LeaseAgreementController as AdminLeaseAgreementController;
@@ -241,6 +242,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/lease-agreements/{leaseAgreement}/autopay/pause', [AdminAutopayController::class, 'pause']);
             Route::post('/lease-agreements/{leaseAgreement}/autopay/resume', [AdminAutopayController::class, 'resume']);
             Route::post('/payments/{payment}/retry-autopay', [AdminAutopayController::class, 'retry']);
+            Route::post('/applications/{application}/charge-deposit', [AdminDepositChargeController::class, 'store']);
             Route::apiResource('payments', AdminPaymentController::class);
         });
     });

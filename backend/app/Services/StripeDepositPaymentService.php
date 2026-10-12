@@ -37,11 +37,16 @@ class StripeDepositPaymentService
     }
 
     /**
+     * $staffUserId is set when an admin charges the customer's saved method
+     * after the customer agreed (client, Joel, 2026-10-12): the charge is then
+     * made off-session (the customer is not at a screen to approve it) and the
+     * payment records who ran it.
+     *
      * @return array{payment: Payment, requires_action: bool, client_secret: ?string}
      */
-    public function chargeDepositOnly(LeaseAgreement $lease, ?string $methodType = null, ?int $expectedTotalCents = null): array
+    public function chargeDepositOnly(LeaseAgreement $lease, ?string $methodType = null, ?int $expectedTotalCents = null, ?int $staffUserId = null): array
     {
-        return $this->chargeType($lease, Payment::TYPE_DEPOSIT, $lease->depositAmountDue(), "Security deposit \u{2014} Lease #{$lease->id}", $methodType, $expectedTotalCents);
+        return $this->chargeType($lease, Payment::TYPE_DEPOSIT, $lease->depositAmountDue(), "Security deposit \u{2014} Lease #{$lease->id}", $methodType, $expectedTotalCents, $staffUserId);
     }
 
     /**
@@ -55,7 +60,7 @@ class StripeDepositPaymentService
     /**
      * @return array{payment: Payment, requires_action: bool, client_secret: ?string}
      */
-    private function chargeType(LeaseAgreement $lease, string $type, float $amount, string $description, ?string $methodType, ?int $expectedTotalCents): array
+    private function chargeType(LeaseAgreement $lease, string $type, float $amount, string $description, ?string $methodType, ?int $expectedTotalCents, ?int $staffUserId = null): array
     {
         // The customer picks bank or card per payment (dual pricing, client
         // 2026-10-05); with no explicit choice the AutoPay primary is used.
@@ -89,7 +94,7 @@ class StripeDepositPaymentService
         // The check-then-insert runs under a lock on the lease row, so a
         // double-click (two requests in flight) can't both pass the "already
         // pending" check and create two charges.
-        $payment = DB::transaction(function () use ($lease, $type, $amount, $feeCents, $method, $assertNotAlreadyCharged) {
+        $payment = DB::transaction(function () use ($lease, $type, $amount, $feeCents, $method, $assertNotAlreadyCharged, $staffUserId) {
             LeaseAgreement::whereKey($lease->id)->lockForUpdate()->first();
             $assertNotAlreadyCharged();
 
@@ -101,6 +106,7 @@ class StripeDepositPaymentService
                 'due_date' => BillingClock::todayDate(),
                 'status' => Payment::STATUS_PENDING,
                 'method' => $method['type'] === 'bank' ? 'ach' : 'card',
+                'recorded_by' => $staffUserId,
             ]);
         });
 
@@ -112,8 +118,14 @@ class StripeDepositPaymentService
                 'payment_method' => $method['id'],
                 'payment_method_types' => [$method['type'] === 'bank' ? 'us_bank_account' : 'card'],
                 'confirm' => true,
+                // A staff-run charge has no customer at a screen to approve a
+                // bank prompt, so it is declared off-session (the saved method
+                // was set up for that); a card that needs the customer present
+                // is declined cleanly instead of hanging.
+                ...($staffUserId ? ['off_session' => true] : []),
                 'description' => $feeCents > 0 ? $description.' (includes card processing fee)' : $description,
-                'metadata' => ['payment_id' => $payment->id, 'lease_id' => $lease->id, 'type' => $type],
+                'metadata' => ['payment_id' => $payment->id, 'lease_id' => $lease->id, 'type' => $type]
+                    + ($staffUserId ? ['charged_by_staff_id' => $staffUserId] : []),
             ], ['idempotency_key' => "customer-charge-payment-{$payment->id}"]);
         } catch (ApiErrorException $e) {
             // A synchronous card decline arrives as a thrown exception, not a
@@ -122,7 +134,7 @@ class StripeDepositPaymentService
             // capture its id the same way a successful call would.
             $declinedIntent = $e->getError()->payment_intent ?? null;
             $payment->update(['stripe_payment_intent_id' => $declinedIntent->id ?? null]);
-            LeaseEngine::applyPaymentStatusChange($payment->fresh(), Payment::STATUS_FAILED, $payment->method, null);
+            LeaseEngine::applyPaymentStatusChange($payment->fresh(), Payment::STATUS_FAILED, $payment->method, $staffUserId);
 
             abort(422, $e->getMessage());
         }
@@ -131,12 +143,12 @@ class StripeDepositPaymentService
 
         return match ($intent->status) {
             'succeeded' => [
-                'payment' => LeaseEngine::applyPaymentStatusChange($payment->fresh(), Payment::STATUS_PAID, $payment->method, null),
+                'payment' => LeaseEngine::applyPaymentStatusChange($payment->fresh(), Payment::STATUS_PAID, $payment->method, $staffUserId),
                 'requires_action' => false,
                 'client_secret' => null,
             ],
             'requires_payment_method' => [
-                'payment' => LeaseEngine::applyPaymentStatusChange($payment->fresh(), Payment::STATUS_FAILED, $payment->method, null),
+                'payment' => LeaseEngine::applyPaymentStatusChange($payment->fresh(), Payment::STATUS_FAILED, $payment->method, $staffUserId),
                 'requires_action' => false,
                 'client_secret' => null,
             ],

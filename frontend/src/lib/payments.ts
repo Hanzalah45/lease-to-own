@@ -35,6 +35,27 @@ export async function retryAutopayCharge(paymentId: number | string): Promise<Pa
   return data.data.payment;
 }
 
+/**
+ * Staff: charge the security deposit to the customer's saved bank account or
+ * card after the customer agreed. The server refuses (409) when the total no
+ * longer matches the one shown, and when the deposit is already paid or in flight.
+ */
+export async function chargeDepositAsStaff(
+  applicationId: number | string,
+  choice: { method: "bank" | "card"; expectedTotalCents: number; customerAgreed: boolean },
+): Promise<Payment> {
+  const data = await apiFetch<{ data: { payment: Payment } }>(`/admin/applications/${applicationId}/charge-deposit`, {
+    method: "POST",
+    token: getToken(),
+    body: {
+      method: choice.method,
+      expected_total_cents: choice.expectedTotalCents,
+      customer_agreed: choice.customerAgreed,
+    },
+  });
+  return data.data.payment;
+}
+
 export async function markPaymentStatus(
   id: number | string,
   status: "pending" | "paid" | "failed" | "refunded",
