@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Rules\EmailDomainExists;
+
 /**
  * Cross-cutting field-length limits shared by every controller in the app —
  * the backend counterpart to frontend/src/lib/validation.ts. Each constant
@@ -76,7 +78,7 @@ class CommonValidationRules
     public static function email($uniqueRule = null, bool $required = true): array
     {
         return array_filter([
-            $required ? 'required' : 'sometimes', 'string', 'email', 'max:'.self::EMAIL_MAX, $uniqueRule,
+            $required ? 'required' : 'sometimes', 'string', 'email', 'max:'.self::EMAIL_MAX, new EmailDomainExists, $uniqueRule,
         ]);
     }
 

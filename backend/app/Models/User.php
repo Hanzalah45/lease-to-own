@@ -71,6 +71,42 @@ class User extends Authenticatable
         ];
     }
 
+    protected static function booted(): void
+    {
+        // A soft-deleted account keeps its row, and the unique index on `email`
+        // would keep the address reserved forever: after an admin deleted a
+        // customer's accidental duplicate account, the real customer's email
+        // could no longer be corrected (client, Joel, 2026-10-12). Deleting now
+        // parks the address so it can be used again.
+        static::deleting(function (User $user) {
+            if ($user->isForceDeleting()) {
+                return;
+            }
+
+            $parked = self::parkedEmail($user->id, (string) $user->email);
+            if ($parked !== $user->email) {
+                $user->forceFill(['email' => $parked])->saveQuietly();
+            }
+        });
+    }
+
+    /**
+     * What a deleted account's email becomes: it can never receive mail (the
+     * reserved ".invalid" top-level domain does not exist), is unique because
+     * it carries the user id, and still shows the original address.
+     */
+    public static function parkedEmail(int $id, string $email): string
+    {
+        $suffix = '.invalid';
+        if (str_ends_with($email, $suffix)) {
+            return $email;
+        }
+
+        $prefix = "deleted-{$id}-";
+
+        return $prefix.mb_substr($email, 0, 255 - strlen($prefix) - strlen($suffix)).$suffix;
+    }
+
     protected function avatarUrl(): Attribute
     {
         return Attribute::make(

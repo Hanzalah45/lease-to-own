@@ -30,6 +30,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Check That An Email's Domain Exists
+    |--------------------------------------------------------------------------
+    |
+    | Catches typos like "gmail.comt" when an address is entered (see
+    | App\Rules\EmailDomainExists). It looks the domain up on the network, so
+    | it defaults to on only in production; set VALIDATE_EMAIL_DNS to override.
+    |
+    */
+
+    'validate_email_dns' => (bool) env('VALIDATE_EMAIL_DNS', env('APP_ENV') === 'production'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Debug Mode
     |--------------------------------------------------------------------------
     |
