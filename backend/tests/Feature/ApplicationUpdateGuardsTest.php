@@ -254,6 +254,59 @@ class ApplicationUpdateGuardsTest extends TestCase
         $response->assertStatus(422);
     }
 
+    public function test_saving_the_lease_form_with_the_same_term_and_rent_is_allowed_after_a_payment(): void
+    {
+        // Found live 2026-10-14: the admin form sends every field (term and rent included) even when only
+        // AutoPay changed, and any picked-up lease has a paid pickup payment, so the guard above refused
+        // every edit, including turning AutoPay on. Values that did not change must not count as a change.
+        $lease = LeaseAgreement::factory()->create(['monthly_rental_payment' => 247.42, 'term_months' => 36, 'autopay_enabled' => false, 'security_deposit' => 342.93]);
+        Payment::create(['lease_agreement_id' => $lease->id, 'type' => Payment::TYPE_RENTAL, 'amount' => 307.60, 'due_date' => now()->subDay(), 'status' => Payment::STATUS_PAID, 'paid_date' => now()]);
+        $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
+
+        $response = $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$lease->application_id}", [
+            'lease' => [
+                'term_months' => 36,
+                'monthly_rental_payment' => 247.42,
+                'security_deposit' => 342.93,
+                'billing_cycle' => '15th',
+                'autopay_enabled' => true,
+                'ldw_selected' => (bool) $lease->ldw_selected,
+                'promo_code' => null,
+            ],
+        ]);
+
+        $response->assertOk();
+        $fresh = $lease->fresh();
+        $this->assertTrue($fresh->autopay_enabled);
+        $this->assertSame('15th', $fresh->billing_cycle);
+        $this->assertSame(36, (int) $fresh->term_months);
+        $this->assertEqualsWithDelta(247.42, (float) $fresh->monthly_rental_payment, 0.001);
+    }
+
+    public function test_the_same_rent_written_differently_is_still_not_a_change(): void
+    {
+        $lease = LeaseAgreement::factory()->create(['monthly_rental_payment' => 150, 'term_months' => 36]);
+        Payment::create(['lease_agreement_id' => $lease->id, 'type' => Payment::TYPE_RENTAL, 'amount' => 150, 'due_date' => now()->subDay(), 'status' => Payment::STATUS_PAID, 'paid_date' => now()]);
+        $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
+
+        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$lease->application_id}", [
+            'lease' => ['term_months' => '36', 'monthly_rental_payment' => '150.00', 'autopay_enabled' => true],
+        ])->assertOk();
+    }
+
+    public function test_a_real_change_of_term_is_still_refused_after_a_payment_even_with_the_whole_form_sent(): void
+    {
+        $lease = LeaseAgreement::factory()->create(['monthly_rental_payment' => 150, 'term_months' => 36]);
+        Payment::create(['lease_agreement_id' => $lease->id, 'type' => Payment::TYPE_RENTAL, 'amount' => 150, 'due_date' => now()->subDay(), 'status' => Payment::STATUS_PAID, 'paid_date' => now()]);
+        $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
+
+        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/applications/{$lease->application_id}", [
+            'lease' => ['term_months' => 24, 'monthly_rental_payment' => 150, 'autopay_enabled' => true],
+        ])->assertStatus(422);
+
+        $this->assertSame(36, (int) $lease->fresh()->term_months);
+    }
+
     public function test_manual_risk_status_edit_recomputes_the_aggregate_score(): void
     {
         $customer = User::factory()->create(['role' => User::ROLE_CUSTOMER]);

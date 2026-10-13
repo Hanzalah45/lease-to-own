@@ -467,7 +467,13 @@ class ApplicationController extends Controller
                 abort_unless($request->user()->hasAdminPermission(AdminPermission::CONTRACT_GENERATION), 403, 'You do not have permission to edit lease terms.');
                 abort_if($lease->contract()->exists(), 422, 'This lease agreement has already been signed and its terms can no longer be changed.');
 
-                $termsChanged = isset($data['lease']['term_months']) || isset($data['lease']['monthly_rental_payment']);
+                // Only a value that actually differs is a change. The admin form sends every field
+                // (term and rent included) even when only AutoPay was edited, and every picked-up
+                // lease has a paid pickup payment, so counting what was merely sent refused every
+                // edit on a picked-up lease, including turning AutoPay on (found live 2026-10-14).
+                $termsChanged = (isset($data['lease']['term_months']) && (int) $data['lease']['term_months'] !== (int) $lease->term_months)
+                    || (isset($data['lease']['monthly_rental_payment'])
+                        && abs((float) $data['lease']['monthly_rental_payment'] - (float) $lease->monthly_rental_payment) >= 0.005);
 
                 // No schedule exists before pickup any more, so there is
                 // nothing to rebuild on a terms edit (a legacy schedule built
