@@ -2,9 +2,11 @@
 
 use App\Http\Middleware\EnsureAdminHasPermission;
 use App\Http\Middleware\EnsureUserHasRole;
+use App\Services\EmailLogger;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -20,5 +22,9 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // An email the service refused or could not be reached for: settle the email log
+        // row with the service's own message, then carry on reporting as usual.
+        $exceptions->report(function (TransportExceptionInterface $e) {
+            app(EmailLogger::class)->failed($e);
+        });
     })->create();

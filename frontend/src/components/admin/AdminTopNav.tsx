@@ -20,6 +20,7 @@ import {
   HomeIcon,
   KeyIcon,
   LogOutIcon,
+  MailIcon,
   MenuIcon,
   SettingsIcon,
   UserIcon,
@@ -32,6 +33,9 @@ const BASE_NAV_ITEMS = [{ label: "Dashboard", href: "/admin/dashboard", icon: Ho
 // — same gate the backend puts on the applications and customers resources.
 const APPLICATIONS_ITEM = { label: "My Applications", href: "/admin/applications", icon: DocumentIcon };
 const CUSTOMERS_ITEM = { label: "Customer Accounts", href: "/admin/customers", icon: UserIcon };
+
+// Every email the system sent (client, Joel, 2026-10-13); same application_review gate as customers.
+const EMAIL_LOG_ITEM = { label: "Email Log", href: "/admin/email-log", icon: MailIcon };
 
 // Quotes a mower's price with no customer attached; behind the same
 // application_review gate as the backend's /admin/pricing/quote.
@@ -83,7 +87,7 @@ export function AdminTopNav() {
 
   const navItems = [
     ...BASE_NAV_ITEMS,
-    ...(canSeeCustomers ? [APPLICATIONS_ITEM, CUSTOMERS_ITEM, CALCULATOR_ITEM] : []),
+    ...(canSeeCustomers ? [APPLICATIONS_ITEM, CUSTOMERS_ITEM, CALCULATOR_ITEM, EMAIL_LOG_ITEM] : []),
     ...(canSeeContracts ? [CONTRACTS_ITEM] : []),
     ...(canSeeEquipment ? [EQUIPMENT_ITEM] : []),
     ...(canSeePayments ? [PAYMENTS_ITEM] : []),

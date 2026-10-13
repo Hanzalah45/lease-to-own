@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Admin\ContractController as AdminContractController
 use App\Http\Controllers\Api\Admin\CustomerController as AdminCustomerController;
 use App\Http\Controllers\Api\Admin\DealerNoteController;
 use App\Http\Controllers\Api\Admin\DepositChargeController as AdminDepositChargeController;
+use App\Http\Controllers\Api\Admin\EmailLogController as AdminEmailLogController;
 use App\Http\Controllers\Api\Admin\EquipmentServiceRecordController;
 use App\Http\Controllers\Api\Admin\EquipmentUnitController as AdminEquipmentUnitController;
 use App\Http\Controllers\Api\Admin\LeaseAgreementController as AdminLeaseAgreementController;
@@ -204,6 +205,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/applications/{application}/info-requests/respond', [AdminApplicationController::class, 'respondToInfoRequestOnBehalf']);
             Route::post('/applications/{application}/dealer-notes', [DealerNoteController::class, 'store']);
             Route::post('/customers/{customer}/resend-account-setup', [AdminCustomerController::class, 'resendAccountSetup']);
+            Route::get('/customers/{customer}/emails', [AdminEmailLogController::class, 'forCustomer']);
+            Route::get('/email-logs', [AdminEmailLogController::class, 'index']);
             Route::apiResource('customers', AdminCustomerController::class);
         });
 

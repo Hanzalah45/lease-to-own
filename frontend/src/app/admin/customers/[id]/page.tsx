@@ -14,6 +14,7 @@ import { DetailCard } from "@/components/applications/detail/DetailCard";
 import { StatusTag } from "@/components/dashboard/StatusTag";
 import { InfoRequestTimeline } from "@/components/applications/detail/InfoRequestTimeline";
 import { PaymentsCard } from "@/components/applications/detail/PaymentsCard";
+import { EmailsCard } from "@/components/emails/EmailsCard";
 import { collectedToDate } from "@/lib/application-progress";
 import { money } from "@/components/applications/wizard/types";
 import type { Application, ApplicationStatus } from "@/types/application";
@@ -148,6 +149,8 @@ export default function AdminCustomerDetailPage() {
       {applications.map((application) => (
         <ApplicationBlock key={application.id} application={application} />
       ))}
+
+      <EmailsCard customerId={customer.id} />
     </div>
   );
 }

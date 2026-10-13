@@ -18,6 +18,7 @@ import { ChangeMowerModal } from "@/components/applications/detail/ChangeMowerMo
 import { ChargeDepositModal } from "@/components/applications/detail/ChargeDepositModal";
 import { ProgressCard } from "@/components/applications/detail/ProgressCard";
 import { PaymentsCard } from "@/components/applications/detail/PaymentsCard";
+import { EmailsCard } from "@/components/emails/EmailsCard";
 import { computeApplicationProgress } from "@/lib/application-progress";
 import { FileInput } from "@/components/applications/wizard/fields";
 import { EpoChart } from "@/components/applications/wizard/EpoChart";
@@ -1320,6 +1321,8 @@ export default function ApplicationDetailPage() {
       </div>
 
       {progress && can("payment_tracking") && <PaymentsCard payments={lease?.payments ?? []} />}
+
+      <EmailsCard customerId={application.customer_id} />
 
       {lease?.epo_schedule && (
         <div className="rounded-xl border border-neutral-200 bg-white p-5">
