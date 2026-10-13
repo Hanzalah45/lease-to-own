@@ -14,8 +14,15 @@ use Throwable;
 /**
  * Keeps the email log (client, Joel, 2026-10-13): a row is written just before
  * a message is handed to the email service and settled when the service
- * answers. A send that throws is settled from the error handler (with the
- * service's own message) or, if nothing reported it, when the request ends.
+ * answers. A send that throws and is reported is marked failed with the
+ * service's own message. A send nobody heard back from is left as "not
+ * confirmed" (never "failed": nothing proved it failed).
+ *
+ * The "sent" event cannot be matched to the "sending" one by object: the real
+ * transports (SES and every other Symfony AbstractTransport) send a COPY of
+ * the message, so the first release showed every real email as failed. A
+ * message is matched by who it is for and its subject instead, oldest first,
+ * which is also right for several messages in one request.
  *
  * Bound as a singleton so the in-flight bookkeeping belongs to one request.
  * Logging must never get in the way of sending: every entry point swallows its
@@ -24,13 +31,13 @@ use Throwable;
  */
 class EmailLogger
 {
-    /** @var array<int, list<int>> log ids, keyed by the id of the message object being sent */
+    /** @var list<array{ids: list<int>, to: list<string>, subject: string}> messages handed to the email service, oldest first */
     private array $inFlight = [];
 
     public function sending(MessageSending $event): void
     {
         try {
-            $addresses = array_map(fn (Address $a) => $a->getAddress(), $event->message->getTo());
+            $addresses = $this->addressesOf($event->message->getTo());
             if (! $addresses) {
                 return;
             }
@@ -49,10 +56,10 @@ class EmailLogger
                     'status' => EmailLog::STATUS_SENDING,
                 ])->id;
             }
-            $this->inFlight[spl_object_id($event->message)] = $ids;
+            $this->inFlight[] = ['ids' => $ids, 'to' => $this->normalized($addresses), 'subject' => $subject];
 
-            // A send that throws and is never reported would stay "sending" forever.
-            app()->terminating(fn () => $this->failRemaining('The email service did not confirm this message. See the server error log.'));
+            // A send that is never answered would stay "sending" without a word about why.
+            app()->terminating(fn () => $this->noteUnconfirmed());
         } catch (Throwable $e) {
             $this->noteOwnFailure($e);
         }
@@ -61,12 +68,12 @@ class EmailLogger
     public function sent(MessageSent $event): void
     {
         try {
-            $key = spl_object_id($event->message);
-            $ids = $this->inFlight[$key] ?? [];
-            unset($this->inFlight[$key]);
-            if (! $ids) {
+            $position = $this->positionOf($event);
+            if ($position === null) {
                 return;
             }
+            $ids = $this->inFlight[$position]['ids'];
+            array_splice($this->inFlight, $position, 1);
 
             EmailLog::whereKey($ids)->update([
                 'status' => EmailLog::STATUS_SENT,
@@ -79,29 +86,85 @@ class EmailLogger
         }
     }
 
-    /** The email service (or the connection to it) refused or failed: settle every message still in flight. */
+    /** The email service (or the connection to it) refused or failed: settle every message still in flight as failed. */
     public function failed(Throwable $e): void
     {
-        $this->failRemaining($e->getMessage());
-    }
-
-    public function failRemaining(string $reason): void
-    {
         try {
-            $ids = array_merge(...array_values($this->inFlight ?: [[]]));
-            $this->inFlight = [];
+            $ids = $this->takeInFlightIds();
             if (! $ids) {
                 return;
             }
 
             EmailLog::whereKey($ids)->where('status', EmailLog::STATUS_SENDING)->update([
                 'status' => EmailLog::STATUS_FAILED,
-                'error' => Str::limit($reason, 1000, ''),
+                'error' => Str::limit($e->getMessage(), 1000, ''),
+                'updated_at' => now(),
+            ]);
+        } catch (Throwable $inner) {
+            $this->noteOwnFailure($inner);
+        }
+    }
+
+    /** The request is ending and nobody heard back for these: say so, but do not call it failed. */
+    public function noteUnconfirmed(): void
+    {
+        try {
+            $ids = $this->takeInFlightIds();
+            if (! $ids) {
+                return;
+            }
+
+            EmailLog::whereKey($ids)->where('status', EmailLog::STATUS_SENDING)->update([
+                'error' => 'No confirmation was received from the email service.',
                 'updated_at' => now(),
             ]);
         } catch (Throwable $e) {
             $this->noteOwnFailure($e);
         }
+    }
+
+    /** Which in-flight message this "sent" event belongs to: the first with the same recipients and subject. */
+    private function positionOf(MessageSent $event): ?int
+    {
+        $to = $this->normalized($this->addressesOf($event->message->getTo()));
+        $subject = Str::limit((string) $event->message->getSubject(), 255, '');
+
+        foreach ($this->inFlight as $position => $entry) {
+            if ($entry['to'] === $to && $entry['subject'] === $subject) {
+                return $position;
+            }
+        }
+
+        return null;
+    }
+
+    /** @param  array<int, Address>  $addresses
+     * @return list<string> */
+    private function addressesOf(array $addresses): array
+    {
+        return array_values(array_map(fn (Address $a) => $a->getAddress(), $addresses));
+    }
+
+    /** @param  list<string>  $addresses
+     * @return list<string> */
+    private function normalized(array $addresses): array
+    {
+        $lower = array_map('strtolower', $addresses);
+        sort($lower);
+
+        return $lower;
+    }
+
+    /** @return list<int> */
+    private function takeInFlightIds(): array
+    {
+        $ids = [];
+        foreach ($this->inFlight as $entry) {
+            array_push($ids, ...$entry['ids']);
+        }
+        $this->inFlight = [];
+
+        return $ids;
     }
 
     private function noteOwnFailure(Throwable $e): void

@@ -51,6 +51,57 @@ class EmailLogTest extends TestCase
         $this->assertNull($log->error);
     }
 
+    public function test_a_send_through_a_transport_that_copies_the_message_is_still_confirmed(): void
+    {
+        // The real email service (SES) goes through Symfony's AbstractTransport, which sends a COPY of the
+        // message: the "sent" event then carries a different object than the "sending" one. The first release
+        // matched by object and so showed every real email as failed (found live 2026-10-13).
+        $this->useMailerThatAccepts();
+        $customer = $this->customer(['email' => 'real@example.com']);
+
+        $customer->notify(new RequestContractSignatureNotification('https://example.test/sign'));
+        $this->app->terminate();
+
+        $log = EmailLog::firstOrFail();
+        $this->assertSame(EmailLog::STATUS_SENT, $log->status);
+        $this->assertNull($log->error);
+        $this->assertNotEmpty($log->provider_message_id);
+    }
+
+    public function test_several_emails_in_one_request_each_settle_to_their_own_row(): void
+    {
+        $this->useMailerThatAccepts();
+        $a = $this->customer(['email' => 'a@example.com']);
+        $b = $this->customer(['email' => 'b@example.com']);
+
+        $a->notify(new RequestContractSignatureNotification('https://example.test/a'));
+        $b->notify(new RequestContractSignatureNotification('https://example.test/b'));
+        $a->notify(new RequestContractSignatureNotification('https://example.test/a2'));
+        $this->app->terminate();
+
+        $this->assertSame(
+            [EmailLog::STATUS_SENT, EmailLog::STATUS_SENT, EmailLog::STATUS_SENT],
+            EmailLog::orderBy('id')->pluck('status')->all(),
+        );
+        $this->assertSame(['a@example.com', 'b@example.com', 'a@example.com'], EmailLog::orderBy('id')->pluck('to_address')->all());
+    }
+
+    public function test_the_migration_corrects_only_the_rows_the_first_release_wrongly_marked_failed(): void
+    {
+        $wrong = EmailLog::create(['to_address' => 'a@example.com', 'status' => 'failed', 'error' => 'The email service did not confirm this message. See the server error log.']);
+        $real = EmailLog::create(['to_address' => 'b@example.com', 'status' => 'failed', 'error' => 'Request to AWS SES API failed. Reason: Email address is not verified.']);
+        $fine = EmailLog::create(['to_address' => 'c@example.com', 'status' => 'sent']);
+
+        $migration = require database_path('migrations/2026_10_14_100000_correct_email_log_rows_wrongly_marked_failed.php');
+        $migration->up();
+        $migration->up(); // running it again changes nothing
+
+        $this->assertSame(['sent', null], [$wrong->fresh()->status, $wrong->fresh()->error]);
+        $this->assertSame('failed', $real->fresh()->status);
+        $this->assertStringContainsString('not verified', $real->fresh()->error);
+        $this->assertSame('sent', $fine->fresh()->status);
+    }
+
     public function test_a_mistyped_address_is_logged_exactly_as_typed_and_still_linked_to_the_customer(): void
     {
         $customer = $this->customer(['email' => 'talley@gmail.comt']);
@@ -88,7 +139,7 @@ class EmailLogTest extends TestCase
         $this->assertStringContainsString('Email address is not verified', (string) $log->error);
     }
 
-    public function test_a_send_that_threw_without_being_reported_is_still_settled_when_the_request_ends(): void
+    public function test_a_send_nobody_heard_back_from_is_marked_not_confirmed_never_failed(): void
     {
         $this->useMailerThatThrows('connection reset');
         $customer = $this->customer();
@@ -96,15 +147,16 @@ class EmailLogTest extends TestCase
         try {
             $customer->notify(new RequestContractSignatureNotification('https://example.test/sign'));
         } catch (TransportException) {
-            // the caller swallowed it
+            // the caller swallowed it, and nothing reported it
         }
         $this->assertSame(EmailLog::STATUS_SENDING, EmailLog::firstOrFail()->status);
 
         $this->app->terminate();
 
+        // Nothing proved it failed, so it must not say "failed" (the first release did, wrongly, for real emails).
         $log = EmailLog::firstOrFail();
-        $this->assertSame(EmailLog::STATUS_FAILED, $log->status);
-        $this->assertStringContainsString('did not confirm', (string) $log->error);
+        $this->assertSame(EmailLog::STATUS_SENDING, $log->status);
+        $this->assertSame('No confirmation was received from the email service.', $log->error);
     }
 
     public function test_a_broken_email_log_never_stops_an_email_from_going_out(): void
@@ -168,6 +220,24 @@ class EmailLogTest extends TestCase
         AdminPermission::create(['user_id' => $restricted->id, 'permission' => AdminPermission::PAYMENT_TRACKING]);
         $this->actingAs($restricted, 'sanctum')->getJson('/api/admin/email-logs')->assertForbidden();
         $this->actingAs($restricted, 'sanctum')->getJson("/api/admin/customers/{$customer->id}/emails")->assertForbidden();
+    }
+
+    /** A mailer that accepts every message, built like the real ones: on AbstractTransport, which sends a copy of the message. */
+    private function useMailerThatAccepts(): void
+    {
+        $this->app->forgetInstance('mail.manager');
+        Mail::clearResolvedInstance('mail.manager');
+
+        Mail::extend('accepting', fn () => new class extends AbstractTransport
+        {
+            protected function doSend(SentMessage $message): void {}
+
+            public function __toString(): string
+            {
+                return 'accepting://';
+            }
+        });
+        config(['mail.mailers.accepting' => ['transport' => 'accepting'], 'mail.default' => 'accepting']);
     }
 
     /** Swaps the default mailer for one whose every send throws, like the email service refusing the message. */
