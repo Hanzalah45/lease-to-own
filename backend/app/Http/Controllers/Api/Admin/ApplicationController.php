@@ -608,7 +608,7 @@ class ApplicationController extends Controller
             'leaseAgreement.paymentMethodsOverrideBy:id,name',
             'leaseAgreement.equipmentUnit' => fn ($query) => $query->withCount('serviceRecords'),
             'leaseAgreement.equipmentUnit.updatedBy:id,name',
-            'leaseAgreement.payments',
+            'leaseAgreement.payments.attempts',
             'leaseAgreement.contract',
             'leaseAgreement.contracts.voidedBy:id,name',
             'leaseAgreement.contracts.signer:id,name',

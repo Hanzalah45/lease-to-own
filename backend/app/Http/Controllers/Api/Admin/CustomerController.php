@@ -95,7 +95,7 @@ class CustomerController extends Controller
             'applications.leaseAgreement.equipmentUnit' => fn ($query) => $query->withCount('serviceRecords'),
             'applications.leaseAgreement.contract',
             'applications.leaseAgreement.paymentMethodsOverrideBy:id,name',
-            'applications.leaseAgreement.payments',
+            'applications.leaseAgreement.payments.attempts',
             'applications.infoRequests.requestedBy:id,name',
             'riskProfile.redFlags.resolvedBy:id,name',
             'riskProfile.updatedBy:id,name',

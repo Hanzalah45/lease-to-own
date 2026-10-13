@@ -172,6 +172,8 @@ class AdminDepositChargeTest extends TestCase
 
         $payment = Payment::where('lease_agreement_id', $lease->id)->where('type', Payment::TYPE_DEPOSIT)->first();
         $this->assertSame(Payment::STATUS_FAILED, $payment->status);
+        // The processor's reason is kept next to the payment so staff can see why.
+        $this->assertSame('Your card was declined.', $payment->failure_message);
         $this->assertStringContainsString('declined', $lease->application->dealerNotes()->first()->text);
 
         // A failed attempt can be tried again (it is not "already charged").

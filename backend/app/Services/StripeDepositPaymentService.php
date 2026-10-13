@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\LeaseAgreement;
 use App\Models\Payment;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Stripe\Exception\ApiErrorException;
 use Stripe\StripeClient;
 
@@ -133,7 +134,10 @@ class StripeDepositPaymentService
             // PaymentIntent (status requires_payment_method) to the error, so
             // capture its id the same way a successful call would.
             $declinedIntent = $e->getError()->payment_intent ?? null;
-            $payment->update(['stripe_payment_intent_id' => $declinedIntent->id ?? null]);
+            $payment->update([
+                'stripe_payment_intent_id' => $declinedIntent->id ?? null,
+                'failure_message' => Str::limit($e->getMessage(), 500, ''),
+            ]);
             LeaseEngine::applyPaymentStatusChange($payment->fresh(), Payment::STATUS_FAILED, $payment->method, $staffUserId);
 
             abort(422, $e->getMessage());
@@ -148,7 +152,7 @@ class StripeDepositPaymentService
                 'client_secret' => null,
             ],
             'requires_payment_method' => [
-                'payment' => LeaseEngine::applyPaymentStatusChange($payment->fresh(), Payment::STATUS_FAILED, $payment->method, $staffUserId),
+                'payment' => $this->markFailed($payment, $intent->last_payment_error->message ?? null, $staffUserId),
                 'requires_action' => false,
                 'client_secret' => null,
             ],
@@ -164,5 +168,15 @@ class StripeDepositPaymentService
                 'client_secret' => null,
             ],
         };
+    }
+
+    /** Marks a charge failed and keeps the processor's reason next to it, so staff can see why. */
+    private function markFailed(Payment $payment, ?string $message, ?int $staffUserId): Payment
+    {
+        if ($message) {
+            $payment->update(['failure_message' => Str::limit($message, 500, '')]);
+        }
+
+        return LeaseEngine::applyPaymentStatusChange($payment->fresh(), Payment::STATUS_FAILED, $payment->method, $staffUserId);
     }
 }

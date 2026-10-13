@@ -16,6 +16,9 @@ import { EditDetailModal, type EditField } from "@/components/applications/detai
 import { AddLeaseModal } from "@/components/applications/detail/AddLeaseModal";
 import { ChangeMowerModal } from "@/components/applications/detail/ChangeMowerModal";
 import { ChargeDepositModal } from "@/components/applications/detail/ChargeDepositModal";
+import { ProgressCard } from "@/components/applications/detail/ProgressCard";
+import { PaymentsCard } from "@/components/applications/detail/PaymentsCard";
+import { computeApplicationProgress } from "@/lib/application-progress";
 import { FileInput } from "@/components/applications/wizard/fields";
 import { EpoChart } from "@/components/applications/wizard/EpoChart";
 import { Modal } from "@/components/ui/Modal";
@@ -530,6 +533,12 @@ export default function ApplicationDetailPage() {
   const paidPayment = lease?.payments?.slice().reverse().find((p) => p.status === "paid");
 
   const signed = !!lease?.contract;
+  // Where the customer really is in the process (client, Joel, 2026-10-13). Only
+  // from "waiting on deposit" on: before that there is no contract to track.
+  const progress =
+    lease && (status === "waiting_deposit" || status === "waiting_delivery" || status === "finished")
+      ? computeApplicationProgress(application)
+      : null;
   // A deposit nobody has collected through the system (client, Joel, 2026-10-12):
   // the customer's own deposit button closes once the deposit is marked received
   // or the application moves on, so staff charge the saved method here after the
@@ -933,7 +942,7 @@ export default function ApplicationDetailPage() {
             disabled={!can("application_review") || acting}
             noPermission={!can("application_review")}
           />
-          <InfoCallout tone="blue" icon={CheckCircleIcon} title="Verified: next step" description="Application passed verification. Payment schedule generated." items={["Contract ready to send for signature", "Security deposit not yet collected"]} />
+          <InfoCallout tone="blue" icon={CheckCircleIcon} title="Next step" description={progress?.nextStep ?? "Application passed verification. Payment schedule generated."} />
           {application.customer?.status === "pending" && !lease?.contract && can("application_review") && (
             <div className="rounded-xl border border-neutral-200 bg-white p-5">
               <p className="font-heading text-xs font-bold uppercase tracking-wide text-neutral-400">Customer says they never got the signing email?</p>
@@ -965,13 +974,7 @@ export default function ApplicationDetailPage() {
             tone="teal"
             icon={SettingsIcon}
             title="Ready for pickup"
-            description="Unit is ready to hand off. First month's payment is due at delivery."
-            items={[
-              `Contract ${application.signature_received ? "signed" : "not yet signed"}`,
-              `Security deposit ${application.deposit_received ? "collected" : "not yet collected"}`,
-              `Pickup balance (tracking fee + first month) ${application.pickup_balance_received ? "collected" : "not yet collected"}`,
-              "Awaiting delivery and first payment to move to Finished",
-            ]}
+            description={progress?.nextStep ?? "Unit is ready to hand off. First month's payment is due at delivery."}
           />
         </>
       )}
@@ -1034,6 +1037,9 @@ export default function ApplicationDetailPage() {
           <p className="text-xs text-neutral-500">{application.status_notes ?? "Customer withdrew the application."}</p>
         </div>
       )}
+
+      {/* While the application is waiting on a deposit or delivery the blue callout above already says the next step. */}
+      {progress && <ProgressCard progress={progress} showNextStep={status === "finished"} />}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1fr_20rem]">
         <div className="space-y-6 lg:col-span-2">
@@ -1312,6 +1318,8 @@ export default function ApplicationDetailPage() {
           />
         </div>
       </div>
+
+      {progress && can("payment_tracking") && <PaymentsCard payments={lease?.payments ?? []} />}
 
       {lease?.epo_schedule && (
         <div className="rounded-xl border border-neutral-200 bg-white p-5">

@@ -12,6 +12,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Stripe\Event;
 use Stripe\Exception\SignatureVerificationException;
 use Stripe\PaymentIntent;
@@ -154,6 +155,13 @@ class StripeWebhookController extends Controller
                 Log::warning('Ignored a Stripe payment_failed event for an already-paid payment.', ['payment_id' => $payment->id]);
 
                 return;
+            }
+
+            if ($status === Payment::STATUS_FAILED) {
+                $message = $intent->last_payment_error['message'] ?? null;
+                if ($message) {
+                    $payment->update(['failure_message' => Str::limit($message, 500, '')]);
+                }
             }
 
             LeaseEngine::applyPaymentStatusChange($payment, $status, $payment->method, null);

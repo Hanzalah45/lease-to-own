@@ -118,6 +118,25 @@ class StripeWebhookTest extends TestCase
         $this->assertSame(Payment::STATUS_FAILED, $payment->fresh()->status);
     }
 
+    public function test_a_failed_payment_keeps_the_reason_stripe_gave(): void
+    {
+        $lease = LeaseAgreement::factory()->create(['equipment_unit_id' => null]);
+        $payment = Payment::factory()->create([
+            'lease_agreement_id' => $lease->id,
+            'type' => Payment::TYPE_DEPOSIT,
+            'status' => Payment::STATUS_PENDING,
+            'stripe_payment_intent_id' => 'pi_reason1',
+        ]);
+
+        $event = $this->paymentIntentEvent('payment_intent.payment_failed', 'pi_reason1');
+        $event['data']['object']['last_payment_error'] = ['code' => 'account_closed', 'message' => 'The bank account has been closed.'];
+        $this->postWebhook($event)->assertOk();
+
+        $payment->refresh();
+        $this->assertSame(Payment::STATUS_FAILED, $payment->status);
+        $this->assertSame('The bank account has been closed.', $payment->failure_message);
+    }
+
     public function test_an_event_for_an_unknown_payment_intent_is_a_harmless_no_op(): void
     {
         $response = $this->postWebhook($this->paymentIntentEvent('payment_intent.succeeded', 'pi_never_scheduled'));

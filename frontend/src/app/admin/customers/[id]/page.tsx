@@ -13,6 +13,8 @@ import { SectionHeading } from "@/components/dashboard/SectionHeading";
 import { DetailCard } from "@/components/applications/detail/DetailCard";
 import { StatusTag } from "@/components/dashboard/StatusTag";
 import { InfoRequestTimeline } from "@/components/applications/detail/InfoRequestTimeline";
+import { PaymentsCard } from "@/components/applications/detail/PaymentsCard";
+import { collectedToDate } from "@/lib/application-progress";
 import { money } from "@/components/applications/wizard/types";
 import type { Application, ApplicationStatus } from "@/types/application";
 import type { LeaseAgreement } from "@/types/lease-agreement";
@@ -157,7 +159,7 @@ function ApplicationBlock({ application }: { application: Application }) {
   const signed = !!contract;
   const badge = STATUS_STYLE[application.status];
   const payments = lease?.payments ?? [];
-  const collected = payments.filter((p) => p.status === "paid").reduce((sum, p) => sum + num(p.amount), 0);
+  const collected = collectedToDate(payments);
   const nextDue = payments
     .filter((p) => p.status === "pending")
     .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
@@ -216,6 +218,8 @@ function ApplicationBlock({ application }: { application: Application }) {
       )}
 
       {lease && <PaymentMethodsCard lease={lease} />}
+
+      {lease && payments.length > 0 && <PaymentsCard payments={payments} />}
 
       <InfoRequestTimeline
         requests={application.info_requests ?? []}

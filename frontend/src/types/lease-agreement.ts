@@ -92,6 +92,10 @@ export interface Payment {
   paid_date: string | null;
   method: "ach" | "card" | "cash" | "other" | null;
   status: "pending" | "paid" | "failed" | "refunded";
+  /** Why a charge failed, in the processor's words (client, Joel, 2026-10-13). Rental payments keep theirs per attempt. */
+  failure_message?: string | null;
+  /** Set once a charge was started with Stripe: a pending payment that has one is processing, not just scheduled. */
+  stripe_payment_intent_id?: string | null;
   recorded_by?: { id: number; name: string } | null;
   /** Automatic-charge history for a rental payment, oldest first (admin views only). */
   attempts?: PaymentAttempt[];

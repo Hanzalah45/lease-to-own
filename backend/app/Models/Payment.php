@@ -39,6 +39,7 @@ class Payment extends Model
         'paid_date',
         'method',
         'status',
+        'failure_message',
         'recorded_by',
         'stripe_payment_intent_id',
         'quickbooks_record_id',
