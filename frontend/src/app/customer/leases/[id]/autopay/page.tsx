@@ -97,7 +97,7 @@ export default function AutopaySetupPage() {
         <p className="text-sm font-semibold text-green-700">You&rsquo;re all set — AutoPay is ready to go.</p>
       )}
 
-      {atLeastOneMethodAdded && depositStatus && (
+      {atLeastOneMethodAdded && depositStatus && depositStatus.charges_open !== false && (
         <DepositPaymentCard
           status={depositStatus}
           onStatusChange={setDepositStatus}

@@ -119,6 +119,10 @@ class DepositPaymentController extends Controller
             ],
             'amount_due_full' => $lease->totalDueAtSigning(),
             'chargeable_method' => $lease->autopayChargeablePaymentMethod()['type'] ?? null,
+            // The deposit and the tracking fee + first month can only be charged before pickup. A customer who
+            // already has the equipment must not be offered "pay your deposit" (found live 2026-10-14 on a lease
+            // picked up under the old flow, where the pickup balance flag was never set).
+            'charges_open' => in_array($lease->application?->status, [Application::STATUS_WAITING_DEPOSIT, Application::STATUS_WAITING_DELIVERY], true),
             // Dual pricing (client, 2026-10-05): bank vs card price for every
             // charge, and which methods can actually be picked.
             'prices' => $lease->pricingSummary(),

@@ -83,7 +83,10 @@ export default function SignLeaseAgreementPage() {
       await signLease(lease.id, typedName.trim(), billingCycle ?? undefined);
       // Automatically continues into AutoPay setup (client, Joel, 2026-10-02)
       // — no further email/link needed, the customer is already logged in.
-      router.push(`/customer/leases/${lease.id}/autopay`);
+      // A customer who chose no AutoPay has nothing to set up there, so they
+      // land on their lease instead (client, Joel, 2026-10-14: a customer who
+      // opted out still saw the AutoPay screen after signing).
+      router.push(lease.autopay_enabled ? `/customer/leases/${lease.id}/autopay` : `/customer/leases/${lease.id}`);
     } catch (err) {
       setSignError(err instanceof ApiError ? err.message : "Could not sign the agreement. Please try again.");
     } finally {

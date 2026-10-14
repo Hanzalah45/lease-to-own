@@ -39,6 +39,8 @@ export interface DepositPaymentStatus {
     received: boolean;
   };
   amount_due_full: number;
+  /** False once the customer has picked up: the deposit and the tracking fee + first month are no longer offered. */
+  charges_open?: boolean;
   chargeable_method: PayMethod | null;
   /** Which saved methods the customer can actually pick from. */
   available_methods: PayMethod[];

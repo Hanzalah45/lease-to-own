@@ -273,6 +273,47 @@ class DepositPaymentTest extends TestCase
         $response->assertJsonPath('data.payment.status', 'paid');
     }
 
+    public function test_the_status_says_charges_are_open_only_before_pickup(): void
+    {
+        $lease = $this->signedLeaseReadyForDeposit();
+        $url = "/api/customer/lease-agreements/{$lease->id}/deposit-payment";
+
+        $this->actingAs($lease->customer, 'sanctum')->getJson($url)->assertOk()->assertJsonPath('data.charges_open', true);
+
+        $lease->application->update(['status' => Application::STATUS_WAITING_DELIVERY]);
+        $this->actingAs($lease->customer, 'sanctum')->getJson($url)->assertJsonPath('data.charges_open', true);
+
+        // A customer who already has the equipment is not offered the deposit or the tracking fee and first
+        // month, even when the old flow never set the pickup balance flag (found live 2026-10-14).
+        $lease->application->update(['status' => Application::STATUS_FINISHED, 'pickup_balance_received' => false]);
+        $this->actingAs($lease->customer, 'sanctum')->getJson($url)->assertJsonPath('data.charges_open', false);
+    }
+
+    public function test_the_signed_link_status_also_closes_charges_after_pickup(): void
+    {
+        $lease = $this->signedLeaseReadyForDeposit();
+        $lease->customer->update(['status' => 'pending']);
+        $lease->application->update(['status' => Application::STATUS_FINISHED]);
+
+        $url = PaymentMethodSigner::urlFor($lease->customer, $lease);
+        parse_str(parse_url($url, PHP_URL_QUERY), $params);
+
+        $this->postJson('/api/deposit-payments/verify-show', $params)->assertOk()->assertJsonPath('data.charges_open', false);
+    }
+
+    public function test_a_balance_charge_after_pickup_is_still_refused_by_the_server(): void
+    {
+        $lease = $this->signedLeaseReadyForDeposit();
+        $lease->application->update(['status' => Application::STATUS_FINISHED, 'pickup_balance_received' => false]);
+
+        $this->actingAs($lease->customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/deposit-payment/charge-balance")
+            ->assertStatus(422);
+
+        $this->assertSame(0, Payment::where('lease_agreement_id', $lease->id)->count());
+        $this->assertCount(0, $this->stripe->requests);
+    }
+
     public function test_a_tampered_signed_link_is_rejected_for_the_deposit_endpoint(): void
     {
         $lease = $this->signedLeaseReadyForDeposit();

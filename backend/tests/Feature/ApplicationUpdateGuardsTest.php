@@ -294,6 +294,25 @@ class ApplicationUpdateGuardsTest extends TestCase
         ])->assertOk();
     }
 
+    public function test_the_lease_agreement_endpoint_follows_the_same_rule(): void
+    {
+        $lease = LeaseAgreement::factory()->create(['monthly_rental_payment' => 150, 'term_months' => 36, 'autopay_enabled' => false]);
+        Payment::create(['lease_agreement_id' => $lease->id, 'type' => Payment::TYPE_RENTAL, 'amount' => 150, 'due_date' => now()->subDay(), 'status' => Payment::STATUS_PAID, 'paid_date' => now()]);
+        $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
+
+        // Unchanged term and rent sent along with an AutoPay change: allowed.
+        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/lease-agreements/{$lease->id}", [
+            'term_months' => 36, 'monthly_rental_payment' => 150, 'autopay_enabled' => true,
+        ])->assertOk();
+        $this->assertTrue($lease->fresh()->autopay_enabled);
+
+        // A real change is still refused once a payment has been made.
+        $this->actingAs($admin, 'sanctum')->putJson("/api/admin/lease-agreements/{$lease->id}", [
+            'term_months' => 24, 'monthly_rental_payment' => 150,
+        ])->assertStatus(422);
+        $this->assertSame(36, (int) $lease->fresh()->term_months);
+    }
+
     public function test_a_real_change_of_term_is_still_refused_after_a_payment_even_with_the_whole_form_sent(): void
     {
         $lease = LeaseAgreement::factory()->create(['monthly_rental_payment' => 150, 'term_months' => 36]);

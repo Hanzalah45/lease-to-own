@@ -50,7 +50,11 @@ class LeaseAgreementController extends Controller
             'billing_cycle' => ['sometimes', 'nullable', Rule::in(BillingSchedule::CYCLES)],
         ]);
 
-        $termsChanged = isset($data['term_months']) || isset($data['monthly_rental_payment']);
+        // Only a value that actually differs is a change: a form that sends every field must not be
+        // refused for fields it did not touch (see Admin\ApplicationController::update, 2026-10-14).
+        $termsChanged = (isset($data['term_months']) && (int) $data['term_months'] !== (int) $leaseAgreement->term_months)
+            || (isset($data['monthly_rental_payment'])
+                && abs((float) $data['monthly_rental_payment'] - (float) $leaseAgreement->monthly_rental_payment) >= 0.005);
 
         // No schedule exists before pickup any more (see LeaseEngine::startLease),
         // so there is nothing to rebuild on a terms edit. But money already

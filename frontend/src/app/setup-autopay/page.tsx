@@ -140,7 +140,7 @@ function SetupAutopayFlow() {
               </p>
             )}
 
-            {atLeastOneMethodAdded && depositStatus && (
+            {atLeastOneMethodAdded && depositStatus && depositStatus.charges_open !== false && (
               <DepositPaymentCard
                 status={depositStatus}
                 onStatusChange={setDepositStatus}

@@ -130,6 +130,8 @@ class PublicDepositPaymentController extends Controller
             ],
             'amount_due_full' => $lease->totalDueAtSigning(),
             'chargeable_method' => $lease->autopayChargeablePaymentMethod()['type'] ?? null,
+            // See Customer\DepositPaymentController::present(): no deposit or pickup balance is offered after pickup.
+            'charges_open' => in_array($lease->application?->status, [Application::STATUS_WAITING_DEPOSIT, Application::STATUS_WAITING_DELIVERY], true),
             // Dual pricing (client, 2026-10-05): bank vs card price for every
             // charge, and which methods can actually be picked.
             'prices' => $lease->pricingSummary(),
