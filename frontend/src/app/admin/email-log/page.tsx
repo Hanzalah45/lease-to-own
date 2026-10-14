@@ -93,6 +93,7 @@ export default function EmailLogPage() {
             <input
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
+              maxLength={100}
               placeholder="Search address, subject or customer name..."
               className="w-full rounded-lg border border-neutral-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-neutral-400"
             />
@@ -131,9 +132,13 @@ export default function EmailLogPage() {
                     {e.user && (
                       <>
                         {" · "}
-                        <Link href={`/admin/customers/${e.user.id}`} className="font-medium text-red-600 hover:underline">
-                          {e.user.name}
-                        </Link>
+                        {e.user.role === "customer" ? (
+                          <Link href={`/admin/customers/${e.user.id}`} className="font-medium text-red-600 hover:underline">
+                            {e.user.name}
+                          </Link>
+                        ) : (
+                          <span className="font-medium text-neutral-700">{e.user.name}</span>
+                        )}
                       </>
                     )}
                   </p>

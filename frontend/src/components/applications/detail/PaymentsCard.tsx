@@ -3,7 +3,7 @@
 import { SectionHeading } from "@/components/dashboard/SectionHeading";
 import { money } from "@/components/applications/wizard/types";
 import { formatDateOnly } from "@/lib/dates";
-import { firstMonthMirror, methodLabel, paymentTotal } from "@/lib/application-progress";
+import { firstMonthMirror, methodLabel, outcomeUnknown, paymentTotal } from "@/lib/application-progress";
 import type { Payment } from "@/types/lease-agreement";
 
 const TYPE_LABEL: Record<Payment["type"], string> = {
@@ -27,6 +27,7 @@ function badge(p: Payment): { label: string; className: string } {
     default:
       // Pending with a charge already started at the bank or card company is "processing";
       // a scheduled payment nobody has tried to collect yet is just scheduled.
+      if (outcomeUnknown(p)) return { label: "No answer", className: "bg-amber-100 text-amber-700" };
       return p.stripe_payment_intent_id
         ? { label: "Processing", className: "bg-amber-100 text-amber-700" }
         : { label: "Scheduled", className: "bg-neutral-100 text-neutral-600" };
@@ -60,6 +61,7 @@ function Row({ p, coveredAbove = false }: { p: Payment; coveredAbove?: boolean }
           {p.method ? ` · ${methodLabel(p.method)}` : ""}
         </p>
         {reason && <p className="mt-0.5 text-xs font-medium text-red-600">{reason}</p>}
+        {outcomeUnknown(p) && <p className="mt-0.5 text-xs font-medium text-amber-700">{p.failure_message}</p>}
         {coveredAbove && (
           <p className="mt-0.5 text-xs text-neutral-400">
             The first month was collected in the tracking fee and first month payment above. No extra money was taken.

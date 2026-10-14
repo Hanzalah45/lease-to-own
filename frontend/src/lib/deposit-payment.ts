@@ -12,6 +12,8 @@ export interface DepositPaymentSummary {
   card_fee_amount: string;
   paid_date: string | null;
   created_at: string;
+  /** The payment processor never answered the charge, so it may or may not have gone through. Pressing pay again repeats the same charge, never a second one. */
+  outcome_unknown?: boolean;
 }
 
 export type PayMethod = "bank" | "card";

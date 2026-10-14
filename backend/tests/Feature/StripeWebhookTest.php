@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\LeaseAgreement;
 use App\Models\Payment;
 use App\Models\StripeWebhookEvent;
+use App\Services\StripeDepositPaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -135,6 +136,44 @@ class StripeWebhookTest extends TestCase
         $payment->refresh();
         $this->assertSame(Payment::STATUS_FAILED, $payment->status);
         $this->assertSame('The bank account has been closed.', $payment->failure_message);
+    }
+
+    public function test_a_charge_that_got_no_answer_is_settled_by_its_own_event(): void
+    {
+        // The charge call timed out after Stripe took the money: the row has no intent id yet, only the metadata names it.
+        $lease = LeaseAgreement::factory()->create(['equipment_unit_id' => null]);
+        $payment = Payment::factory()->create([
+            'lease_agreement_id' => $lease->id,
+            'type' => Payment::TYPE_DEPOSIT,
+            'status' => Payment::STATUS_PENDING,
+            'stripe_payment_intent_id' => null,
+            'failure_message' => StripeDepositPaymentService::OUTCOME_UNKNOWN,
+        ]);
+
+        $event = $this->paymentIntentEvent('payment_intent.succeeded', 'pi_late_answer');
+        $event['data']['object']['metadata'] = ['payment_id' => (string) $payment->id, 'lease_id' => (string) $lease->id, 'type' => 'deposit'];
+        $this->postWebhook($event)->assertOk();
+
+        $payment->refresh();
+        $this->assertSame(Payment::STATUS_PAID, $payment->status);
+        $this->assertSame('pi_late_answer', $payment->stripe_payment_intent_id);
+    }
+
+    public function test_metadata_of_another_lease_does_not_settle_a_charge(): void
+    {
+        $lease = LeaseAgreement::factory()->create(['equipment_unit_id' => null]);
+        $payment = Payment::factory()->create([
+            'lease_agreement_id' => $lease->id,
+            'type' => Payment::TYPE_DEPOSIT,
+            'status' => Payment::STATUS_PENDING,
+            'stripe_payment_intent_id' => null,
+        ]);
+
+        $event = $this->paymentIntentEvent('payment_intent.succeeded', 'pi_foreign');
+        $event['data']['object']['metadata'] = ['payment_id' => (string) $payment->id, 'lease_id' => (string) ($lease->id + 999), 'type' => 'deposit'];
+        $this->postWebhook($event)->assertOk();
+
+        $this->assertSame(Payment::STATUS_PENDING, $payment->fresh()->status);
     }
 
     public function test_an_event_for_an_unknown_payment_intent_is_a_harmless_no_op(): void

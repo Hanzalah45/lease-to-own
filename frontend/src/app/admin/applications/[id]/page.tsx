@@ -19,7 +19,7 @@ import { ChargeDepositModal } from "@/components/applications/detail/ChargeDepos
 import { ProgressCard } from "@/components/applications/detail/ProgressCard";
 import { PaymentsCard } from "@/components/applications/detail/PaymentsCard";
 import { EmailsCard } from "@/components/emails/EmailsCard";
-import { computeApplicationProgress } from "@/lib/application-progress";
+import { computeApplicationProgress, firstMonthMirror, methodLabel, outcomeUnknown, paymentTotal } from "@/lib/application-progress";
 import { FileInput } from "@/components/applications/wizard/fields";
 import { EpoChart } from "@/components/applications/wizard/EpoChart";
 import { Modal } from "@/components/ui/Modal";
@@ -531,7 +531,10 @@ export default function ApplicationDetailPage() {
   const lease = application.lease_agreement;
   const equipment = lease?.equipment_unit;
   const badge = BADGE_STYLE[status];
-  const paidPayment = lease?.payments?.slice().reverse().find((p) => p.status === "paid");
+  // The latest payment that really moved money: the first month's mirror row (recorded without any charge) is skipped,
+  // and the amount shown includes any card fee.
+  const mirrorPayment = lease?.payments ? firstMonthMirror(lease.payments) : undefined;
+  const paidPayment = lease?.payments?.slice().reverse().find((p) => p.status === "paid" && p.id !== mirrorPayment?.id);
 
   const signed = !!lease?.contract;
   // Where the customer really is in the process (client, Joel, 2026-10-13). Only
@@ -544,7 +547,10 @@ export default function ApplicationDetailPage() {
   // the customer's own deposit button closes once the deposit is marked received
   // or the application moves on, so staff charge the saved method here after the
   // customer agreed. The server enforces every one of these rules too.
-  const depositOnRecord = !!lease?.payments?.some((p) => p.type === "deposit" && (p.status === "paid" || p.status === "pending"));
+  // A charge that got no answer from the payment processor is not "on record": charging again repeats it.
+  const depositOnRecord = !!lease?.payments?.some(
+    (p) => p.type === "deposit" && (p.status === "paid" || (p.status === "pending" && !outcomeUnknown(p))),
+  );
   const canChargeDeposit =
     can("payment_tracking") &&
     signed &&
@@ -983,7 +989,7 @@ export default function ApplicationDetailPage() {
       {status === "finished" && (
         <div className="rounded-xl border border-green-200 bg-green-50 px-5 py-3.5">
           <p className="text-sm font-bold text-green-700">
-            {paidPayment ? `Payment received: ${money(num(paidPayment.amount))}` : "Lease active. Delivered and first payment made"}
+            {paidPayment ? `Payment received: ${money(paymentTotal(paidPayment))}` : "Lease active. Delivered and first payment made"}
           </p>
           {paidPayment?.paid_date && <p className="text-xs text-neutral-500">{formatDateOnly(paidPayment.paid_date)}</p>}
           {equipment?.delivery_date && <p className="text-xs text-neutral-500">Delivered {formatDateOnly(equipment.delivery_date)}</p>}
@@ -1269,7 +1275,8 @@ export default function ApplicationDetailPage() {
               <p key={type} className="-mt-3 text-xs text-neutral-500">
                 {payment.status === "paid" ? (
                   <span className="font-medium text-green-700">
-                    {label} charged via Stripe: {money(total)}
+                    {label} {payment.stripe_payment_intent_id ? "charged via Stripe" : `recorded as paid by ${methodLabel(payment.method)}`}:{" "}
+                    {money(total)}
                     {fee > 0 ? ` (includes ${money(fee)} card fee)` : ""} on {formatDateOnly(payment.paid_date)}
                   </span>
                 ) : payment.status === "failed" ? (
@@ -1277,9 +1284,19 @@ export default function ApplicationDetailPage() {
                     {label}: Stripe charge declined, {money(total)}.
                     {type === "deposit" ? " Don’t mark received twice if you also collect this manually." : ""}
                   </span>
+                ) : payment.status === "refunded" ? (
+                  <span className="font-medium text-neutral-600">
+                    {label}: refunded, {money(total)}
+                  </span>
                 ) : (
                   <span className="font-medium text-amber-700">
-                    {label}: Stripe charge processing, {money(total)}
+                    {label}:{" "}
+                    {payment.stripe_payment_intent_id
+                      ? "Stripe charge processing"
+                      : outcomeUnknown(payment)
+                        ? "no answer from the payment processor, charge again to check it"
+                        : "scheduled, not charged yet"}
+                    , {money(total)}
                   </span>
                 )}
               </p>
@@ -1287,7 +1304,9 @@ export default function ApplicationDetailPage() {
           })}
           {canChargeDeposit && (
             <div className="-mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm font-semibold text-amber-900">No deposit payment on record</p>
+              <p className="text-sm font-semibold text-amber-900">
+                {lease?.payments?.some((p) => p.type === "deposit") ? "No deposit has been collected" : "No deposit payment on record"}
+              </p>
               <p className="mt-1 text-xs text-amber-800">
                 {application.deposit_received ? "The deposit is marked received, but no payment for it is recorded. " : ""}
                 Once the customer has agreed, charge it to their saved card or bank account here. If it was paid in cash,
@@ -1355,6 +1374,7 @@ export default function ApplicationDetailPage() {
         <ChargeDepositModal
           application={application}
           onClose={() => setShowChargeDeposit(false)}
+          onRefused={() => void load()}
           onCharged={(payment) => {
             setShowChargeDeposit(false);
             setChangeNotice(

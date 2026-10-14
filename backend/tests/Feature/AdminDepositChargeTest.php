@@ -8,8 +8,10 @@ use App\Models\Contract;
 use App\Models\LeaseAgreement;
 use App\Models\Payment;
 use App\Models\User;
+use App\Services\StripeDepositPaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Stripe\ApiRequestor;
+use Stripe\Exception\ApiConnectionException;
 use Tests\Support\FakeStripeHttpClient;
 use Tests\TestCase;
 
@@ -194,6 +196,89 @@ class AdminDepositChargeTest extends TestCase
         $payment = Payment::where('type', Payment::TYPE_DEPOSIT)->first();
         $this->assertSame('ach', $payment->method);
         $this->assertEqualsWithDelta(0.0, (float) $payment->card_fee_amount, 0.001);
+    }
+
+    public function test_a_charge_that_got_no_answer_is_repeated_never_charged_as_new(): void
+    {
+        $lease = $this->leaseWithOverlookedDeposit();
+        $admin = $this->admin();
+
+        // Stripe may have taken the charge even though the answer never arrived.
+        $this->stripe->queueException(new ApiConnectionException('timed out'));
+        $this->charge($admin, $lease)->assertStatus(503);
+
+        $payment = Payment::where('type', Payment::TYPE_DEPOSIT)->sole();
+        $this->assertSame(Payment::STATUS_PENDING, $payment->status);
+        $this->assertSame(StripeDepositPaymentService::OUTCOME_UNKNOWN, $payment->failure_message);
+        $this->assertSame(0, $lease->application->dealerNotes()->count());
+
+        // The next click repeats the same charge: same row, same idempotency key, so Stripe answers with the first result.
+        $this->stripe->queue(['id' => 'pi_after_timeout', 'object' => 'payment_intent', 'status' => 'succeeded']);
+        $this->charge($admin, $lease)->assertOk()->assertJsonPath('data.payment.status', 'paid');
+
+        $this->assertSame(1, Payment::where('type', Payment::TYPE_DEPOSIT)->count());
+        $this->assertCount(2, $this->stripe->requests);
+        $this->assertSame($this->stripe->idempotencyKey(0), $this->stripe->idempotencyKey(1));
+        $payment->refresh();
+        $this->assertSame(Payment::STATUS_PAID, $payment->status);
+        $this->assertSame('pi_after_timeout', $payment->stripe_payment_intent_id);
+        $this->assertNull($payment->failure_message);
+    }
+
+    public function test_a_stripe_server_error_is_also_an_unknown_outcome(): void
+    {
+        $lease = $this->leaseWithOverlookedDeposit();
+        $this->stripe->queue(['error' => ['message' => 'An error occurred with our API.', 'type' => 'api_error']], 500);
+
+        $this->charge($this->admin(), $lease)->assertStatus(503);
+
+        $payment = Payment::where('type', Payment::TYPE_DEPOSIT)->sole();
+        $this->assertSame(Payment::STATUS_PENDING, $payment->status);
+    }
+
+    public function test_an_unanswered_charge_is_not_repeated_for_a_different_amount(): void
+    {
+        $lease = $this->leaseWithOverlookedDeposit();
+        $this->stripe->queueException(new ApiConnectionException('timed out'));
+        $this->charge($this->admin(), $lease)->assertStatus(503); // card, $353.22
+
+        // The bank price is a different charge: Stripe would reject the repeated key, so nothing is sent.
+        $this->charge($this->admin(), $lease, ['method' => 'bank', 'expected_total_cents' => 34293])->assertStatus(422);
+
+        $this->assertCount(1, $this->stripe->requests);
+        $this->assertSame(1, Payment::where('type', Payment::TYPE_DEPOSIT)->count());
+    }
+
+    public function test_a_card_that_needs_the_customer_to_approve_is_cancelled_not_left_stuck(): void
+    {
+        $lease = $this->leaseWithOverlookedDeposit();
+        $this->stripe->queue(['id' => 'pi_needs_customer', 'object' => 'payment_intent', 'status' => 'requires_action', 'client_secret' => 'pi_x_secret_y']);
+        $this->stripe->queue(['id' => 'pi_needs_customer', 'object' => 'payment_intent', 'status' => 'canceled']);
+
+        $this->charge($this->admin(), $lease)->assertStatus(422);
+
+        $payment = Payment::where('type', Payment::TYPE_DEPOSIT)->sole();
+        $this->assertSame(Payment::STATUS_FAILED, $payment->status);
+        $this->assertStringContainsString('approve', (string) $payment->failure_message);
+        $this->assertStringContainsString('/cancel', $this->stripe->requests[1]['url']);
+        $this->assertStringContainsString('declined', $lease->application->dealerNotes()->first()->text);
+
+        // Nothing is left blocking the customer's own deposit or a second try.
+        $this->stripe->queue(['id' => 'pi_second', 'object' => 'payment_intent', 'status' => 'succeeded']);
+        $this->charge($this->admin(), $lease)->assertOk();
+    }
+
+    public function test_stripe_internal_error_text_is_not_shown_or_stored(): void
+    {
+        $lease = $this->leaseWithOverlookedDeposit();
+        $this->stripe->queue(['error' => ['message' => "No such PaymentMethod: 'pm_card_saved'", 'type' => 'invalid_request_error']], 400);
+
+        $response = $this->charge($this->admin(), $lease)->assertStatus(422);
+
+        $this->assertStringNotContainsString('pm_card_saved', $response->json('message'));
+        $payment = Payment::where('type', Payment::TYPE_DEPOSIT)->sole();
+        $this->assertSame(Payment::STATUS_FAILED, $payment->status);
+        $this->assertStringNotContainsString('pm_card_saved', (string) $payment->failure_message);
     }
 
     public function test_only_staff_with_payment_tracking_can_charge(): void

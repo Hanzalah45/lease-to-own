@@ -20,16 +20,23 @@ export function ChargeDepositModal({
   application,
   onClose,
   onCharged,
+  onRefused,
 }: {
   application: Application;
   onClose: () => void;
   onCharged: (payment: Payment) => void;
+  /** The server answered with an error: the page reloads, since a decline leaves a failed payment and a note behind and a 409 means the amounts changed. */
+  onRefused: () => void;
 }) {
   const lease = application.lease_agreement;
   const price = lease?.pricing?.deposit;
   const customerName = application.customer?.name ?? "the customer";
 
   const options: { method: Method; label: string; total: number; note: string }[] = [];
+  // The bank account comes first: it is the base price, so nobody is charged the card fee by default.
+  if (price && lease?.stripe_bank_payment_method_id) {
+    options.push({ method: "bank", label: "Saved bank account", total: price.bank, note: "no card fee, settles in a few business days" });
+  }
   if (price && lease?.stripe_card_payment_method_id) {
     options.push({
       method: "card",
@@ -37,9 +44,6 @@ export function ChargeDepositModal({
       total: price.card,
       note: `includes the ${lease.pricing?.card_fee_percent ?? 3}% card fee (${money(price.card_fee)})`,
     });
-  }
-  if (price && lease?.stripe_bank_payment_method_id) {
-    options.push({ method: "bank", label: "Saved bank account", total: price.bank, note: "no card fee, settles in a few business days" });
   }
 
   const [method, setMethod] = useState<Method | null>(options[0]?.method ?? null);
@@ -63,11 +67,19 @@ export function ChargeDepositModal({
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not charge the deposit.");
       setBusy(false);
+      // A decline writes a failed payment and a note on the server, and a 409 means the amounts moved:
+      // either way the page behind this window is out of date.
+      if (err instanceof ApiError) onRefused();
     }
   }
 
+  // The window cannot be dismissed while the charge is in flight, or a decline would never be seen.
+  const close = () => {
+    if (!busy) onClose();
+  };
+
   return (
-    <Modal title="Charge deposit" onClose={onClose} maxWidthClassName="max-w-lg">
+    <Modal title="Charge deposit" onClose={close} maxWidthClassName="max-w-lg">
       {!chosen ? (
         <p className="text-sm text-red-600">This customer has no saved card or bank account to charge.</p>
       ) : (
@@ -90,7 +102,12 @@ export function ChargeDepositModal({
                   name="deposit-method"
                   className="mt-1"
                   checked={method === o.method}
-                  onChange={() => setMethod(o.method)}
+                  onChange={() => {
+                    // The tick was given for one amount: a different method means a different total.
+                    setMethod(o.method);
+                    setAgreed(false);
+                    setError(null);
+                  }}
                 />
                 <span className="text-sm">
                   <span className="font-semibold text-neutral-900">
@@ -109,7 +126,11 @@ export function ChargeDepositModal({
             </span>
           </label>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && (
+            <p role="alert" className="text-sm text-red-600">
+              {error}
+            </p>
+          )}
 
           <div className="flex justify-end gap-2">
             <button

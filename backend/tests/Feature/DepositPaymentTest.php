@@ -14,6 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Stripe\ApiRequestor;
+use Stripe\Exception\ApiConnectionException;
 use Stripe\WebhookSignature;
 use Tests\Support\FakeStripeHttpClient;
 use Tests\TestCase;
@@ -169,6 +170,30 @@ class DepositPaymentTest extends TestCase
 
         $response->assertStatus(422);
         $this->assertCount(0, $this->stripe->requests);
+    }
+
+    public function test_a_customer_whose_charge_got_no_answer_can_press_pay_again(): void
+    {
+        $lease = $this->signedLeaseReadyForDeposit();
+        $charge = fn () => $this->actingAs($lease->customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/deposit-payment/charge");
+
+        $this->stripe->queue(['id' => 'cus_unanswered', 'object' => 'customer']);
+        $this->stripe->queueException(new ApiConnectionException('timed out'));
+        $charge()->assertStatus(503);
+
+        // The screen is told the outcome is unknown, so it offers the button again instead of "Processing…".
+        $status = $this->actingAs($lease->customer, 'sanctum')->getJson("/api/customer/lease-agreements/{$lease->id}/deposit-payment");
+        $status->assertOk()->assertJsonPath('data.security_deposit.payment.outcome_unknown', true);
+
+        // Pressing pay again repeats the same charge: one payment row, one idempotency key.
+        $this->stripe->queue(['id' => 'pi_answered', 'object' => 'payment_intent', 'status' => 'succeeded']);
+        $charge()->assertOk()->assertJsonPath('data.payment.status', 'paid');
+
+        $this->assertSame(1, Payment::where('lease_agreement_id', $lease->id)->where('type', Payment::TYPE_DEPOSIT)->count());
+        $chargeRequests = array_values(array_filter(array_keys($this->stripe->requests), fn ($i) => str_contains($this->stripe->requests[$i]['url'], 'payment_intents')));
+        $this->assertCount(2, $chargeRequests);
+        $this->assertSame($this->stripe->idempotencyKey($chargeRequests[0]), $this->stripe->idempotencyKey($chargeRequests[1]));
     }
 
     public function test_cannot_charge_with_no_payment_method_on_file(): void

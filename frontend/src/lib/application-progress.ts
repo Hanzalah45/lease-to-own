@@ -71,6 +71,15 @@ export function methodLabel(method: Payment["method"]): string {
   }
 }
 
+/**
+ * A charge whose call to the payment processor got no answer: pending with no
+ * charge behind it, and the server's note saying so. Pressing charge again
+ * repeats the same charge (never a second one), so it stays available.
+ */
+export function outcomeUnknown(p: Payment): boolean {
+  return (p.type === "deposit" || p.type === "pickup_balance") && p.status === "pending" && !p.stripe_payment_intent_id && !!p.failure_message;
+}
+
 /** The most recent payment of a kind (several rows exist when an attempt failed and was tried again). */
 function latestOfType(payments: Payment[], type: Payment["type"]): Payment | undefined {
   return payments
@@ -85,6 +94,7 @@ function paymentStep(
   payments: Payment[],
   receivedByHand: boolean,
   due: { bank: number; card: number } | undefined,
+  pickedUp: boolean,
 ): ProgressStep {
   const p = latestOfType(payments, key);
 
@@ -92,12 +102,23 @@ function paymentStep(
     const when = p.paid_date ? ` on ${formatDateOnly(p.paid_date)}` : "";
     return { key, label, state: "done", detail: `Paid ${money(paymentTotal(p))} by ${methodLabel(p.method)}${when}.` };
   }
+  if (p && outcomeUnknown(p)) {
+    return {
+      key,
+      label,
+      state: "attention",
+      detail: `No answer from the payment processor for ${money(paymentTotal(p))}. It may or may not have gone through. Charge again to check it: the same charge is repeated, never a second one.`,
+    };
+  }
   if (p?.status === "pending") {
+    // A pending row nobody has charged yet is only scheduled; one with a Stripe charge behind it is really processing.
     return {
       key,
       label,
       state: "waiting",
-      detail: `Processing ${money(paymentTotal(p))} by ${methodLabel(p.method)}. A bank debit can take a few business days.`,
+      detail: p.stripe_payment_intent_id
+        ? `Processing ${money(paymentTotal(p))} by ${methodLabel(p.method)}. A bank debit can take a few business days.`
+        : `Scheduled ${money(paymentTotal(p))}. Not charged yet.`,
     };
   }
   if (receivedByHand) {
@@ -108,12 +129,21 @@ function paymentStep(
       detail:
         p?.status === "failed"
           ? "Marked received by hand. A charge was declined and no payment is recorded."
-          : "Marked received by hand. No payment is recorded in the system.",
+          : p?.status === "refunded"
+            ? "Marked received by hand. The recorded payment was refunded."
+            : "Marked received by hand. No payment is recorded in the system.",
     };
+  }
+  if (pickedUp) {
+    // Picked up before the system collected this step: nothing is owed here, so nothing is waited for.
+    return { key, label, state: "off", detail: "Not collected through the system. The equipment has already been picked up." };
   }
   if (p?.status === "failed") {
     const reason = p.failure_message ? ` ${p.failure_message}` : "";
     return { key, label, state: "attention", detail: `Declined: ${money(paymentTotal(p))}.${reason}` };
+  }
+  if (p?.status === "refunded") {
+    return { key, label, state: "attention", detail: `Refunded: ${money(paymentTotal(p))}. Nothing is collected for this step now.` };
   }
   const amount = due ? ` (${money(due.bank)} by bank, ${money(due.card)} by card)` : "";
   return { key, label, state: "waiting", detail: `Not collected yet${amount}.` };
@@ -144,11 +174,12 @@ export function computeApplicationProgress(application: Application): Applicatio
   let autopayStep: ProgressStep;
   if (!lease || !lease.autopay_enabled) {
     autopayStep = { key: "autopay", label: "AutoPay set up", state: "off", detail: "AutoPay is off for this lease." };
+  } else if (lease.autopay_paused_at) {
+    // Paused is a staff decision that needs a person, whichever methods are on file.
+    autopayStep = { key: "autopay", label: "AutoPay set up", state: "attention", detail: "Automatic charging is paused on this lease." };
   } else if (bank && card) {
     const primary = lease.autopay_primary_method === "card" ? "card" : "bank account";
-    autopayStep = lease.autopay_paused_at
-      ? { key: "autopay", label: "AutoPay set up", state: "attention", detail: "Bank account and card are on file, but automatic charging is paused on this lease." }
-      : { key: "autopay", label: "AutoPay set up", state: "done", detail: `Bank account and card are on file. Charged first: ${primary}.` };
+    autopayStep = { key: "autopay", label: "AutoPay set up", state: "done", detail: `Bank account and card are on file. Charged first: ${primary}.` };
   } else if (bank || card) {
     autopayStep = {
       key: "autopay",
@@ -166,13 +197,15 @@ export function computeApplicationProgress(application: Application): Applicatio
   }
 
   // 3 and 4. The two charges
-  const depositStep = paymentStep("deposit", "Security deposit", payments, application.deposit_received, lease?.pricing?.deposit);
+  const pickedUp = application.status === "finished";
+  const depositStep = paymentStep("deposit", "Security deposit", payments, application.deposit_received, lease?.pricing?.deposit, pickedUp);
   const balanceStep = paymentStep(
     "pickup_balance",
     "Tracking fee and first month",
     payments,
     application.pickup_balance_received,
     lease?.pricing?.pickup_balance,
+    pickedUp,
   );
 
   // 5. Pickup
@@ -201,6 +234,22 @@ function nextStepFor(application: Application, steps: ProgressStep[]): string {
 
   if (open(byKey.contract)) return "Waiting for the customer to sign the contract.";
 
+  // A declined or refunded charge is the first thing staff must see: it would otherwise hide behind a missing AutoPay method.
+  if (byKey.deposit.state === "attention") {
+    return byKey.deposit.detail.startsWith("Refunded")
+      ? "The deposit was refunded. Check whether a new deposit is needed."
+      : byKey.deposit.detail.startsWith("No answer")
+        ? "The deposit charge got no answer from the payment processor. Charge it again here to check it, or ask the customer to press pay again."
+        : "The deposit charge was declined. Ask the customer to try again, or charge it here once they agree.";
+  }
+  if (byKey.pickup_balance.state === "attention") {
+    return byKey.pickup_balance.detail.startsWith("Refunded")
+      ? "The tracking fee and first month was refunded. Check whether it needs to be collected again."
+      : byKey.pickup_balance.detail.startsWith("No answer")
+        ? "The tracking fee and first month charge got no answer from the payment processor. Ask the customer to press pay again to check it."
+        : "The tracking fee and first month charge was declined. Ask the customer to try again.";
+  }
+
   if (open(byKey.autopay)) {
     if (byKey.autopay.state === "attention") return "AutoPay is paused on this lease. Resume it when the customer is ready.";
     return byKey.autopay.detail.startsWith("Bank account added")
@@ -210,10 +259,8 @@ function nextStepFor(application: Application, steps: ProgressStep[]): string {
         : "Waiting for the customer to add a bank account and a card for AutoPay.";
   }
 
-  if (byKey.deposit.state === "attention") return "The deposit charge was declined. Ask the customer to try again, or charge it here once they agree.";
   if (open(byKey.deposit)) return byKey.deposit.detail.startsWith("Processing") ? "The deposit bank debit is still processing." : "Waiting for the security deposit.";
 
-  if (byKey.pickup_balance.state === "attention") return "The tracking fee and first month charge was declined. Ask the customer to try again.";
   if (open(byKey.pickup_balance)) {
     return byKey.pickup_balance.detail.startsWith("Processing")
       ? "The tracking fee and first month bank debit is still processing."

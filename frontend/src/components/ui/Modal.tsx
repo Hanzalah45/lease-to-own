@@ -43,6 +43,7 @@ export function Modal({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
           >
             <XIcon className="h-4 w-4" />

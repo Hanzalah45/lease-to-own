@@ -140,10 +140,35 @@ class StripeWebhookController extends Controller
             ->first();
     }
 
+    /** The deposit or pickup charge whose call never got an answer and which this intent belongs to, now tied to the intent. */
+    private function unansweredChargeFor(PaymentIntent $intent): ?Payment
+    {
+        $metadata = $intent->metadata ? $intent->metadata->toArray() : [];
+        if (! in_array($metadata['type'] ?? null, [Payment::TYPE_DEPOSIT, Payment::TYPE_PICKUP_BALANCE], true) || empty($metadata['payment_id'])) {
+            return null;
+        }
+
+        $payment = Payment::whereKey($metadata['payment_id'])
+            ->where('type', $metadata['type'])
+            ->where('lease_agreement_id', $metadata['lease_id'] ?? 0)
+            ->whereNull('stripe_payment_intent_id')
+            ->lockForUpdate()
+            ->first();
+        $payment?->update(['stripe_payment_intent_id' => $intent->id]);
+
+        return $payment;
+    }
+
     private function markFromIntent(PaymentIntent $intent, string $status): void
     {
         DB::transaction(function () use ($intent, $status) {
             $payment = Payment::where('stripe_payment_intent_id', $intent->id)->lockForUpdate()->first();
+            if (! $payment) {
+                // The charge call can time out after Stripe took the charge, leaving the row
+                // without its intent id (StripeDepositPaymentService keeps such a row open as
+                // "outcome unknown"). The intent's own metadata still names the row.
+                $payment = $this->unansweredChargeFor($intent);
+            }
             if (! $payment) {
                 // No scheduled payment row references this intent — nothing to update.
                 return;

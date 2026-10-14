@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\StripeDepositPaymentService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -63,6 +64,25 @@ class Payment extends Model
     public function totalCharged(): float
     {
         return round((float) $this->amount + (float) $this->card_fee_amount, 2);
+    }
+
+    /**
+     * A deposit or pickup charge whose call to Stripe got no answer (see
+     * StripeDepositPaymentService::OUTCOME_UNKNOWN): pending with no charge behind
+     * it yet. The customer may press pay again, which repeats the same charge.
+     */
+    public function outcomeUnknown(): bool
+    {
+        return $this->status === self::STATUS_PENDING
+            && ! $this->stripe_payment_intent_id
+            && $this->failure_message === StripeDepositPaymentService::OUTCOME_UNKNOWN;
+    }
+
+    /** The few fields a customer sees about a deposit or pickup charge. */
+    public function customerSummary(): array
+    {
+        return $this->only(['id', 'status', 'method', 'amount', 'card_fee_amount', 'paid_date', 'created_at'])
+            + ['outcome_unknown' => $this->outcomeUnknown()];
     }
 
     public function leaseAgreement(): BelongsTo

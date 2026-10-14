@@ -16,24 +16,28 @@ const SHOWN = 8;
  * the address is shown exactly as it was used.
  */
 export function EmailsCard({ customerId }: { customerId: number | string }) {
-  const [emails, setEmails] = useState<EmailLogEntry[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // The answer is kept with the customer it belongs to, so moving to another customer never shows the last one's emails or error.
+  const [loaded, setLoaded] = useState<{ customerId: number | string; emails: EmailLogEntry[] | null; error: string | null } | null>(null);
   const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     listCustomerEmails(customerId)
       .then((rows) => {
-        if (!cancelled) setEmails(rows);
+        if (!cancelled) setLoaded({ customerId, emails: rows, error: null });
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : "Could not load the email history.");
+        if (!cancelled)
+          setLoaded({ customerId, emails: null, error: err instanceof ApiError ? err.message : "Could not load the email history." });
       });
     return () => {
       cancelled = true;
     };
   }, [customerId]);
 
+  const current = loaded && loaded.customerId === customerId ? loaded : null;
+  const emails = current?.emails ?? null;
+  const error = current?.error ?? null;
   const rows = emails ? (showAll ? emails : emails.slice(0, SHOWN)) : [];
 
   return (

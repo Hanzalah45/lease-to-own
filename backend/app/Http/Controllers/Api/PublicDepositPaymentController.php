@@ -116,7 +116,7 @@ class PublicDepositPaymentController extends Controller
         return [
             'security_deposit' => [
                 'amount' => $lease->depositAmountDue(),
-                'payment' => $depositPayment?->only(['id', 'status', 'method', 'amount', 'card_fee_amount', 'paid_date', 'created_at']),
+                'payment' => $depositPayment?->customerSummary(),
                 'received' => (bool) $lease->application?->deposit_received,
             ],
             'pickup_balance' => [
@@ -125,7 +125,7 @@ class PublicDepositPaymentController extends Controller
                     'tracking_device_fee' => LeaseAgreement::TRACKING_DEVICE_FEE,
                     'first_month_payment' => $lease->totalMonthlyPayment(),
                 ],
-                'payment' => $balancePayment?->only(['id', 'status', 'method', 'amount', 'card_fee_amount', 'paid_date', 'created_at']),
+                'payment' => $balancePayment?->customerSummary(),
                 'received' => (bool) $lease->application?->pickup_balance_received,
             ],
             'amount_due_full' => $lease->totalDueAtSigning(),

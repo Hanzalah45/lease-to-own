@@ -47,6 +47,12 @@ class DepositChargeController extends Controller
 
         $admin = $request->user();
         $lastDepositId = (int) $lease->payments()->where('type', Payment::TYPE_DEPOSIT)->max('id');
+        // An earlier charge that never got an answer is picked up again by this one (same row), not added as a new row.
+        $resumedId = $lease->payments()
+            ->where('type', Payment::TYPE_DEPOSIT)
+            ->where('status', Payment::STATUS_PENDING)
+            ->whereNull('stripe_payment_intent_id')
+            ->value('id');
 
         try {
             $result = $this->deposits->chargeDepositOnly($lease, $data['method'], (int) $data['expected_total_cents'], $admin->id);
@@ -58,7 +64,7 @@ class DepositChargeController extends Controller
             $declined = $lease->payments()
                 ->where('type', Payment::TYPE_DEPOSIT)
                 ->where('status', Payment::STATUS_FAILED)
-                ->where('id', '>', $lastDepositId)
+                ->where(fn ($q) => $q->where('id', '>', $lastDepositId)->when($resumedId, fn ($r) => $r->orWhere('id', $resumedId)))
                 ->latest('id')
                 ->first();
             if ($declined) {

@@ -23,7 +23,7 @@ class EmailLogController extends Controller
             'status' => ['nullable', Rule::in([EmailLog::STATUS_SENDING, EmailLog::STATUS_SENT, EmailLog::STATUS_FAILED])],
         ]);
 
-        $query = EmailLog::query()->with('user:id,name')->latest('id');
+        $query = EmailLog::query()->with('user:id,name,role')->latest('id');
 
         if (! empty($data['status'])) {
             $query->where('status', $data['status']);

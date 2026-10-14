@@ -78,7 +78,8 @@ class CommonValidationRules
     public static function email($uniqueRule = null, bool $required = true): array
     {
         return array_filter([
-            $required ? 'required' : 'sometimes', 'string', 'email', 'max:'.self::EMAIL_MAX, new EmailDomainExists, $uniqueRule,
+            // bail: the DNS lookup only runs for an address that is already well formed.
+            $required ? 'required' : 'sometimes', 'bail', 'string', 'email', 'max:'.self::EMAIL_MAX, new EmailDomainExists, $uniqueRule,
         ]);
     }
 

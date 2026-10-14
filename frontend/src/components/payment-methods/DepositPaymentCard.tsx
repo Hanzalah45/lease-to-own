@@ -99,7 +99,7 @@ export function DepositPaymentCard({
     onStatusChange(next);
     let current = select(next);
 
-    for (let attempt = 0; current?.status === "pending" && attempt < 5; attempt++) {
+    for (let attempt = 0; current?.status === "pending" && !current.outcome_unknown && attempt < 5; attempt++) {
       await sleep(2500);
       next = await onRefreshStatus();
       onStatusChange(next);
@@ -118,7 +118,8 @@ export function DepositPaymentCard({
     } catch (err) {
       // 409: the price or method changed since this screen loaded. Reload it
       // so the customer sees the new total before deciding again.
-      if (err instanceof ApiError && err.status === 409) {
+      // 503: the payment processor did not answer. The charge is left open, so show it as such.
+      if (err instanceof ApiError && (err.status === 409 || err.status === 503)) {
         onStatusChange(await onRefreshStatus().catch(() => status));
       }
       setError(errorMessage(err, "Could not process the payment. Please try again."));
@@ -291,6 +292,21 @@ function StatusOrActions({
           {fee > 0 ? ` (includes a ${money(fee)} card fee)` : ""}
         </span>
       </p>
+    );
+  }
+
+  if (payment?.status === "pending" && payment.outcome_unknown) {
+    return (
+      <div>
+        <p className="mt-4 flex items-start gap-1.5 text-sm font-medium text-amber-700">
+          <ClockIcon className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            We could not confirm this payment with the payment processor. Press the button below to check it. The same
+            payment is checked, you are never charged twice.
+          </span>
+        </p>
+        {children}
+      </div>
     );
   }
 

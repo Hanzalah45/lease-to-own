@@ -17,7 +17,7 @@ export interface EmailLogEntry {
   status: "sending" | "sent" | "failed";
   error: string | null;
   created_at: string;
-  user?: { id: number; name: string } | null;
+  user?: { id: number; name: string; role?: string } | null;
 }
 
 export interface EmailLogPage {

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Rules\EmailDomainExists;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -110,9 +111,22 @@ class DeletedCustomerEmailTest extends TestCase
         $this->assertSame('live@example.com', $live->fresh()->email);
     }
 
+    protected function tearDown(): void
+    {
+        EmailDomainExists::$lookup = null;
+        parent::tearDown();
+    }
+
+    /** DNS as the test wants it: only the named domains resolve. */
+    private function dnsKnows(string ...$domains): void
+    {
+        EmailDomainExists::$lookup = fn (string $name, string $type) => in_array(rtrim($name, '.'), $domains, true);
+    }
+
     public function test_a_mistyped_email_domain_is_rejected_when_the_check_is_on(): void
     {
         config(['app.validate_email_dns' => true]);
+        $this->dnsKnows('gmail.com', 'google.com');
 
         $this->actingAs($this->admin(), 'sanctum')->postJson('/api/admin/customers', [
             'name' => 'Typo Person',
@@ -121,6 +135,51 @@ class DeletedCustomerEmailTest extends TestCase
             'password' => 'Correct-Horse-9',
         ])->assertStatus(422)
             ->assertJsonPath('errors.email.0', 'The part after the @ in this email address does not exist. Please check it for typos.');
+    }
+
+    public function test_a_real_email_domain_is_accepted_when_the_check_is_on(): void
+    {
+        config(['app.validate_email_dns' => true]);
+        $this->dnsKnows('gmail.com', 'google.com');
+
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/admin/customers', [
+            'name' => 'Real Person',
+            'email' => 'real@gmail.com',
+            'phone' => '9365550100',
+            'password' => 'Correct-Horse-9',
+        ])->assertCreated();
+    }
+
+    public function test_a_failing_dns_lookup_does_not_reject_a_customer(): void
+    {
+        // Nothing resolves, not even a domain that certainly exists: the lookup is broken, not the address.
+        config(['app.validate_email_dns' => true]);
+        $this->dnsKnows();
+
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/admin/customers', [
+            'name' => 'Resolver Down',
+            'email' => 'person@gmail.com',
+            'phone' => '9365550100',
+            'password' => 'Correct-Horse-9',
+        ])->assertCreated();
+    }
+
+    public function test_a_domain_that_resolved_once_is_not_looked_up_again(): void
+    {
+        config(['app.validate_email_dns' => true]);
+        $this->dnsKnows('gmail.com', 'google.com');
+        $payload = fn (string $email) => [
+            'name' => 'Cached Person',
+            'email' => $email,
+            'phone' => '9365550100',
+            'password' => 'Correct-Horse-9',
+        ];
+
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/admin/customers', $payload('first@gmail.com'))->assertCreated();
+
+        // The domain stops resolving; the answer from a moment ago still stands.
+        $this->dnsKnows('google.com');
+        $this->actingAs($this->admin(), 'sanctum')->postJson('/api/admin/customers', $payload('second@gmail.com'))->assertCreated();
     }
 
     public function test_the_domain_check_is_off_by_default_outside_production(): void
