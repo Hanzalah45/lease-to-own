@@ -62,6 +62,53 @@ export default function AdminContractsPage() {
   });
   const awaiting = leases.filter((l) => !l.contract);
 
+  // A voided signature leaves the signed list, so these customers would otherwise vanish from this page
+  // (client, Joel, 2026-10-14). Newest void first.
+  const lastVoid = (l: LeaseAgreement) =>
+    (l.contracts ?? [])
+      .filter((c) => c.voided_at)
+      .sort((a, b) => new Date(b.voided_at!).getTime() - new Date(a.voided_at!).getTime())[0];
+  const voided = awaiting
+    .filter((l) => lastVoid(l))
+    .sort((a, b) => new Date(lastVoid(b)!.voided_at!).getTime() - new Date(lastVoid(a)!.voided_at!).getTime());
+
+  const voidedColumns: DataTableColumn<LeaseAgreement>[] = [
+    {
+      key: "customer",
+      header: "Customer",
+      render: (r) => (
+        <>
+          <p className="font-medium text-neutral-900">{r.customer?.name ?? "—"}</p>
+          <p className="text-xs text-neutral-400">{r.equipment_unit?.model ?? "—"}</p>
+        </>
+      ),
+    },
+    {
+      key: "voided_at",
+      header: "Voided",
+      render: (r) => <span className="text-neutral-500">{new Date(lastVoid(r)!.voided_at!).toLocaleDateString()}</span>,
+    },
+    {
+      key: "reason",
+      header: "Reason",
+      render: (r) => <span className="text-neutral-500">{lastVoid(r)?.void_reason ?? "—"}</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: () => <StatusTag color="#D97706" label="Waiting for a new signature" />,
+    },
+    {
+      key: "action",
+      header: "",
+      render: (r) => (
+        <Link href={`/admin/applications/${r.application_id}/contract`} className="text-sm font-semibold text-red-600 hover:underline">
+          View →
+        </Link>
+      ),
+    },
+  ];
+
   const columns: DataTableColumn<LeaseAgreement>[] = [
     {
       key: "customer",
@@ -110,7 +157,10 @@ export default function AdminContractsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeroHeader title="Contracts" subtitle="Every signed lease agreement on file, with the current e-signature and a downloadable PDF." />
+      <PageHeroHeader
+        title="Contracts"
+        subtitle="Every signed lease agreement on file, with the current e-signature and a downloadable PDF, and the customers whose signature was voided."
+      />
 
       {loading && <p className="text-sm text-neutral-500">Loading…</p>}
       {loadError && <p className="text-sm text-red-600">{loadError}</p>}
@@ -119,9 +169,12 @@ export default function AdminContractsPage() {
       {!loading && !loadError && (
         <>
           <DataTable title="Signed contracts" columns={columns} rows={signed} emptyLabel="No contracts signed yet." />
+          {voided.length > 0 && (
+            <DataTable title="Signature voided" columns={voidedColumns} rows={voided} emptyLabel="" />
+          )}
           {awaiting.length > 0 && (
             <p className="text-sm text-neutral-400">
-              {awaiting.length} lease agreement{awaiting.length === 1 ? "" : "s"} still awaiting the customer's signature.
+              {awaiting.length} lease agreement{awaiting.length === 1 ? "" : "s"} still awaiting the customer&apos;s signature.
             </p>
           )}
         </>

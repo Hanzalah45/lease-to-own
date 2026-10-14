@@ -22,6 +22,7 @@ export default function LeaseContractPage() {
   const [showVoidConfirm, setShowVoidConfirm] = useState(false);
   const [voidReason, setVoidReason] = useState("");
   const [voidReasonTouched, setVoidReasonTouched] = useState(false);
+  const [notifyOnVoid, setNotifyOnVoid] = useState(false);
   const [voiding, setVoiding] = useState(false);
   const [voidError, setVoidError] = useState<string | null>(null);
 
@@ -62,6 +63,7 @@ export default function LeaseContractPage() {
     setShowVoidConfirm(false);
     setVoidReason("");
     setVoidReasonTouched(false);
+    setNotifyOnVoid(false);
     setVoidError(null);
   }
 
@@ -73,7 +75,7 @@ export default function LeaseContractPage() {
     setVoiding(true);
     setVoidError(null);
     try {
-      await voidContract(contractId, voidReason.trim());
+      await voidContract(contractId, voidReason.trim(), notifyOnVoid);
       closeVoidConfirm();
       await load();
     } catch (err) {
@@ -189,7 +191,7 @@ export default function LeaseContractPage() {
         <Modal title="Void this signature" onClose={closeVoidConfirm} maxWidthClassName="max-w-sm">
           <div className="space-y-4">
             <p className="text-sm text-neutral-600">
-              The customer will be notified and asked to sign again. The old PDF stays on file; this doesn&rsquo;t delete anything.
+              The customer is not emailed unless you tick the box below. The old PDF stays on file; this doesn&rsquo;t delete anything.
             </p>
             <div>
               <textarea
@@ -212,6 +214,15 @@ export default function LeaseContractPage() {
                 </p>
               </div>
             </div>
+            <label className="flex cursor-pointer items-start gap-2 text-sm text-neutral-700">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={notifyOnVoid}
+                onChange={(e) => setNotifyOnVoid(e.target.checked)}
+              />
+              <span>Also email the customer asking them to sign again</span>
+            </label>
             {voidError && <p className="text-xs text-red-600">{voidError}</p>}
             <div className="flex justify-end gap-2">
               <button

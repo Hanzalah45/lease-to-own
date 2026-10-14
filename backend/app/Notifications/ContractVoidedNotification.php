@@ -6,7 +6,10 @@ use App\Models\Contract;
 use App\Notifications\Concerns\BuildsMailFromArray;
 use Illuminate\Notifications\Notification;
 
-/** Sent to the customer when an admin voids their signed contract, asking them to review and sign again. */
+/**
+ * Asks the customer to review and sign again after their signed contract was voided. Sent when a
+ * mower change re-prices the lease, and when an admin voids a signature and chooses to notify them.
+ */
 class ContractVoidedNotification extends Notification
 {
     use BuildsMailFromArray;

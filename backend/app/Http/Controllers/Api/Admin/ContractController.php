@@ -25,11 +25,16 @@ class ContractController extends Controller
      * file as a permanent record. Clears the way for the customer to sign
      * again (LeaseAgreement::contract() stops returning a voided row) and
      * for the admin to edit the lease's terms again in the meantime.
+     *
+     * The customer is only emailed when the admin asks for it (client, Joel,
+     * 2026-10-14): a signature is voided for a reason, and an automatic "please
+     * sign again" email went out whether or not staff wanted the customer to.
      */
     public function void(Request $request, Contract $contract)
     {
         $data = $request->validate([
             'reason' => ['required', 'string', 'min:2', 'max:1000'],
+            'notify_customer' => ['sometimes', 'boolean'],
         ]);
 
         // Locked and re-checked inside the transaction so two admins voiding
@@ -48,7 +53,7 @@ class ContractController extends Controller
 
         $contract = $contract->fresh()->loadMissing('leaseAgreement.customer.customerProfile');
         $customer = $contract->leaseAgreement?->customer;
-        if ($customer && ($customer->customerProfile?->status_change_emails ?? true)) {
+        if ($customer && ($data['notify_customer'] ?? false) && ($customer->customerProfile?->status_change_emails ?? true)) {
             $customer->notify(new ContractVoidedNotification($contract));
         }
 

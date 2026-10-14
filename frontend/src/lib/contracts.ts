@@ -108,12 +108,15 @@ export function previewSignedLease(params: SignedContractLinkParams): Promise<vo
   );
 }
 
-/** Voids a signed contract — the customer is notified and can sign again once this clears. */
-export async function voidContract(contractId: number, reason: string): Promise<Contract> {
+/**
+ * Voids a signed contract. The customer can sign again once this clears, and is only emailed when
+ * `notifyCustomer` is true (client, Joel, 2026-10-14: voiding must not send an automatic request to sign again).
+ */
+export async function voidContract(contractId: number, reason: string, notifyCustomer = false): Promise<Contract> {
   const data = await apiFetch<{ data: Contract }>(`/admin/contracts/${contractId}/void`, {
     method: "POST",
     token: getToken(),
-    body: { reason },
+    body: { reason, notify_customer: notifyCustomer },
   });
   return data.data;
 }

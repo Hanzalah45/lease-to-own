@@ -197,12 +197,47 @@ class ContractSigningTest extends TestCase
 
         $this->actingAs($admin, 'sanctum')->postJson("/api/admin/contracts/{$contract->id}/void", [
             'reason' => 'Terms changed.',
+            'notify_customer' => true,
         ])->assertOk();
 
         Notification::assertNothingSent();
     }
 
-    public function test_void_notification_still_sent_by_default(): void
+    public function test_voiding_does_not_email_the_customer_unless_staff_ask_for_it(): void
+    {
+        Notification::fake();
+
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
+        $contract = Contract::factory()->create(['lease_agreement_id' => $lease->id, 'signer_user_id' => $lease->customer_id]);
+        $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
+
+        // Client, Joel, 2026-10-14: a signature voided for a reason must not send an automatic "sign again" email.
+        $this->actingAs($admin, 'sanctum')->postJson("/api/admin/contracts/{$contract->id}/void", [
+            'reason' => 'Terms changed.',
+        ])->assertOk();
+
+        $this->assertNotNull($contract->fresh()->voided_at);
+        Notification::assertNothingSent();
+    }
+
+    public function test_the_lease_list_tells_staff_which_leases_had_a_signature_voided(): void
+    {
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
+        $contract = Contract::factory()->create(['lease_agreement_id' => $lease->id, 'signer_user_id' => $lease->customer_id]);
+        $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
+        $this->actingAs($admin, 'sanctum')->postJson("/api/admin/contracts/{$contract->id}/void", ['reason' => 'New terms.'])->assertOk();
+
+        // Without an active contract the customer drops out of the signed list, so the list must say why (Contracts page).
+        $row = collect($this->actingAs($admin, 'sanctum')->getJson('/api/admin/lease-agreements')->assertOk()->json('data'))
+            ->firstWhere('id', $lease->id);
+
+        $this->assertNull($row['contract']);
+        $this->assertCount(1, $row['contracts']);
+        $this->assertNotNull($row['contracts'][0]['voided_at']);
+        $this->assertSame('New terms.', $row['contracts'][0]['void_reason']);
+    }
+
+    public function test_voiding_emails_the_customer_when_staff_choose_to_notify_them(): void
     {
         Notification::fake();
 
@@ -212,6 +247,7 @@ class ContractSigningTest extends TestCase
 
         $this->actingAs($admin, 'sanctum')->postJson("/api/admin/contracts/{$contract->id}/void", [
             'reason' => 'Terms changed.',
+            'notify_customer' => true,
         ])->assertOk();
 
         Notification::assertSentTo($lease->customer, ContractVoidedNotification::class);

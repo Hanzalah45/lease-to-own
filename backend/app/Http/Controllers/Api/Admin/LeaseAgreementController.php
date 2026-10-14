@@ -17,7 +17,11 @@ class LeaseAgreementController extends Controller
     {
         // Eager-loading payments lets paymentsMadeCount()/epoToday() below use
         // the loaded collection instead of a fresh COUNT query per lease.
-        $leases = LeaseAgreement::with(['customer:id,name,email', 'equipmentUnit', 'contract', 'updatedBy:id,name', 'payments'])->latest()->get();
+        // `contracts` (only what the list needs) lets the Contracts page say which customers had a signature voided.
+        $leases = LeaseAgreement::with([
+            'customer:id,name,email', 'equipmentUnit', 'contract', 'updatedBy:id,name', 'payments',
+            'contracts:id,lease_agreement_id,voided_at,void_reason,created_at',
+        ])->latest()->get();
 
         return response()->json(['data' => $leases->map(fn ($lease) => $this->present($lease))]);
     }
