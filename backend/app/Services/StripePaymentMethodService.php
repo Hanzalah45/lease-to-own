@@ -77,7 +77,7 @@ class StripePaymentMethodService
      * customer's Stripe profile. For a bank account, also checks it against
      * the Plaid-verified one on file and flags a mismatch — Joel, 2026-10-01.
      */
-    public function attachPaymentMethod(LeaseAgreement $lease, string $type, string $setupIntentId): void
+    public function attachPaymentMethod(LeaseAgreement $lease, string $type, string $setupIntentId): PaymentMethod
     {
         $stripeCustomerId = $lease->customer->customerProfile?->stripe_customer_id;
         $setupIntent = $this->stripe->setupIntents->retrieve($setupIntentId);
@@ -112,6 +112,8 @@ class StripePaymentMethodService
         if ($type === 'bank') {
             $this->flagBankAccountMismatchIfNeeded($lease, $paymentMethod);
         }
+
+        return $paymentMethod;
     }
 
     private function flagBankAccountMismatchIfNeeded(LeaseAgreement $lease, PaymentMethod $paymentMethod): void

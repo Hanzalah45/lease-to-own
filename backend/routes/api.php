@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Admin\ContractController as AdminContractController
 use App\Http\Controllers\Api\Admin\CustomerController as AdminCustomerController;
 use App\Http\Controllers\Api\Admin\DealerNoteController;
 use App\Http\Controllers\Api\Admin\DepositChargeController as AdminDepositChargeController;
+use App\Http\Controllers\Api\Admin\LeaseCardController as AdminLeaseCardController;
 use App\Http\Controllers\Api\Admin\EmailLogController as AdminEmailLogController;
 use App\Http\Controllers\Api\Admin\EquipmentServiceRecordController;
 use App\Http\Controllers\Api\Admin\EquipmentUnitController as AdminEquipmentUnitController;
@@ -246,6 +247,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/lease-agreements/{leaseAgreement}/autopay/resume', [AdminAutopayController::class, 'resume']);
             Route::post('/payments/{payment}/retry-autopay', [AdminAutopayController::class, 'retry']);
             Route::post('/applications/{application}/charge-deposit', [AdminDepositChargeController::class, 'store']);
+            Route::post('/lease-agreements/{leaseAgreement}/card/setup-intent', [AdminLeaseCardController::class, 'setupIntent']);
+            Route::post('/lease-agreements/{leaseAgreement}/card', [AdminLeaseCardController::class, 'store']);
             Route::apiResource('payments', AdminPaymentController::class);
         });
     });
