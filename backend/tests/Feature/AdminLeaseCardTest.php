@@ -131,17 +131,87 @@ class AdminLeaseCardTest extends TestCase
         $this->assertNull($lease->fresh()->stripe_card_payment_method_id);
     }
 
-    public function test_a_card_is_not_added_when_autopay_is_off_or_one_is_already_saved(): void
+    public function test_a_card_is_not_saved_when_autopay_is_off(): void
     {
         $off = $this->lease(['autopay_enabled' => false]);
-        $has = $this->lease(['stripe_card_payment_method_id' => 'pm_existing']);
         $admin = $this->admin();
 
         $this->actingAs($admin, 'sanctum')->postJson("/api/admin/lease-agreements/{$off->id}/card/setup-intent")->assertStatus(422);
-        $this->actingAs($admin, 'sanctum')->postJson("/api/admin/lease-agreements/{$has->id}/card/setup-intent")->assertStatus(422);
-        $this->save($admin, $has)->assertStatus(422);
+        $this->save($admin, $off)->assertStatus(422);
 
-        $this->assertSame('pm_existing', $has->fresh()->stripe_card_payment_method_id);
+        $this->assertNull($off->fresh()->stripe_card_payment_method_id);
+        $this->assertCount(0, $this->stripe->requests);
+    }
+
+    public function test_changing_the_card_replaces_it_takes_the_old_one_off_stripe_and_leaves_a_note(): void
+    {
+        $lease = $this->lease(['stripe_card_payment_method_id' => 'pm_old_card']);
+        $admin = $this->admin();
+        // In the order the server asks: the old card (for the note), the new setup and card, then the old card's removal.
+        $this->stripe->queue(['id' => 'pm_old_card', 'object' => 'payment_method', 'type' => 'card', 'card' => ['brand' => 'mastercard', 'last4' => '1111']]);
+        $this->queueSucceededCard();
+        $this->stripe->queue(['id' => 'pm_old_card', 'object' => 'payment_method']);
+
+        $this->save($admin, $lease)->assertOk()->assertJsonPath('data.replaced', true)->assertJsonPath('data.card.last4', '4242');
+
+        $this->assertSame('pm_new_card', $lease->fresh()->stripe_card_payment_method_id);
+        $detach = collect($this->stripe->requests)->first(fn ($r) => str_contains($r['url'], '/payment_methods/pm_old_card/detach'));
+        $this->assertNotNull($detach, 'the replaced card should be detached from the customer');
+        $note = $lease->application->dealerNotes()->first()->text;
+        $this->assertStringContainsString('Mastercard ending 1111 replaced by Visa ending 4242', $note);
+        $this->assertStringContainsString($admin->name, $note);
+    }
+
+    public function test_a_replacement_card_stripe_did_not_accept_leaves_the_old_card_alone(): void
+    {
+        $lease = $this->lease(['stripe_card_payment_method_id' => 'pm_old_card']);
+        $this->stripe->queue(['id' => 'pm_old_card', 'object' => 'payment_method', 'type' => 'card', 'card' => ['brand' => 'visa', 'last4' => '1111']]);
+        $this->stripe->queue(['id' => 'seti_ok', 'object' => 'setup_intent', 'status' => 'requires_payment_method', 'customer' => 'cus_card']);
+
+        $this->save($this->admin(), $lease)->assertStatus(422);
+
+        $this->assertSame('pm_old_card', $lease->fresh()->stripe_card_payment_method_id);
+        $this->assertFalse(collect($this->stripe->requests)->contains(fn ($r) => str_contains($r['url'], '/detach')));
+    }
+
+    public function test_staff_see_the_brand_last_four_and_expiry_of_the_methods_on_file(): void
+    {
+        $lease = $this->lease(['stripe_card_payment_method_id' => 'pm_card_saved', 'stripe_bank_payment_method_id' => 'pm_bank_saved', 'autopay_primary_method' => 'ach']);
+        $this->stripe->queue(['id' => 'pm_bank_saved', 'object' => 'payment_method', 'type' => 'us_bank_account', 'us_bank_account' => ['bank_name' => 'STRIPE TEST BANK', 'last4' => '6789', 'account_type' => 'checking']]);
+        $this->stripe->queue(['id' => 'pm_card_saved', 'object' => 'payment_method', 'type' => 'card', 'card' => ['brand' => 'visa', 'last4' => '4242', 'exp_month' => 12, 'exp_year' => 2030, 'funding' => 'credit']]);
+
+        $response = $this->actingAs($this->admin(), 'sanctum')->getJson("/api/admin/lease-agreements/{$lease->id}/autopay-methods")->assertOk();
+
+        $response->assertJsonPath('data.primary', 'ach')
+            ->assertJsonPath('data.bank.bank_name', 'STRIPE TEST BANK')
+            ->assertJsonPath('data.bank.last4', '6789')
+            ->assertJsonPath('data.card.brand', 'visa')
+            ->assertJsonPath('data.card.last4', '4242')
+            ->assertJsonPath('data.card.exp_year', 2030);
+        // Only the card brand, last four and expiry: no ids or full numbers.
+        $this->assertStringNotContainsString('pm_card_saved', $response->getContent());
+        $this->assertStringNotContainsString('pm_bank_saved', $response->getContent());
+    }
+
+    public function test_the_methods_page_still_loads_when_stripe_cannot_be_reached(): void
+    {
+        $lease = $this->lease(['stripe_card_payment_method_id' => 'pm_card_saved']);
+        $this->stripe->queueException(new \Stripe\Exception\ApiConnectionException('timed out'));
+
+        $this->actingAs($this->admin(), 'sanctum')->getJson("/api/admin/lease-agreements/{$lease->id}/autopay-methods")
+            ->assertOk()
+            ->assertJsonPath('data.card.unavailable', true)
+            ->assertJsonPath('data.bank', null);
+    }
+
+    public function test_a_lease_with_no_methods_shows_none(): void
+    {
+        $lease = $this->lease();
+
+        $this->actingAs($this->admin(), 'sanctum')->getJson("/api/admin/lease-agreements/{$lease->id}/autopay-methods")
+            ->assertOk()
+            ->assertJsonPath('data.card', null)
+            ->assertJsonPath('data.bank', null);
         $this->assertCount(0, $this->stripe->requests);
     }
 
@@ -163,6 +233,8 @@ class AdminLeaseCardTest extends TestCase
         $reviewer = User::factory()->create(['role' => User::ROLE_ADMIN]);
         AdminPermission::create(['user_id' => $reviewer->id, 'permission' => AdminPermission::APPLICATION_REVIEW]);
         $this->actingAs($reviewer, 'sanctum')->postJson("/api/admin/lease-agreements/{$lease->id}/card/setup-intent")->assertForbidden();
+        $this->actingAs($reviewer, 'sanctum')->getJson("/api/admin/lease-agreements/{$lease->id}/autopay-methods")->assertForbidden();
+        $this->actingAs($lease->customer, 'sanctum')->getJson("/api/admin/lease-agreements/{$lease->id}/autopay-methods")->assertForbidden();
         $this->save($reviewer, $lease)->assertForbidden();
 
         $this->assertCount(0, $this->stripe->requests);

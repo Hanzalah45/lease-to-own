@@ -16,6 +16,7 @@ import { EditDetailModal, type EditField } from "@/components/applications/detai
 import { AddLeaseModal } from "@/components/applications/detail/AddLeaseModal";
 import { ChangeMowerModal } from "@/components/applications/detail/ChangeMowerModal";
 import { AddCardForCustomerModal } from "@/components/applications/detail/AddCardForCustomerModal";
+import { AutopayMethodsCard } from "@/components/applications/detail/AutopayMethodsCard";
 import { ChargeDepositModal } from "@/components/applications/detail/ChargeDepositModal";
 import { ProgressCard } from "@/components/applications/detail/ProgressCard";
 import { PaymentsCard } from "@/components/applications/detail/PaymentsCard";
@@ -152,6 +153,7 @@ export default function ApplicationDetailPage() {
   const [changeNotice, setChangeNotice] = useState<string | null>(null);
   const [showChargeDeposit, setShowChargeDeposit] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
+  const [methodsRefresh, setMethodsRefresh] = useState(0);
   const [postingNote, setPostingNote] = useState(false);
   const [togglingChecklist, setTogglingChecklist] = useState(false);
 
@@ -559,11 +561,10 @@ export default function ApplicationDetailPage() {
     !depositOnRecord &&
     (status === "waiting_deposit" || status === "waiting_delivery" || status === "finished") &&
     !!(lease?.stripe_card_payment_method_id || lease?.stripe_bank_payment_method_id);
-  // Staff add the customer's card to their AutoPay when the customer cannot (client, Joel, 2026-10-14).
-  const canAddCard =
+  // Staff see the customer's AutoPay methods and add or change the card when the customer cannot (client, Joel, 2026-10-14/15).
+  const showAutopayMethods =
     can("payment_tracking") &&
     !!lease?.autopay_enabled &&
-    !lease.stripe_card_payment_method_id &&
     (status === "waiting_deposit" || status === "waiting_delivery" || status === "finished");
   // Changing the mower edits both the lease terms and the equipment record,
   // and only makes sense before pickup (the server enforces all of this too).
@@ -1310,20 +1311,8 @@ export default function ApplicationDetailPage() {
               </p>
             );
           })}
-          {canAddCard && (
-            <div className="rounded-xl border border-neutral-200 bg-white p-4">
-              <p className="text-sm font-semibold text-neutral-900">No card on file for AutoPay</p>
-              <p className="mt-1 text-xs text-neutral-500">
-                If the customer cannot add their card themselves, you can enter it here while they read it to you. It goes
-                straight to Stripe and is not stored on this site.
-              </p>
-              <button
-                onClick={() => setShowAddCard(true)}
-                className="font-heading mt-3 rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50"
-              >
-                Add a card for the customer
-              </button>
-            </div>
+          {showAutopayMethods && lease && (
+            <AutopayMethodsCard leaseId={lease.id} refreshKey={methodsRefresh} onChangeCard={() => setShowAddCard(true)} />
           )}
           {canChargeDeposit && (
             <div className="-mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
@@ -1396,12 +1385,16 @@ export default function ApplicationDetailPage() {
       {showAddCard && lease && (
         <AddCardForCustomerModal
           application={application}
+          replacing={!!lease.stripe_card_payment_method_id}
           onClose={() => setShowAddCard(false)}
           onSaved={(card) => {
             setShowAddCard(false);
             setChangeNotice(
-              `Card added to AutoPay${card.brand && card.last4 ? ` (${card.brand} ending ${card.last4})` : ""}. A note was added to this application.`,
+              `Card ${card.replaced ? "changed" : "added to AutoPay"}${
+                card.brand && card.last4 ? ` (${card.brand.charAt(0).toUpperCase()}${card.brand.slice(1)} ending ${card.last4})` : ""
+              }. A note was added to this application.`,
             );
+            setMethodsRefresh((n) => n + 1);
             void load();
           }}
         />

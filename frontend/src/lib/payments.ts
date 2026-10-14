@@ -82,11 +82,39 @@ export async function startCardSetupAsStaff(leaseAgreementId: number | string): 
 export async function saveCardAsStaff(
   leaseAgreementId: number | string,
   setupIntentId: string,
-): Promise<{ brand: string | null; last4: string | null }> {
-  const data = await apiFetch<{ data: { card: { brand: string | null; last4: string | null } } }>(`/admin/lease-agreements/${leaseAgreementId}/card`, {
+): Promise<{ brand: string | null; last4: string | null; replaced: boolean }> {
+  const data = await apiFetch<{ data: { card: { brand: string | null; last4: string | null }; replaced: boolean } }>(`/admin/lease-agreements/${leaseAgreementId}/card`, {
     method: "POST",
     token: getToken(),
     body: { setup_intent_id: setupIntentId, customer_agreed: true },
   });
-  return data.data.card;
+  return { ...data.data.card, replaced: data.data.replaced };
+}
+
+/** What staff may see about a saved AutoPay method: never more than brand, last four and expiry (card) or bank name and last four. */
+export interface StaffMethodInfo {
+  /** True when Stripe could not be reached, so the details are not known right now. */
+  unavailable?: boolean;
+  brand?: string | null;
+  last4?: string | null;
+  exp_month?: number | null;
+  exp_year?: number | null;
+  funding?: string | null;
+  bank_name?: string | null;
+  account_type?: string | null;
+}
+
+export interface StaffAutopayMethods {
+  autopay_enabled: boolean;
+  primary: "ach" | "card" | null;
+  bank: StaffMethodInfo | null;
+  card: StaffMethodInfo | null;
+}
+
+/** Staff: the bank account and card AutoPay would use, as Stripe describes them. */
+export async function getAutopayMethodsAsStaff(leaseAgreementId: number | string): Promise<StaffAutopayMethods> {
+  const data = await apiFetch<{ data: StaffAutopayMethods }>(`/admin/lease-agreements/${leaseAgreementId}/autopay-methods`, {
+    token: getToken(),
+  });
+  return data.data;
 }

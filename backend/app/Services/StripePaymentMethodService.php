@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\LeaseAgreement;
 use App\Models\RiskRedFlag;
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
+use Stripe\Exception\ApiErrorException;
 use Stripe\PaymentMethod;
 use Stripe\SetupIntent;
 use Stripe\StripeClient;
@@ -114,6 +116,52 @@ class StripePaymentMethodService
         }
 
         return $paymentMethod;
+    }
+
+    /**
+     * What staff may see about a saved method: brand, last four and expiry of a card, bank name and last four
+     * of a bank account. Never the full number. Null when Stripe cannot be reached, so a page that only wants
+     * to show it is not broken by that.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function describe(string $paymentMethodId): ?array
+    {
+        try {
+            $paymentMethod = $this->stripe->paymentMethods->retrieve($paymentMethodId);
+        } catch (ApiErrorException $e) {
+            Log::warning('Could not read a saved payment method from Stripe.', ['payment_method' => $paymentMethodId, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+
+        return match ($paymentMethod->type) {
+            'card' => [
+                'type' => 'card',
+                'brand' => $paymentMethod->card?->brand,
+                'last4' => $paymentMethod->card?->last4,
+                'exp_month' => $paymentMethod->card?->exp_month,
+                'exp_year' => $paymentMethod->card?->exp_year,
+                'funding' => $paymentMethod->card?->funding,
+            ],
+            'us_bank_account' => [
+                'type' => 'bank',
+                'bank_name' => $paymentMethod->us_bank_account?->bank_name,
+                'last4' => $paymentMethod->us_bank_account?->last4,
+                'account_type' => $paymentMethod->us_bank_account?->account_type,
+            ],
+            default => ['type' => $paymentMethod->type],
+        };
+    }
+
+    /** Takes a replaced method off the customer's Stripe profile so it cannot be charged again. A failure here is only logged: the lease already points at the new one. */
+    public function detach(string $paymentMethodId): void
+    {
+        try {
+            $this->stripe->paymentMethods->detach($paymentMethodId);
+        } catch (ApiErrorException $e) {
+            Log::warning('Could not detach a replaced payment method from Stripe.', ['payment_method' => $paymentMethodId, 'error' => $e->getMessage()]);
+        }
     }
 
     private function flagBankAccountMismatchIfNeeded(LeaseAgreement $lease, PaymentMethod $paymentMethod): void

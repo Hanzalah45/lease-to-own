@@ -181,18 +181,22 @@ export function computeApplicationProgress(application: Application): Applicatio
     const primary = lease.autopay_primary_method === "card" ? "card" : "bank account";
     autopayStep = { key: "autopay", label: "AutoPay set up", state: "done", detail: `Bank account and card are on file. Charged first: ${primary}.` };
   } else if (bank || card) {
+    // The automatic charger works with just one saved method (a card on its own is a normal choice, and
+    // staff can add it for the customer), so one is enough. The other only adds a fallback.
     autopayStep = {
       key: "autopay",
       label: "AutoPay set up",
-      state: "waiting",
-      detail: `${bank ? "Bank account added" : "Card added"}, ${bank ? "card" : "bank account"} still missing.`,
+      state: "done",
+      detail: bank
+        ? "Bank account on file, so AutoPay can charge it. A backup card is optional."
+        : "Card on file, so AutoPay can charge it. A bank account is optional (it would be charged first, at the lower price).",
     };
   } else {
     autopayStep = {
       key: "autopay",
       label: "AutoPay set up",
       state: "waiting",
-      detail: "No bank account or card yet. The customer adds both on their AutoPay page.",
+      detail: "No bank account or card yet. The customer adds one on their AutoPay page, or staff can add a card for them.",
     };
   }
 
@@ -252,11 +256,7 @@ function nextStepFor(application: Application, steps: ProgressStep[]): string {
 
   if (open(byKey.autopay)) {
     if (byKey.autopay.state === "attention") return "AutoPay is paused on this lease. Resume it when the customer is ready.";
-    return byKey.autopay.detail.startsWith("Bank account added")
-      ? "Waiting for the customer to add a card for AutoPay."
-      : byKey.autopay.detail.startsWith("Card added")
-        ? "Waiting for the customer to add a bank account for AutoPay."
-        : "Waiting for the customer to add a bank account and a card for AutoPay.";
+    return "Waiting for the customer to add a bank account or a card for AutoPay.";
   }
 
   if (open(byKey.deposit)) return byKey.deposit.detail.startsWith("Processing") ? "The deposit bank debit is still processing." : "Waiting for the security deposit.";

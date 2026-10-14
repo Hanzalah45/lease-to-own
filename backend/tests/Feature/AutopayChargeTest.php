@@ -143,6 +143,25 @@ class AutopayChargeTest extends TestCase
         $this->assertSame(600, $attempt->fee_cents);
     }
 
+    public function test_a_customer_with_only_a_card_saved_is_charged_on_the_card_even_when_the_bank_is_the_primary(): void
+    {
+        // A customer who only ever saved a card (staff may add it for them): the bank was the default primary,
+        // but there is no bank account, so the card is charged, at the card price.
+        $lease = $this->lease('ach', ['stripe_bank_payment_method_id' => null]);
+        $payment = $this->due($lease);
+        $this->stripe->queue($this->intent('pi_only_card', 'succeeded'));
+
+        $this->runCharger();
+
+        $payment->refresh();
+        $this->assertSame(Payment::STATUS_PAID, $payment->status);
+        $this->assertSame('card', $payment->method);
+        $this->assertEqualsWithDelta(6.0, (float) $payment->card_fee_amount, 0.001);
+        $this->assertSame(20600, (int) $this->stripe->requests[0]['params']['amount']);
+        $this->assertSame('pm_card', $this->stripe->requests[0]['params']['payment_method']);
+        $this->assertCount(1, $this->stripe->requests);
+    }
+
     public function test_the_card_fee_never_counts_toward_ownership_progress(): void
     {
         $lease = $this->lease('card');

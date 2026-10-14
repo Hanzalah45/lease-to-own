@@ -17,12 +17,15 @@ import type { Application } from "@/types/application";
  */
 export function AddCardForCustomerModal({
   application,
+  replacing = false,
   onClose,
   onSaved,
 }: {
   application: Application;
+  /** The customer already has a card: the new one replaces it and the old one is removed from their Stripe profile. */
+  replacing?: boolean;
   onClose: () => void;
-  onSaved: (card: { brand: string | null; last4: string | null }) => void;
+  onSaved: (card: { brand: string | null; last4: string | null; replaced: boolean }) => void;
 }) {
   const lease = application.lease_agreement;
   const customerName = application.customer?.name ?? "the customer";
@@ -32,10 +35,13 @@ export function AddCardForCustomerModal({
   const [startError, setStartError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Keyed on the id, not the lease object: the page reloads its data now and then, and a new object must not
+  // start a second card setup and wipe what the admin has typed.
+  const leaseId = lease?.id;
   useEffect(() => {
     let cancelled = false;
-    if (!lease) return;
-    startCardSetupAsStaff(lease.id)
+    if (leaseId === undefined) return;
+    startCardSetupAsStaff(leaseId)
       .then((secret) => {
         if (!cancelled) setClientSecret(secret);
       })
@@ -45,7 +51,7 @@ export function AddCardForCustomerModal({
     return () => {
       cancelled = true;
     };
-  }, [lease]);
+  }, [leaseId]);
 
   // The window cannot be dismissed while the card is being saved, or the answer would be lost.
   const close = () => {
@@ -53,12 +59,12 @@ export function AddCardForCustomerModal({
   };
 
   return (
-    <Modal title="Add a card for the customer" onClose={close} maxWidthClassName="max-w-lg">
+    <Modal title={replacing ? "Change the customer's card" : "Add a card for the customer"} onClose={close} maxWidthClassName="max-w-lg">
       <div className="space-y-4">
         <p className="text-sm text-neutral-600">
-          Enter the card that <span className="font-semibold text-neutral-900">{customerName}</span> gives you. It goes straight to
-          Stripe, nothing is stored on this site. Only add it with their agreement. Leave the optional &ldquo;Save my
-          information&rdquo; part of the form empty.
+          Enter the {replacing ? "new " : ""}card that <span className="font-semibold text-neutral-900">{customerName}</span> gives you.
+          It goes straight to Stripe, nothing is stored on this site. Only {replacing ? "change it" : "add it"} with their agreement.
+          {replacing && " The card now on file is removed once the new one is saved."}
         </p>
         {monthly && (
           <p className="rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
@@ -94,7 +100,7 @@ function CardForm({
   busy: boolean;
   setBusy: (busy: boolean) => void;
   onCancel: () => void;
-  onSaved: (card: { brand: string | null; last4: string | null }) => void;
+  onSaved: (card: { brand: string | null; last4: string | null; replaced: boolean }) => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -122,7 +128,8 @@ function CardForm({
 
   return (
     <div className="space-y-4">
-      <PaymentElement />
+      {/* Cards only, entered by staff: no Link sign-up or Link bank option in this form. */}
+      <PaymentElement options={{ layout: "tabs", wallets: { link: "never", applePay: "never", googlePay: "never" } }} />
 
       <label className="flex cursor-pointer items-start gap-3 text-sm text-neutral-700">
         <input type="checkbox" className="mt-1" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />

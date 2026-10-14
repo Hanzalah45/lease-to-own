@@ -247,6 +247,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/lease-agreements/{leaseAgreement}/autopay/resume', [AdminAutopayController::class, 'resume']);
             Route::post('/payments/{payment}/retry-autopay', [AdminAutopayController::class, 'retry']);
             Route::post('/applications/{application}/charge-deposit', [AdminDepositChargeController::class, 'store']);
+            Route::get('/lease-agreements/{leaseAgreement}/autopay-methods', [AdminLeaseCardController::class, 'show']);
             Route::post('/lease-agreements/{leaseAgreement}/card/setup-intent', [AdminLeaseCardController::class, 'setupIntent']);
             Route::post('/lease-agreements/{leaseAgreement}/card', [AdminLeaseCardController::class, 'store']);
             Route::apiResource('payments', AdminPaymentController::class);
