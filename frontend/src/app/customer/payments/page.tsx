@@ -5,6 +5,7 @@ import Link from "next/link";
 import { money } from "@/components/applications/wizard/types";
 import { formatDateOnly } from "@/lib/dates";
 import { PayNowModal } from "@/components/payments/PayNowModal";
+import { firstMonthMirrors } from "@/lib/application-progress";
 import { listMyPayments } from "@/lib/payments";
 import { ApiError } from "@/lib/api";
 import type { Payment } from "@/types/lease-agreement";
@@ -45,6 +46,12 @@ export default function CustomerPaymentsPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  // The first month's record row is bookkeeping: its money is the tracking fee and first month payment, which is listed once.
+  const history = useMemo(() => {
+    const hidden = new Set(firstMonthMirrors(payments).map((f) => f.mirror.id));
+    return payments.filter((p) => !hidden.has(p.id));
+  }, [payments]);
 
   const nextPayment = useMemo(
     () => payments.filter((p) => p.status === "pending").sort((a, b) => a.due_date.localeCompare(b.due_date))[0],
@@ -154,12 +161,12 @@ export default function CustomerPaymentsPage() {
                 <tr>
                   <td colSpan={5} className="py-6 text-center text-sm text-neutral-400">Loading…</td>
                 </tr>
-              ) : payments.length === 0 ? (
+              ) : history.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-6 text-center text-sm text-neutral-400">No payments yet.</td>
                 </tr>
               ) : (
-                payments.map((row) => (
+                history.map((row) => (
                   <tr key={row.id} className="border-b border-neutral-100 last:border-0">
                     <td className="py-3 text-neutral-700">{formatDateOnly(row.due_date)}</td>
                     <td className="py-3 font-semibold text-neutral-900">

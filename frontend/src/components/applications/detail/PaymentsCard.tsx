@@ -3,7 +3,7 @@
 import { SectionHeading } from "@/components/dashboard/SectionHeading";
 import { money } from "@/components/applications/wizard/types";
 import { formatDateOnly } from "@/lib/dates";
-import { firstMonthCharge, firstMonthMirror, methodLabel, outcomeUnknown, paymentTotal } from "@/lib/application-progress";
+import { firstMonthMirror, methodLabel, outcomeUnknown, paymentTotal } from "@/lib/application-progress";
 import type { Payment } from "@/types/lease-agreement";
 
 const TYPE_LABEL: Record<Payment["type"], string> = {
@@ -46,16 +46,12 @@ function failureReason(p: Payment): string | null {
   return lastFailed?.failure_message ?? null;
 }
 
-/**
- * `coveredBy` is the tracking fee and first month charge this row stands in for (the first monthly payment, recorded when the
- * lease is marked delivered): the row follows that charge, so it never says Paid while the money is still on its way.
- */
-function Row({ p, coveredBy }: { p: Payment; coveredBy?: Payment }) {
-  const b = badge(coveredBy ?? p);
+/** `breakdown` says what a charge is made of, when that is not obvious from its name. */
+function Row({ p, breakdown }: { p: Payment; breakdown?: string }) {
+  const b = badge(p);
   const fee = Number(p.card_fee_amount ?? 0);
   const reason = failureReason(p);
-  const paid = (coveredBy ?? p).status === "paid";
-  const dateText = paid && p.paid_date ? `Paid ${formatDateOnly(p.paid_date)}` : `Due ${formatDateOnly(p.due_date)}`;
+  const dateText = p.status === "paid" && p.paid_date ? `Paid ${formatDateOnly(p.paid_date)}` : `Due ${formatDateOnly(p.due_date)}`;
 
   return (
     <li className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 py-3">
@@ -65,15 +61,9 @@ function Row({ p, coveredBy }: { p: Payment; coveredBy?: Payment }) {
           {dateText}
           {p.method ? ` · ${methodLabel(p.method)}` : ""}
         </p>
+        {breakdown && <p className="mt-0.5 text-xs text-neutral-400">{breakdown}</p>}
         {reason && <p className="mt-0.5 text-xs font-medium text-red-600">{reason}</p>}
         {outcomeUnknown(p) && <p className="mt-0.5 text-xs font-medium text-amber-700">{p.failure_message}</p>}
-        {coveredBy && (
-          <p className="mt-0.5 text-xs text-neutral-400">
-            {paid
-              ? "The first month was collected in the tracking fee and first month payment above. No extra money was taken."
-              : "The first month is part of the tracking fee and first month payment above. No extra money is taken, and this line changes when that payment clears."}
-          </p>
-        )}
       </div>
       <div className="flex items-center gap-3">
         <div className="text-right">
@@ -92,12 +82,17 @@ function Row({ p, coveredBy }: { p: Payment; coveredBy?: Payment }) {
  * (client, Joel, 2026-10-13: he could not see on his side whether a customer's
  * payment went through). The monthly schedule is long, so it shows what has
  * happened or needs a look, the next few due, and a count of the rest.
+ *
+ * The first monthly payment is left out once the tracking fee and first month was
+ * charged: marking the lease delivered records it without any money moving, because
+ * its money is in that charge, and listing both made it look like the first month
+ * was taken twice (Joel, 2026-10-16: "very misleading"). The charge's own line says
+ * what it is made of instead.
  */
 export function PaymentsCard({ payments }: { payments: Payment[] }) {
   const sorted = payments.slice().sort((a, b) => a.id - b.id);
-  const mirrorId = firstMonthMirror(payments)?.id;
-  const firstMonthPayment = firstMonthCharge(payments);
-  const rental = sorted.filter((p) => p.type === "rental");
+  const mirror = firstMonthMirror(payments);
+  const rental = sorted.filter((p) => p.type === "rental" && p.id !== mirror?.id);
   const others = sorted.filter((p) => p.type !== "rental");
 
   const happened = rental.filter((p) => p.status !== "pending" || p.stripe_payment_intent_id);
@@ -115,6 +110,14 @@ export function PaymentsCard({ payments }: { payments: Payment[] }) {
     return aUp ? a.due_date.localeCompare(b.due_date) : a.id - b.id;
   });
 
+  // What the tracking fee and first month charge is made of: the tracking fee plus the first monthly payment.
+  const breakdownFor = (p: Payment): string | undefined => {
+    if (p.type !== "pickup_balance" || !mirror) return undefined;
+    const firstMonth = Number(mirror.amount);
+
+    return `Tracking fee ${money(Number(p.amount) - firstMonth)} plus the first month ${money(firstMonth)}`;
+  };
+
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-5">
       <SectionHeading title="Payments" />
@@ -123,7 +126,7 @@ export function PaymentsCard({ payments }: { payments: Payment[] }) {
       ) : (
         <ul className="mt-2 divide-y divide-neutral-100">
           {rows.map((p) => (
-            <Row key={p.id} p={p} coveredBy={p.id === mirrorId ? firstMonthPayment : undefined} />
+            <Row key={p.id} p={p} breakdown={breakdownFor(p)} />
           ))}
         </ul>
       )}

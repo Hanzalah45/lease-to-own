@@ -73,6 +73,26 @@ export function firstMonthMirror(payments: Payment[]): Payment | undefined {
     .sort((a, b) => a.due_date.localeCompare(b.due_date) || a.id - b.id)[0];
 }
 
+/**
+ * The first-month record of every lease in a list that may hold payments of several leases, with the tracking fee and first
+ * month charge it stands in for. That row is bookkeeping, not a payment of its own, so lists of payments leave it out
+ * (client, Joel, 2026-10-16: "it shouldnt say tracking and first month, but then also say monthly payment ... its very
+ * misleading").
+ */
+export function firstMonthMirrors(payments: Payment[]): Array<{ mirror: Payment; charge: Payment }> {
+  const byLease = new Map<number, Payment[]>();
+  for (const p of payments) byLease.set(p.lease_agreement_id, [...(byLease.get(p.lease_agreement_id) ?? []), p]);
+
+  const found: Array<{ mirror: Payment; charge: Payment }> = [];
+  for (const group of byLease.values()) {
+    const mirror = firstMonthMirror(group);
+    const charge = firstMonthCharge(group);
+    if (mirror && charge) found.push({ mirror, charge });
+  }
+
+  return found;
+}
+
 export function methodLabel(method: Payment["method"]): string {
   switch (method) {
     case "ach":
