@@ -16,10 +16,10 @@ import { Modal } from "@/components/ui/Modal";
 import { InfoRequestTimeline } from "@/components/applications/detail/InfoRequestTimeline";
 import { PaymentsCard } from "@/components/applications/detail/PaymentsCard";
 import { EmailsCard } from "@/components/emails/EmailsCard";
-import { collectedToDate } from "@/lib/application-progress";
+import { collectedToDate, paymentTotal } from "@/lib/application-progress";
 import { money } from "@/components/applications/wizard/types";
 import type { Application, ApplicationStatus } from "@/types/application";
-import type { LeaseAgreement } from "@/types/lease-agreement";
+import type { LeaseAgreement, Payment } from "@/types/lease-agreement";
 
 const RESIDENCE_LABEL: Record<string, string> = { house: "House", apartment: "Apartment", other: "Other" };
 const VERIFICATION_LABEL: Record<string, string> = { pending: "Pending", verified: "Verified", failed: "Failed" };
@@ -34,6 +34,13 @@ const STATUS_STYLE: Record<ApplicationStatus, { color: string; label: string }> 
   finished: { color: "#16A34A", label: "Finished" },
   declined: { color: "#DC2626", label: "Declined" },
   withdrawn: { color: "#A3A3A3", label: "Withdrawn" },
+};
+
+const PAYMENT_TYPE_LABEL: Record<Payment["type"], string> = {
+  rental: "monthly payment",
+  late_fee: "late fee",
+  deposit: "security deposit",
+  pickup_balance: "tracking fee and first month",
 };
 
 function num(value: string | number | null | undefined): number {
@@ -164,9 +171,16 @@ function ApplicationBlock({ application }: { application: Application }) {
   const badge = STATUS_STYLE[application.status];
   const payments = lease?.payments ?? [];
   const collected = collectedToDate(payments);
+  // A pending payment with a charge already started is money on its way (a bank debit takes a few days), not something still due.
+  const processing = payments.filter((p) => p.status === "pending" && !!p.stripe_payment_intent_id);
   const nextDue = payments
-    .filter((p) => p.status === "pending")
+    .filter((p) => p.status === "pending" && !p.stripe_payment_intent_id)
     .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0];
+  // Before pickup the tracking fee and the first month are one more charge, made when the customer is ready to collect the
+  // mower, so the first month does not show as paid until then (client, Joel, 2026-10-16: "i dont see where the first month has been paid").
+  const pickupBalanceOwed =
+    (application.status === "waiting_deposit" || application.status === "waiting_delivery") &&
+    !payments.some((p) => p.type === "pickup_balance" && (p.status === "paid" || !!p.stripe_payment_intent_id));
 
   return (
     <div className="space-y-4 rounded-xl border border-neutral-200 bg-neutral-50 p-4 sm:p-5">
@@ -210,6 +224,12 @@ function ApplicationBlock({ application }: { application: Application }) {
               { label: "Signature", value: signed ? `Signed ${new Date(contract.signed_at).toLocaleDateString()}` : "Awaiting signature" },
               { label: "Payments made", value: `${lease.payments_made} of ${lease.term_months}` },
               { label: "Collected to date", value: money(collected) },
+              ...(processing.length > 0
+                ? [{ label: "Being processed", value: processing.map((p) => `${money(paymentTotal(p))} ${PAYMENT_TYPE_LABEL[p.type]}`).join(", ") }]
+                : []),
+              ...(pickupBalanceOwed && lease.pricing
+                ? [{ label: "Due at pickup", value: `${money(lease.pricing.pickup_balance.bank)} bank, ${money(lease.pricing.pickup_balance.card)} card (tracking fee and first month)` }]
+                : []),
               { label: "Next due", value: nextDue ? `${money(num(nextDue.amount))} on ${formatDateOnly(nextDue.due_date)}` : "—" },
             ]}
             note={
