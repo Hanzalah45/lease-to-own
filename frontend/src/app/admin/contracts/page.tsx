@@ -11,6 +11,25 @@ import { downloadContract } from "@/lib/contracts";
 import { ApiError } from "@/lib/api";
 import type { LeaseAgreement } from "@/types/lease-agreement";
 
+/**
+ * The customer's name and mower, with the name linking to their customer account (client, Joel, 2026-10-15):
+ * from this page only the contract was reachable, and finding the account meant searching a long list.
+ */
+function CustomerCell({ lease }: { lease: LeaseAgreement }) {
+  return (
+    <>
+      {lease.customer ? (
+        <Link href={`/admin/customers/${lease.customer.id}`} className="font-medium text-neutral-900 hover:text-red-600 hover:underline">
+          {lease.customer.name}
+        </Link>
+      ) : (
+        <p className="font-medium text-neutral-900">—</p>
+      )}
+      <p className="text-xs text-neutral-400">{lease.equipment_unit?.model ?? "—"}</p>
+    </>
+  );
+}
+
 export default function AdminContractsPage() {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "super_admin";
@@ -76,12 +95,7 @@ export default function AdminContractsPage() {
     {
       key: "customer",
       header: "Customer",
-      render: (r) => (
-        <>
-          <p className="font-medium text-neutral-900">{r.customer?.name ?? "—"}</p>
-          <p className="text-xs text-neutral-400">{r.equipment_unit?.model ?? "—"}</p>
-        </>
-      ),
+      render: (r) => <CustomerCell lease={r} />,
     },
     {
       key: "voided_at",
@@ -113,12 +127,7 @@ export default function AdminContractsPage() {
     {
       key: "customer",
       header: "Customer",
-      render: (r) => (
-        <>
-          <p className="font-medium text-neutral-900">{r.customer?.name ?? "—"}</p>
-          <p className="text-xs text-neutral-400">{r.equipment_unit?.model ?? "—"}</p>
-        </>
-      ),
+      render: (r) => <CustomerCell lease={r} />,
     },
     { key: "term", header: "Term", render: (r) => <span className="text-neutral-500">{r.term_months} mo</span> },
     {
