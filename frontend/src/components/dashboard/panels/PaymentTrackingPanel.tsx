@@ -135,8 +135,12 @@ export function PaymentTrackingPanel() {
   // A debit that is already on its way is not overdue, it just has not settled.
   const overduePayments = payments.filter((p) => p.status === "pending" && isBeforeToday(p.due_date) && !isProcessing(p));
 
-  const leaseIds = new Set(payments.map((p) => p.lease_agreement_id));
-  const autopayLeaseIds = new Set(payments.filter((p) => p.lease_agreement?.autopay_enabled).map((p) => p.lease_agreement_id));
+  // Only leases that still have something to collect count: one with nothing but paid rows left (a cancelled lease, a finished
+  // one) is neither enrolled nor missing from AutoPay.
+  const leaseIds = new Set(payments.filter((p) => p.status === "pending" || p.status === "failed").map((p) => p.lease_agreement_id));
+  const autopayLeaseIds = new Set(
+    payments.filter((p) => leaseIds.has(p.lease_agreement_id) && p.lease_agreement?.autopay_enabled).map((p) => p.lease_agreement_id),
+  );
   const autopayPct = leaseIds.size === 0 ? 0 : Math.round((autopayLeaseIds.size / leaseIds.size) * 100);
 
   // Only payments that were actually collected: the schedule rows still to come would otherwise swamp this average.
