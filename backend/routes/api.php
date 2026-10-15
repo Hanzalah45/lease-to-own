@@ -169,6 +169,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('contracts', ContractController::class)->only(['index', 'show', 'store']);
         Route::get('/contracts/{contract}/download', [ContractController::class, 'download']);
         Route::apiResource('payments', PaymentController::class)->only(['index', 'show']);
+        Route::post('/payments/{payment}/pay', [PaymentController::class, 'pay'])->middleware('throttle:10,1');
 
         // Read-only: the equipment on this customer's own leases.
         Route::get('/equipment', [CustomerEquipmentController::class, 'index']);

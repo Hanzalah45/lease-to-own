@@ -129,6 +129,10 @@ class AutopayCharger
                 if ($latest->created_at->lt(now()->subHours(self::REPLAY_WINDOW_HOURS))) {
                     return ['action' => 'stale', 'attempt' => $latest, 'reason' => 'The charge was never confirmed and is too old to replay safely.'];
                 }
+                // The customer is paying this one themselves: their own next press repeats it, never AutoPay.
+                if ($latest->startedByCustomer()) {
+                    return $this->skip('The customer is paying this payment themselves.');
+                }
 
                 return ['action' => 'resume', 'attempt' => $latest];
 

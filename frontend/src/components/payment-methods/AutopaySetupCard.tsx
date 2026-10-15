@@ -143,29 +143,41 @@ export function AutopaySetupCard({
         added={status.card_added}
         hint={status.monthly_prices ? `${money(status.monthly_prices.card)} a month, includes ${money(status.monthly_prices.card_fee)} card fee` : undefined}
       >
-        {!status.card_added && !cardFormSecret && (
+        {!cardFormSecret && (
           <>
+            {/* A saved card can be replaced (2026-10-15: a customer added the wrong card and had no way to change it). */}
             <button
               onClick={startCard}
               disabled={cardStarting}
-              className="font-heading rounded-md bg-neutral-900 px-3.5 py-2 text-sm font-bold uppercase tracking-wide text-white hover:bg-neutral-800 disabled:opacity-50"
+              className={`font-heading rounded-md px-3.5 py-2 text-sm font-bold uppercase tracking-wide disabled:opacity-50 ${
+                status.card_added
+                  ? "border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+                  : "bg-neutral-900 text-white hover:bg-neutral-800"
+              }`}
             >
-              {cardStarting ? "Starting…" : "Add a card"}
+              {cardStarting ? "Starting…" : status.card_added ? "Change card" : "Add a card"}
             </button>
             {cardError && <p className="mt-2 text-xs text-red-600">{cardError}</p>}
           </>
         )}
-        {!status.card_added && cardFormSecret && (
-          <Elements stripe={getStripe()} options={{ clientSecret: cardFormSecret }}>
-            <CardSetupForm
-              onSaved={(setupIntentId) =>
-                onConfirm("card", setupIntentId).then((next) => {
-                  setCardFormSecret(null);
-                  onStatusChange(next);
-                })
-              }
-            />
-          </Elements>
+        {cardFormSecret && (
+          <>
+            <Elements stripe={getStripe()} options={{ clientSecret: cardFormSecret }}>
+              <CardSetupForm
+                onSaved={(setupIntentId) =>
+                  onConfirm("card", setupIntentId).then((next) => {
+                    setCardFormSecret(null);
+                    onStatusChange(next);
+                  })
+                }
+              />
+            </Elements>
+            {status.card_added && (
+              <button onClick={() => setCardFormSecret(null)} className="mt-2 text-xs font-semibold text-neutral-500 hover:underline">
+                Keep my current card
+              </button>
+            )}
+          </>
         )}
       </MethodRow>
 

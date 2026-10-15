@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { money } from "@/components/applications/wizard/types";
 import { formatDateOnly } from "@/lib/dates";
+import { PayNowModal } from "@/components/payments/PayNowModal";
 import { listMyPayments } from "@/lib/payments";
 import { ApiError } from "@/lib/api";
 import type { Payment } from "@/types/lease-agreement";
@@ -31,18 +32,32 @@ export default function CustomerPaymentsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [paying, setPaying] = useState<Payment | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    listMyPayments()
+  function load() {
+    return listMyPayments()
       .then(setPayments)
       .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load your payments."))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    void load();
   }, []);
 
   const nextPayment = useMemo(
     () => payments.filter((p) => p.status === "pending").sort((a, b) => a.due_date.localeCompare(b.due_date))[0],
     [payments],
   );
+
+  // The oldest due monthly payment the customer can pay from here, or the reason one that is due cannot be paid yet.
+  const due = useMemo(
+    () => payments.filter((p) => p.pay).sort((a, b) => a.due_date.localeCompare(b.due_date)),
+    [payments],
+  );
+  const payable = due.find((p) => p.pay?.payable);
+  const waiting = payable ? undefined : due.find((p) => p.pay?.blocker);
 
   // AutoPay setup is per-lease — most customers only ever have one, so the
   // soonest pending payment's lease (falling back to the most recent payment
@@ -63,22 +78,42 @@ export default function CustomerPaymentsPage() {
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {notice && (
+        <p role="status" className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+          {notice}
+        </p>
+      )}
 
       <div className="flex flex-col gap-4 rounded-xl border border-neutral-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2">
             <span className="h-4 w-1 shrink-0 rounded-full bg-red-600" />
-            <h2 className="font-heading text-base font-bold uppercase tracking-wide text-neutral-900">Next payment</h2>
+            <h2 className="font-heading text-base font-bold uppercase tracking-wide text-neutral-900">
+              {payable ? "Payment due" : "Next payment"}
+            </h2>
           </div>
           <p className="text-sm text-neutral-600">
             {loading
               ? "Loading…"
-              : nextPayment
-                ? `${money(num(nextPayment.amount))} due ${formatDateOnly(nextPayment.due_date)}`
-                : "No upcoming payment scheduled."}
+              : payable
+                ? `${money(num(payable.amount))} due ${formatDateOnly(payable.due_date)}${
+                    payable.status === "failed" ? ", the last attempt did not go through" : ""
+                  }`
+                : nextPayment
+                  ? `${money(num(nextPayment.amount))} due ${formatDateOnly(nextPayment.due_date)}`
+                  : "No upcoming payment scheduled."}
           </p>
+          {!loading && waiting?.pay?.blocker && <p className="mt-1 text-xs text-amber-700">{waiting.pay.blocker}</p>}
         </div>
         <div className="flex shrink-0 gap-2">
+          {payable && (
+            <button
+              onClick={() => setPaying(payable)}
+              className="font-heading rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
+            >
+              Pay now
+            </button>
+          )}
           {autopayLeaseId ? (
             <Link
               href={`/customer/leases/${autopayLeaseId}/autopay`}
@@ -111,16 +146,17 @@ export default function CustomerPaymentsPage() {
                 <th className="pb-2 font-medium">Amount</th>
                 <th className="pb-2 font-medium">Method</th>
                 <th className="pb-2 font-medium">Status</th>
+                <th className="pb-2" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="py-6 text-center text-sm text-neutral-400">Loading…</td>
+                  <td colSpan={5} className="py-6 text-center text-sm text-neutral-400">Loading…</td>
                 </tr>
               ) : payments.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-6 text-center text-sm text-neutral-400">No payments yet.</td>
+                  <td colSpan={5} className="py-6 text-center text-sm text-neutral-400">No payments yet.</td>
                 </tr>
               ) : (
                 payments.map((row) => (
@@ -151,8 +187,19 @@ export default function CustomerPaymentsPage() {
                     <td className="py-3">
                       <span className={`inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide ${STATUS_COLOR[row.status]}`}>
                         <span className={`h-1.5 w-1.5 rounded-full ${row.status === "paid" ? "bg-green-500" : row.status === "failed" ? "bg-red-500" : "bg-neutral-300"}`} />
-                        {STATUS_LABEL[row.status]}
+                        {/* A pending payment with a charge already started is being processed by the bank, not just scheduled. */}
+                        {row.status === "pending" && row.stripe_payment_intent_id ? "Processing" : STATUS_LABEL[row.status]}
                       </span>
+                    </td>
+                    <td className="py-3 text-right">
+                      {row.pay?.payable && (
+                        <button
+                          onClick={() => setPaying(row)}
+                          className="font-heading rounded-md border border-red-600 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50"
+                        >
+                          Pay now
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -161,6 +208,18 @@ export default function CustomerPaymentsPage() {
           </table>
         </div>
       </div>
+
+      {paying && (
+        <PayNowModal
+          payment={paying}
+          onClose={() => setPaying(null)}
+          onDone={(message) => {
+            setPaying(null);
+            setNotice(message);
+            void load();
+          }}
+        />
+      )}
     </div>
   );
 }

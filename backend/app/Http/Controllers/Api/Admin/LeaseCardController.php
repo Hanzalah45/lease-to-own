@@ -57,12 +57,9 @@ class LeaseCardController extends Controller
         $previousId = $leaseAgreement->stripe_card_payment_method_id;
         $previous = $previousId ? $this->paymentMethods->describe($previousId) : null;
 
+        // Saving the new card also takes the replaced one off the customer's Stripe profile.
         $paymentMethod = $this->paymentMethods->attachPaymentMethod($leaseAgreement, 'card', $data['setup_intent_id']);
         $card = $paymentMethod->card;
-
-        if ($previousId && $previousId !== $paymentMethod->id) {
-            $this->paymentMethods->detach($previousId);
-        }
 
         $admin = $request->user();
         $new = sprintf('%s ending %s', ucfirst((string) ($card?->brand ?? 'card')), $card?->last4 ?? '????');
@@ -90,7 +87,8 @@ class LeaseCardController extends Controller
 
     private function assertCardCanBeSaved(LeaseAgreement $lease): void
     {
-        abort_unless($lease->autopay_enabled, 422, 'AutoPay is off for this lease.');
+        // Not tied to AutoPay: a saved card is also what a customer pays with from their own screen (2026-10-15,
+        // a customer with AutoPay off added the wrong card and neither she nor staff could change it).
         abort_unless(
             in_array($lease->application?->status, [Application::STATUS_WAITING_DEPOSIT, Application::STATUS_WAITING_DELIVERY, Application::STATUS_FINISHED], true),
             422,

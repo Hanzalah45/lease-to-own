@@ -131,16 +131,28 @@ class AdminLeaseCardTest extends TestCase
         $this->assertNull($lease->fresh()->stripe_card_payment_method_id);
     }
 
-    public function test_a_card_is_not_saved_when_autopay_is_off(): void
+    public function test_a_card_can_be_saved_when_autopay_is_off(): void
+    {
+        // 2026-10-15: a customer with AutoPay off added the wrong card and neither she nor staff could change it. The
+        // saved card is also what she pays with herself, so it does not depend on AutoPay.
+        $off = $this->lease(['autopay_enabled' => false, 'stripe_card_payment_method_id' => 'pm_wrong_card']);
+        $admin = $this->admin();
+        $this->stripe->queue(['id' => 'pm_wrong_card', 'object' => 'payment_method', 'type' => 'card', 'card' => ['brand' => 'visa', 'last4' => '1111']]);
+        $this->queueSucceededCard();
+        $this->stripe->queue(['id' => 'pm_wrong_card', 'object' => 'payment_method']);
+
+        $this->save($admin, $off)->assertOk()->assertJsonPath('data.replaced', true);
+
+        $this->assertSame('pm_new_card', $off->fresh()->stripe_card_payment_method_id);
+    }
+
+    public function test_the_methods_can_be_read_when_autopay_is_off(): void
     {
         $off = $this->lease(['autopay_enabled' => false]);
-        $admin = $this->admin();
 
-        $this->actingAs($admin, 'sanctum')->postJson("/api/admin/lease-agreements/{$off->id}/card/setup-intent")->assertStatus(422);
-        $this->save($admin, $off)->assertStatus(422);
-
-        $this->assertNull($off->fresh()->stripe_card_payment_method_id);
-        $this->assertCount(0, $this->stripe->requests);
+        $this->actingAs($this->admin(), 'sanctum')->getJson("/api/admin/lease-agreements/{$off->id}/autopay-methods")
+            ->assertOk()
+            ->assertJsonPath('data.autopay_enabled', false);
     }
 
     public function test_changing_the_card_replaces_it_takes_the_old_one_off_stripe_and_leaves_a_note(): void

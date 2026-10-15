@@ -561,10 +561,9 @@ export default function ApplicationDetailPage() {
     !depositOnRecord &&
     (status === "waiting_deposit" || status === "waiting_delivery" || status === "finished") &&
     !!(lease?.stripe_card_payment_method_id || lease?.stripe_bank_payment_method_id);
-  // Staff see the customer's AutoPay methods and add or change the card when the customer cannot (client, Joel, 2026-10-14/15).
+  // Staff see the customer's saved bank account and card and add or change the card when the customer cannot (client, Joel, 2026-10-14/15). Not tied to AutoPay: the card is also what the customer pays with herself.
   const showAutopayMethods =
     can("payment_tracking") &&
-    !!lease?.autopay_enabled &&
     (status === "waiting_deposit" || status === "waiting_delivery" || status === "finished");
   // Changing the mower edits both the lease terms and the equipment record,
   // and only makes sense before pickup (the server enforces all of this too).

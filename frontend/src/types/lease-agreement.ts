@@ -99,6 +99,8 @@ export interface Payment {
   recorded_by?: { id: number; name: string } | null;
   /** Automatic-charge history for a rental payment, oldest first (admin views only). */
   attempts?: PaymentAttempt[];
+  /** Customer portal only: whether this due monthly payment can be paid from the portal now (see CustomerPaymentCharger::options). Null when it is not due or not a monthly payment. */
+  pay?: PayOptions | null;
   lease_agreement?: {
     id: number;
     application_id: number;
@@ -106,6 +108,15 @@ export interface Payment {
     autopay_paused_at?: string | null;
     customer?: { id: number; name: string; email: string };
   };
+}
+
+export interface PayOptions {
+  payable: boolean;
+  /** Why it cannot be paid right now, in words for the customer. */
+  blocker: string | null;
+  /** The saved methods that can be used. */
+  available_methods: Array<"bank" | "card">;
+  prices: PriceOption;
 }
 
 export interface LeaseAgreement {

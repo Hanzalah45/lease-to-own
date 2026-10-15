@@ -158,6 +158,11 @@ class AutopayOutcome
      */
     public static function fallbackMethodFor(Payment $payment, PaymentAttempt $failed): ?array
     {
+        // A customer who chose how to pay is never charged on the other method behind their back.
+        if ($failed->startedByCustomer()) {
+            return null;
+        }
+
         $lease = $payment->leaseAgreement()->first();
         if (AutopayCharger::leaseBlocker($lease)) {
             return null;

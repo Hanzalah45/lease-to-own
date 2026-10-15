@@ -107,12 +107,19 @@ class StripePaymentMethodService
             'That is not the type of payment method you selected.',
         );
 
-        $lease->update([
-            $type === 'bank' ? 'stripe_bank_payment_method_id' : 'stripe_card_payment_method_id' => $paymentMethodId,
-        ]);
+        $column = $type === 'bank' ? 'stripe_bank_payment_method_id' : 'stripe_card_payment_method_id';
+        $previousId = $lease->{$column};
+
+        $lease->update([$column => $paymentMethodId]);
 
         if ($type === 'bank') {
             $this->flagBankAccountMismatchIfNeeded($lease, $paymentMethod);
+        }
+
+        // A method that was replaced (a customer or staff changed their card) comes off the customer's Stripe
+        // profile, so the old one can no longer be charged by mistake.
+        if ($previousId && $previousId !== $paymentMethodId) {
+            $this->detach($previousId);
         }
 
         return $paymentMethod;

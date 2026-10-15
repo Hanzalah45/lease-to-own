@@ -130,6 +130,42 @@ class AutopayPaymentMethodsTest extends TestCase
         $this->assertSame('pm_card123', $lease->fresh()->stripe_card_payment_method_id);
     }
 
+    public function test_changing_the_card_replaces_it_and_takes_the_old_one_off_stripe(): void
+    {
+        $lease = $this->leaseAwaitingDeposit();
+        $lease->update(['stripe_card_payment_method_id' => 'pm_old_card']);
+
+        $this->queueCompletedSetup($lease, 'seti_card2', ['id' => 'pm_new_card', 'object' => 'payment_method', 'type' => 'card']);
+
+        $this->actingAs($lease->customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/payment-methods/confirm", [
+                'type' => 'card',
+                'setup_intent_id' => 'seti_card2',
+            ])->assertOk();
+
+        $this->assertSame('pm_new_card', $lease->fresh()->stripe_card_payment_method_id);
+        $this->assertTrue(
+            collect($this->stripe->requests)->contains(fn ($r) => str_contains($r['url'], '/payment_methods/pm_old_card/detach')),
+            'the replaced card should be taken off the customer in Stripe',
+        );
+    }
+
+    public function test_confirming_the_same_card_again_does_not_detach_anything(): void
+    {
+        $lease = $this->leaseAwaitingDeposit();
+        $lease->update(['stripe_card_payment_method_id' => 'pm_same']);
+
+        $this->queueCompletedSetup($lease, 'seti_card3', ['id' => 'pm_same', 'object' => 'payment_method', 'type' => 'card']);
+
+        $this->actingAs($lease->customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/payment-methods/confirm", [
+                'type' => 'card',
+                'setup_intent_id' => 'seti_card3',
+            ])->assertOk();
+
+        $this->assertFalse(collect($this->stripe->requests)->contains(fn ($r) => str_contains($r['url'], '/detach')));
+    }
+
     public function test_confirm_rejects_a_setup_that_has_not_succeeded(): void
     {
         $lease = $this->leaseAwaitingDeposit();

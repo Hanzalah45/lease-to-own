@@ -118,3 +118,27 @@ export async function getAutopayMethodsAsStaff(leaseAgreementId: number | string
   });
   return data.data;
 }
+
+export interface PayMyPaymentResult {
+  payment: Payment;
+  /** paid, processing (a bank debit that settles in days), failed, or requires_action (the card wants an extra confirmation on screen). */
+  status: "paid" | "processing" | "failed" | "requires_action";
+  message: string | null;
+  client_secret: string | null;
+}
+
+/**
+ * Customer: pays a due monthly payment with a saved bank account or card ("Pay now"). The server refuses (409) when the
+ * total no longer matches the one shown, and never charges twice for a press that got no answer.
+ */
+export async function payMyPayment(
+  paymentId: number | string,
+  choice: { method: "bank" | "card"; expectedTotalCents: number },
+): Promise<PayMyPaymentResult> {
+  const data = await apiFetch<{ data: PayMyPaymentResult }>(`/customer/payments/${paymentId}/pay`, {
+    method: "POST",
+    token: getToken(),
+    body: { method: choice.method, expected_total_cents: choice.expectedTotalCents },
+  });
+  return data.data;
+}

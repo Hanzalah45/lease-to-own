@@ -63,7 +63,14 @@ export function AutopayMethodsCard({
 
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-5">
-      <SectionHeading title="AutoPay payment methods" subtitle="What the automatic monthly charge uses. Staff see the brand, last four digits and expiry only." />
+      <SectionHeading
+        title="AutoPay payment methods"
+        subtitle={`${
+          methods && !methods.autopay_enabled
+            ? "AutoPay is off for this lease: these are what the customer pays with herself."
+            : "What the automatic monthly charge uses."
+        } Staff see the brand, last four digits and expiry only.`}
+      />
       {current?.error ? (
         <p className="mt-3 text-sm text-red-600">{current.error}</p>
       ) : !methods ? (
