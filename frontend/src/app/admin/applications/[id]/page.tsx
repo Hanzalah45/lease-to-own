@@ -152,6 +152,7 @@ export default function ApplicationDetailPage() {
   const [showChangeMower, setShowChangeMower] = useState(false);
   const [changeNotice, setChangeNotice] = useState<string | null>(null);
   const [showChargeDeposit, setShowChargeDeposit] = useState(false);
+  const [showChargeBalance, setShowChargeBalance] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
   const [methodsRefresh, setMethodsRefresh] = useState(0);
   const [postingNote, setPostingNote] = useState(false);
@@ -560,6 +561,18 @@ export default function ApplicationDetailPage() {
     signed &&
     !depositOnRecord &&
     (status === "waiting_deposit" || status === "waiting_delivery" || status === "finished") &&
+    !!(lease?.stripe_card_payment_method_id || lease?.stripe_bank_payment_method_id);
+  // The tracking fee and first month nobody has collected yet (client, Joel, 2026-10-16: a customer took the mower with only the
+  // deposit paid). Staff charge the saved method after the customer agreed, BEFORE marking the lease delivered: marking it
+  // delivered closes the customer's own button and records the first month as paid without any money moving.
+  const balanceOnRecord = !!lease?.payments?.some(
+    (p) => p.type === "pickup_balance" && (p.status === "paid" || (p.status === "pending" && !outcomeUnknown(p))),
+  );
+  const canChargeBalance =
+    can("payment_tracking") &&
+    signed &&
+    !balanceOnRecord &&
+    (status === "waiting_deposit" || status === "waiting_delivery") &&
     !!(lease?.stripe_card_payment_method_id || lease?.stripe_bank_payment_method_id);
   // Staff see the customer's saved bank account and card and add or change the card when the customer cannot (client, Joel, 2026-10-14/15). Not tied to AutoPay: the card is also what the customer pays with herself.
   const showAutopayMethods =
@@ -1331,6 +1344,24 @@ export default function ApplicationDetailPage() {
               </button>
             </div>
           )}
+          {canChargeBalance && (
+            <div className="-mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-900">
+                {lease?.payments?.some((p) => p.type === "pickup_balance") ? "The tracking fee and first month have not been collected" : "No tracking fee and first month payment on record"}
+              </p>
+              <p className="mt-1 text-xs text-amber-800">
+                {application.pickup_balance_received ? "It is ticked as received, but no payment for it is recorded. " : ""}
+                If the customer already has the mower, charge it to their saved card or bank account here once they have agreed, then mark
+                the lease delivered. If you took it in person, leave this alone, tick Pickup balance received and add a dealer note.
+              </p>
+              <button
+                onClick={() => setShowChargeBalance(true)}
+                className="font-heading mt-3 rounded-md bg-red-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-red-700"
+              >
+                Charge tracking fee and first month
+              </button>
+            </div>
+          )}
           {application.deposit_forfeited_at ? (
             <p className="-mt-3 text-xs text-red-600">
               Deposit forfeited {new Date(application.deposit_forfeited_at).toLocaleDateString()} — unit not picked up in time.
@@ -1410,6 +1441,24 @@ export default function ApplicationDetailPage() {
               payment.status === "paid"
                 ? "Deposit charged. The payment is recorded and a note was added to this application."
                 : "Deposit bank debit started. It will show as paid once the bank settles it (a few business days).",
+            );
+            void load();
+          }}
+        />
+      )}
+
+      {showChargeBalance && lease && (
+        <ChargeDepositModal
+          application={application}
+          kind="pickup_balance"
+          onClose={() => setShowChargeBalance(false)}
+          onRefused={() => void load()}
+          onCharged={(payment) => {
+            setShowChargeBalance(false);
+            setChangeNotice(
+              payment.status === "paid"
+                ? "Tracking fee and first month charged. The payment is recorded and a note was added to this application."
+                : "Tracking fee and first month bank debit started. It will show as paid once the bank settles it (a few business days).",
             );
             void load();
           }}

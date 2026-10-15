@@ -4,32 +4,36 @@ import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { money } from "@/components/applications/wizard/types";
 import { ApiError } from "@/lib/api";
-import { chargeDepositAsStaff } from "@/lib/payments";
+import { chargeDepositAsStaff, chargePickupBalanceAsStaff } from "@/lib/payments";
 import type { Payment } from "@/types/lease-agreement";
 import type { Application } from "@/types/application";
 
 type Method = "bank" | "card";
 
 /**
- * Staff charge the security deposit to the customer's saved card or bank
- * account after the customer agreed (client, Joel, 2026-10-12). The amounts
- * come from the server's own price summary, and the server checks the total
- * again before charging, so what is shown here is exactly what is charged.
+ * Staff charge the security deposit (client, Joel, 2026-10-12), or the tracking
+ * fee and first month (2026-10-16), to the customer's saved card or bank account
+ * after the customer agreed. The amounts come from the server's own price
+ * summary, and the server checks the total again before charging, so what is
+ * shown here is exactly what is charged.
  */
 export function ChargeDepositModal({
   application,
+  kind = "deposit",
   onClose,
   onCharged,
   onRefused,
 }: {
   application: Application;
+  kind?: "deposit" | "pickup_balance";
   onClose: () => void;
   onCharged: (payment: Payment) => void;
   /** The server answered with an error: the page reloads, since a decline leaves a failed payment and a note behind and a 409 means the amounts changed. */
   onRefused: () => void;
 }) {
   const lease = application.lease_agreement;
-  const price = lease?.pricing?.deposit;
+  const price = lease?.pricing?.[kind];
+  const what = kind === "deposit" ? "security deposit" : "tracking fee and first month";
   const customerName = application.customer?.name ?? "the customer";
 
   const options: { method: Method; label: string; total: number; note: string }[] = [];
@@ -58,14 +62,15 @@ export function ChargeDepositModal({
     setBusy(true);
     setError(null);
     try {
-      const payment = await chargeDepositAsStaff(application.id, {
+      const charge = kind === "deposit" ? chargeDepositAsStaff : chargePickupBalanceAsStaff;
+      const payment = await charge(application.id, {
         method: chosen.method,
         expectedTotalCents: Math.round(chosen.total * 100),
         customerAgreed: agreed,
       });
       onCharged(payment);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not charge the deposit.");
+      setError(err instanceof ApiError ? err.message : `Could not charge the ${what}.`);
       setBusy(false);
       // A decline writes a failed payment and a note on the server, and a 409 means the amounts moved:
       // either way the page behind this window is out of date.
@@ -79,13 +84,13 @@ export function ChargeDepositModal({
   };
 
   return (
-    <Modal title="Charge deposit" onClose={close} maxWidthClassName="max-w-lg">
+    <Modal title={kind === "deposit" ? "Charge deposit" : "Charge tracking fee and first month"} onClose={close} maxWidthClassName="max-w-lg">
       {!chosen ? (
         <p className="text-sm text-red-600">This customer has no saved card or bank account to charge.</p>
       ) : (
         <div className="space-y-5">
           <p className="text-sm text-neutral-600">
-            Charge the security deposit for <span className="font-semibold text-neutral-900">{customerName}</span> to the
+            Charge the {what} for <span className="font-semibold text-neutral-900">{customerName}</span> to the
             payment method they have saved. The charge happens right away.
           </p>
 
@@ -99,7 +104,7 @@ export function ChargeDepositModal({
               >
                 <input
                   type="radio"
-                  name="deposit-method"
+                  name="charge-method"
                   className="mt-1"
                   checked={method === o.method}
                   onChange={() => {

@@ -44,7 +44,23 @@ export async function chargeDepositAsStaff(
   applicationId: number | string,
   choice: { method: "bank" | "card"; expectedTotalCents: number; customerAgreed: boolean },
 ): Promise<Payment> {
-  const data = await apiFetch<{ data: { payment: Payment } }>(`/admin/applications/${applicationId}/charge-deposit`, {
+  return chargeAsStaff(applicationId, "charge-deposit", choice);
+}
+
+/** Staff: the same for the tracking fee and first month, which a customer who already took the mower may still owe. */
+export async function chargePickupBalanceAsStaff(
+  applicationId: number | string,
+  choice: { method: "bank" | "card"; expectedTotalCents: number; customerAgreed: boolean },
+): Promise<Payment> {
+  return chargeAsStaff(applicationId, "charge-pickup-balance", choice);
+}
+
+async function chargeAsStaff(
+  applicationId: number | string,
+  path: "charge-deposit" | "charge-pickup-balance",
+  choice: { method: "bank" | "card"; expectedTotalCents: number; customerAgreed: boolean },
+): Promise<Payment> {
+  const data = await apiFetch<{ data: { payment: Payment } }>(`/admin/applications/${applicationId}/${path}`, {
     method: "POST",
     token: getToken(),
     body: {

@@ -59,11 +59,14 @@ class StripeDepositPaymentService
     }
 
     /**
+     * $staffUserId works as for chargeDepositOnly(): staff charge the saved method after the customer agreed (client,
+     * Joel, 2026-10-16: a customer took the mower before paying the tracking fee and first month).
+     *
      * @return array{payment: Payment, requires_action: bool, client_secret: ?string}
      */
-    public function chargePickupBalance(LeaseAgreement $lease, ?string $methodType = null, ?int $expectedTotalCents = null): array
+    public function chargePickupBalance(LeaseAgreement $lease, ?string $methodType = null, ?int $expectedTotalCents = null, ?int $staffUserId = null): array
     {
-        return $this->chargeType($lease, Payment::TYPE_PICKUP_BALANCE, $lease->pickupBalanceAmountDue(), "Tracking fee & first month \u{2014} Lease #{$lease->id}", $methodType, $expectedTotalCents);
+        return $this->chargeType($lease, Payment::TYPE_PICKUP_BALANCE, $lease->pickupBalanceAmountDue(), "Tracking fee & first month \u{2014} Lease #{$lease->id}", $methodType, $expectedTotalCents, $staffUserId);
     }
 
     /**
