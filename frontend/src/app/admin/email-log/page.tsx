@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { PageHeroHeader } from "@/components/layout/PageHeroHeader";
 import { EmailStatusBadge } from "@/components/emails/EmailStatusBadge";
@@ -11,6 +11,9 @@ import { listEmailLogs, type EmailLogPage } from "@/lib/email-logs";
 
 /** Wait for typing to pause before asking the server again. */
 const SEARCH_DELAY_MS = 300;
+
+/** How often the open log reads again. */
+const REFRESH_MS = 10_000;
 
 const STATUS_FILTERS: { value: string; label: string }[] = [
   { value: "", label: "All" },
@@ -46,6 +49,18 @@ export default function EmailLogPage() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
+  // The log reads again every few seconds while the page is open (client, Joel, 2026-10-15: "in real time"), so a
+  // resent link shows up without reloading. The same query again keeps the rows on screen, no loading flicker.
+  const [tick, setTick] = useState(0);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const loadedKey = useRef<string | null>(null);
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") setTick((n) => n + 1);
+    }, REFRESH_MS);
+    return () => clearInterval(id);
+  }, []);
+
   const key = JSON.stringify({ search, status, page });
   const loading = canSee && loaded?.key !== key && !error;
 
@@ -57,15 +72,18 @@ export default function EmailLogPage() {
         if (!cancelled) {
           setError(null);
           setLoaded({ key, result });
+          loadedKey.current = key;
+          setUpdatedAt(new Date());
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : "Could not load the email log.");
+        // A failed refresh keeps the rows already on screen; only a first load shows the error.
+        if (!cancelled && loadedKey.current !== key) setError(err instanceof ApiError ? err.message : "Could not load the email log.");
       });
     return () => {
       cancelled = true;
     };
-  }, [canSee, key, search, status, page]);
+  }, [canSee, key, search, status, page, tick]);
 
   if (!canSee) {
     return (
@@ -84,7 +102,12 @@ export default function EmailLogPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeroHeader title="Email Log" subtitle="Every email the system sent, to whom, and what the email service answered." />
+      <PageHeroHeader
+        title="Email Log"
+        subtitle={`Every email the system sent, to whom, and what the email service answered. Updates by itself every ${REFRESH_MS / 1000} seconds${
+          updatedAt ? ` (last checked ${updatedAt.toLocaleTimeString()})` : ""
+        }.`}
+      />
 
       <div className="rounded-xl border border-neutral-200 bg-white p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

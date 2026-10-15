@@ -10,6 +10,9 @@ import { listCustomerEmails, type EmailLogEntry } from "@/lib/email-logs";
 /** How many emails to show before folding the rest behind a button. */
 const SHOWN = 8;
 
+/** How often the open card reads again. */
+const REFRESH_MS = 10_000;
+
 /**
  * Every email the system sent to one customer (client, Joel, 2026-10-13), so
  * staff can prove what went out and see at once when an address was mistyped:
@@ -20,6 +23,15 @@ export function EmailsCard({ customerId }: { customerId: number | string }) {
   const [loaded, setLoaded] = useState<{ customerId: number | string; emails: EmailLogEntry[] | null; error: string | null } | null>(null);
   const [showAll, setShowAll] = useState(false);
 
+  // Reads again every few seconds while open, so a resent link shows up at once (client, Joel, 2026-10-15).
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") setTick((n) => n + 1);
+    }, REFRESH_MS);
+    return () => clearInterval(id);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     listCustomerEmails(customerId)
@@ -27,13 +39,18 @@ export function EmailsCard({ customerId }: { customerId: number | string }) {
         if (!cancelled) setLoaded({ customerId, emails: rows, error: null });
       })
       .catch((err) => {
+        // A failed refresh keeps the emails already shown for this customer; only a first load shows the error.
         if (!cancelled)
-          setLoaded({ customerId, emails: null, error: err instanceof ApiError ? err.message : "Could not load the email history." });
+          setLoaded((prev) =>
+            prev && prev.customerId === customerId && prev.emails
+              ? prev
+              : { customerId, emails: null, error: err instanceof ApiError ? err.message : "Could not load the email history." },
+          );
       });
     return () => {
       cancelled = true;
     };
-  }, [customerId]);
+  }, [customerId, tick]);
 
   const current = loaded && loaded.customerId === customerId ? loaded : null;
   const emails = current?.emails ?? null;
@@ -42,7 +59,7 @@ export function EmailsCard({ customerId }: { customerId: number | string }) {
 
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-5">
-      <SectionHeading title="Emails sent" subtitle="Sent means our email service accepted the message." />
+      <SectionHeading title="Emails sent" subtitle="Sent means our email service accepted the message. Updates by itself every few seconds." />
       {error ? (
         <p className="mt-3 text-sm text-red-600">{error}</p>
       ) : !emails ? (
