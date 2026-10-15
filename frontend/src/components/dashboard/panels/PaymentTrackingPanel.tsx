@@ -11,6 +11,7 @@ import { Modal } from "@/components/ui/Modal";
 import { money } from "@/components/applications/wizard/types";
 import { AlertCircleIcon, ArrowUpRightIcon, CheckCircleIcon, ClockIcon, CreditCardIcon } from "@/components/icons";
 import { formatDateOnly, isBeforeToday, isToday } from "@/lib/dates";
+import { firstMonthCharge, firstMonthMirror } from "@/lib/application-progress";
 import { listPayments, markPaymentStatus, retryAutopayCharge } from "@/lib/payments";
 import { ApiError } from "@/lib/api";
 import type { Payment } from "@/types/lease-agreement";
@@ -118,7 +119,16 @@ export function PaymentTrackingPanel() {
   // overduePayments and the DataTable below stay type-agnostic on purpose: a
   // stuck/declined deposit should still surface there.
   const recurring = payments.filter((p) => p.type === "rental");
-  const paid = recurring.filter((p) => p.status === "paid" && p.paid_date);
+  // Marking a lease delivered records its first month as paid without any money moving (the money is in the tracking fee and
+  // first month charge): until that charge has cleared, the record is not collected money.
+  const uncollectedFirstMonths = new Set<number>();
+  const byLease = new Map<number, Payment[]>();
+  for (const p of payments) byLease.set(p.lease_agreement_id, [...(byLease.get(p.lease_agreement_id) ?? []), p]);
+  for (const leasePayments of byLease.values()) {
+    const mirror = firstMonthMirror(leasePayments);
+    if (mirror && firstMonthCharge(leasePayments)?.status !== "paid") uncollectedFirstMonths.add(mirror.id);
+  }
+  const paid = recurring.filter((p) => p.status === "paid" && p.paid_date && !uncollectedFirstMonths.has(p.id));
   const collectedThisMonth = paid
     .filter((p) => new Date(p.paid_date!) >= startOfThisMonth)
     .reduce((sum, p) => sum + Number(p.amount), 0);
@@ -188,7 +198,7 @@ export function PaymentTrackingPanel() {
   const trackingRows = [...failedRows, ...overdueRows, ...processingRows, ...upcomingRows];
 
   const recentlyPaid = payments
-    .filter((p) => p.status === "paid" && p.paid_date)
+    .filter((p) => p.status === "paid" && p.paid_date && !uncollectedFirstMonths.has(p.id))
     .sort((a, b) => b.paid_date!.localeCompare(a.paid_date!) || b.id - a.id)
     .slice(0, RECENT_PAID_COUNT);
 

@@ -46,13 +46,30 @@ export function collectedToDate(payments: Payment[]): number {
     .reduce((sum, p) => sum + paymentTotal(p), 0);
 }
 
-/** The first scheduled monthly payment when the first month was really collected inside the tracking fee and first month charge. */
-export function firstMonthMirror(payments: Payment[]): Payment | undefined {
-  const paid = payments.filter((p) => p.status === "paid");
-  if (!paid.some((p) => p.type === "pickup_balance")) return undefined;
+/**
+ * The tracking fee and first month charge that the first monthly payment stands in for: a paid one, otherwise the latest
+ * one that was really charged at the bank or card company (still processing, or declined). A scheduled one nobody has
+ * tried to charge does not count.
+ */
+export function firstMonthCharge(payments: Payment[]): Payment | undefined {
+  const charged = payments
+    .filter((p) => p.type === "pickup_balance" && (p.status === "paid" || !!p.stripe_payment_intent_id))
+    .sort((a, b) => a.id - b.id);
 
-  return paid
-    .filter((p) => p.type === "rental" && !p.stripe_payment_intent_id)
+  return charged.find((p) => p.status === "paid") ?? charged[charged.length - 1];
+}
+
+/**
+ * The first scheduled monthly payment when the first month was collected inside the tracking fee and first month charge.
+ * Marking the lease delivered records it as paid on the pickup day without any money moving (client, Joel, 2026-10-16:
+ * "its saying the 497 has been paid" while that charge was still processing), so it follows that charge: see
+ * firstMonthCharge().
+ */
+export function firstMonthMirror(payments: Payment[]): Payment | undefined {
+  if (!firstMonthCharge(payments)) return undefined;
+
+  return payments
+    .filter((p) => p.status === "paid" && p.type === "rental" && !p.stripe_payment_intent_id)
     .sort((a, b) => a.due_date.localeCompare(b.due_date) || a.id - b.id)[0];
 }
 

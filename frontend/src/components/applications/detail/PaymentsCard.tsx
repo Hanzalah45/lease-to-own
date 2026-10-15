@@ -3,7 +3,7 @@
 import { SectionHeading } from "@/components/dashboard/SectionHeading";
 import { money } from "@/components/applications/wizard/types";
 import { formatDateOnly } from "@/lib/dates";
-import { firstMonthMirror, methodLabel, outcomeUnknown, paymentTotal } from "@/lib/application-progress";
+import { firstMonthCharge, firstMonthMirror, methodLabel, outcomeUnknown, paymentTotal } from "@/lib/application-progress";
 import type { Payment } from "@/types/lease-agreement";
 
 const TYPE_LABEL: Record<Payment["type"], string> = {
@@ -46,11 +46,16 @@ function failureReason(p: Payment): string | null {
   return lastFailed?.failure_message ?? null;
 }
 
-function Row({ p, coveredAbove = false }: { p: Payment; coveredAbove?: boolean }) {
-  const b = badge(p);
+/**
+ * `coveredBy` is the tracking fee and first month charge this row stands in for (the first monthly payment, recorded when the
+ * lease is marked delivered): the row follows that charge, so it never says Paid while the money is still on its way.
+ */
+function Row({ p, coveredBy }: { p: Payment; coveredBy?: Payment }) {
+  const b = badge(coveredBy ?? p);
   const fee = Number(p.card_fee_amount ?? 0);
   const reason = failureReason(p);
-  const dateText = p.status === "paid" && p.paid_date ? `Paid ${formatDateOnly(p.paid_date)}` : `Due ${formatDateOnly(p.due_date)}`;
+  const paid = (coveredBy ?? p).status === "paid";
+  const dateText = paid && p.paid_date ? `Paid ${formatDateOnly(p.paid_date)}` : `Due ${formatDateOnly(p.due_date)}`;
 
   return (
     <li className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 py-3">
@@ -62,9 +67,11 @@ function Row({ p, coveredAbove = false }: { p: Payment; coveredAbove?: boolean }
         </p>
         {reason && <p className="mt-0.5 text-xs font-medium text-red-600">{reason}</p>}
         {outcomeUnknown(p) && <p className="mt-0.5 text-xs font-medium text-amber-700">{p.failure_message}</p>}
-        {coveredAbove && (
+        {coveredBy && (
           <p className="mt-0.5 text-xs text-neutral-400">
-            The first month was collected in the tracking fee and first month payment above. No extra money was taken.
+            {paid
+              ? "The first month was collected in the tracking fee and first month payment above. No extra money was taken."
+              : "The first month is part of the tracking fee and first month payment above. No extra money is taken, and this line changes when that payment clears."}
           </p>
         )}
       </div>
@@ -89,6 +96,7 @@ function Row({ p, coveredAbove = false }: { p: Payment; coveredAbove?: boolean }
 export function PaymentsCard({ payments }: { payments: Payment[] }) {
   const sorted = payments.slice().sort((a, b) => a.id - b.id);
   const mirrorId = firstMonthMirror(payments)?.id;
+  const firstMonthPayment = firstMonthCharge(payments);
   const rental = sorted.filter((p) => p.type === "rental");
   const others = sorted.filter((p) => p.type !== "rental");
 
@@ -115,7 +123,7 @@ export function PaymentsCard({ payments }: { payments: Payment[] }) {
       ) : (
         <ul className="mt-2 divide-y divide-neutral-100">
           {rows.map((p) => (
-            <Row key={p.id} p={p} coveredAbove={p.id === mirrorId} />
+            <Row key={p.id} p={p} coveredBy={p.id === mirrorId ? firstMonthPayment : undefined} />
           ))}
         </ul>
       )}

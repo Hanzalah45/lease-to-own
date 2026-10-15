@@ -21,7 +21,7 @@ import { ChargeDepositModal } from "@/components/applications/detail/ChargeDepos
 import { ProgressCard } from "@/components/applications/detail/ProgressCard";
 import { PaymentsCard } from "@/components/applications/detail/PaymentsCard";
 import { EmailsCard } from "@/components/emails/EmailsCard";
-import { computeApplicationProgress, firstMonthMirror, methodLabel, outcomeUnknown, paymentTotal } from "@/lib/application-progress";
+import { computeApplicationProgress, firstMonthCharge, firstMonthMirror, methodLabel, outcomeUnknown, paymentTotal } from "@/lib/application-progress";
 import { FileInput } from "@/components/applications/wizard/fields";
 import { EpoChart } from "@/components/applications/wizard/EpoChart";
 import { Modal } from "@/components/ui/Modal";
@@ -1537,8 +1537,18 @@ export default function ApplicationDetailPage() {
         <Modal title="Mark delivered" onClose={() => setShowDeliveryConfirm(false)} maxWidthClassName="max-w-sm">
           <div className="space-y-4">
             <p className="text-sm text-neutral-600">
-              This starts the lease. The customer&rsquo;s first month is recorded as paid on the pickup date and the
-              monthly payment schedule is built from it.
+              {(() => {
+                // What the first month stands on: the tracking fee and first month charge, if one was made (2026-10-16:
+                // "its saying the 497 has been paid" while that charge was still processing).
+                const charge = lease?.payments ? firstMonthCharge(lease.payments) : undefined;
+                if (charge?.status === "paid") {
+                  return "This starts the lease and builds the monthly payment schedule from the pickup date. The first month was collected in the tracking fee and first month payment.";
+                }
+                if (charge) {
+                  return "This starts the lease and builds the monthly payment schedule from the pickup date. The first month is part of the tracking fee and first month payment, which has not cleared yet, so it shows as processing until it does.";
+                }
+                return "This starts the lease and builds the monthly payment schedule from the pickup date. The first month is recorded as paid on the pickup date without any money being taken here, so charge the tracking fee and first month first, or take it in person.";
+              })()}
             </p>
             <div>
               <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-neutral-500" htmlFor="pickup-date">
