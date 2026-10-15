@@ -144,7 +144,10 @@ export function DepositPaymentCard({
   const handlePayInFull = () =>
     run("full", async (m) => {
       const depositOutcome = await chargeAndResolve(onChargeDeposit, depositChoice(m), (s) => s.security_deposit.payment);
-      if (depositOutcome !== "paid") {
+      // A bank debit is "pending" while the bank settles it, for days: that is the normal, accepted result of a
+      // bank payment, not a failure (2026-10-15: a customer paying in full from her bank was told the deposit
+      // "didn't go through" while it was processing). Only a payment that actually failed stops here.
+      if (depositOutcome !== "paid" && depositOutcome !== "pending") {
         setError("The deposit payment didn't go through. The remaining balance was not charged.");
         return;
       }
@@ -253,7 +256,7 @@ export function DepositPaymentCard({
         </StatusOrActions>
       )}
 
-      {depositDone && !balanceDone && (
+      {(depositDone || status.security_deposit.payment?.status === "pending") && !balanceDone && (
         <StatusOrActions label="Tracking fee & first month" payment={status.pickup_balance.payment}>
           <button
             onClick={handlePayBalanceOnly}

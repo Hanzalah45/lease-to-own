@@ -179,6 +179,10 @@ class AutopayOutcome
 
         $payment = Payment::whereKey($paymentId)->lockForUpdate()->first();
 
-        return [$payment, PaymentAttempt::find($attemptId)];
+        // A locking read, like the payment's: MySQL's default REPEATABLE READ would otherwise show the attempt as it
+        // was when this transaction began (before it waited for the lock), so a webhook and the charger reporting the
+        // same success a second apart both saw it as "not yet succeeded" (2026-10-15, first live charge: a false
+        // "charged a payment that was already paid" alarm and a needless refund notice to staff).
+        return [$payment, PaymentAttempt::whereKey($attemptId)->lockForUpdate()->first()];
     }
 }
