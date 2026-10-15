@@ -25,9 +25,19 @@ export function isBeforeToday(value: string | null | undefined): boolean {
   const match = value ? /^(\d{4}-\d{2}-\d{2})/.exec(value) : null;
   if (!match) return false;
 
+  return match[1] < localToday();
+}
+
+/** True when a calendar date (YYYY-MM-DD prefix) is today's date in the browser's own time zone. */
+export function isToday(value: string | null | undefined): boolean {
+  const match = value ? /^(\d{4}-\d{2}-\d{2})/.exec(value) : null;
+
+  return !!match && match[1] === localToday();
+}
+
+function localToday(): string {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
-  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 
-  return match[1] < today;
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }

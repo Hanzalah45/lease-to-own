@@ -12,6 +12,7 @@ import { ApiError } from "@/lib/api";
 import { SectionHeading } from "@/components/dashboard/SectionHeading";
 import { DetailCard } from "@/components/applications/detail/DetailCard";
 import { StatusTag } from "@/components/dashboard/StatusTag";
+import { Modal } from "@/components/ui/Modal";
 import { InfoRequestTimeline } from "@/components/applications/detail/InfoRequestTimeline";
 import { PaymentsCard } from "@/components/applications/detail/PaymentsCard";
 import { EmailsCard } from "@/components/emails/EmailsCard";
@@ -240,6 +241,8 @@ function PaymentMethodsCard({ lease }: { lease: LeaseAgreement }) {
   const [cardAdded, setCardAdded] = useState(!!lease.stripe_card_payment_method_id);
   const [primaryMethod, setPrimaryMethod] = useState(lease.autopay_primary_method);
   const [clearing, setClearing] = useState<"bank" | "card" | null>(null);
+  // Which saved method staff are about to remove; nothing is cleared until they confirm (client, Joel, 2026-10-16).
+  const [confirmClear, setConfirmClear] = useState<"bank" | "card" | null>(null);
   const [paused, setPaused] = useState(!!lease.autopay_paused_at);
   const [togglingPause, setTogglingPause] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -265,6 +268,7 @@ function PaymentMethodsCard({ lease }: { lease: LeaseAgreement }) {
   }
 
   async function clear(type: "bank" | "card") {
+    setConfirmClear(null);
     setError(null);
     setClearing(type);
     try {
@@ -279,7 +283,10 @@ function PaymentMethodsCard({ lease }: { lease: LeaseAgreement }) {
     }
   }
 
+  const confirmLabel = confirmClear === "bank" ? "bank account" : "card";
+
   return (
+    <>
     <DetailCard
       title="AutoPay payment methods"
       rows={[
@@ -287,7 +294,7 @@ function PaymentMethodsCard({ lease }: { lease: LeaseAgreement }) {
           label: "Bank account",
           value: bankAdded ? (
             <button
-              onClick={() => clear("bank")}
+              onClick={() => setConfirmClear("bank")}
               disabled={clearing === "bank"}
               className="text-red-600 hover:underline disabled:opacity-50"
             >
@@ -301,7 +308,7 @@ function PaymentMethodsCard({ lease }: { lease: LeaseAgreement }) {
           label: "Card",
           value: cardAdded ? (
             <button
-              onClick={() => clear("card")}
+              onClick={() => setConfirmClear("card")}
               disabled={clearing === "card"}
               className="text-red-600 hover:underline disabled:opacity-50"
             >
@@ -331,5 +338,30 @@ function PaymentMethodsCard({ lease }: { lease: LeaseAgreement }) {
       ]}
       note={error ? <span className="text-red-600">{error}</span> : "Clearing a method sends the customer a fresh link to re-add it."}
     />
+    {confirmClear && (
+      <Modal title="Delete saved payment method" onClose={() => setConfirmClear(null)} maxWidthClassName="max-w-sm">
+        <div className="space-y-4">
+          <p className="text-sm text-neutral-600">
+            Are you sure you want to delete the {confirmLabel} on file? This action will remove the customer&rsquo;s saved
+            payment method.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setConfirmClear(null)}
+              className="font-heading rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => clear(confirmClear)}
+              className="font-heading rounded-md bg-red-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-red-700"
+            >
+              Yes, delete {confirmLabel}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    )}
+    </>
   );
 }

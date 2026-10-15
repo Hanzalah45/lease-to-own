@@ -10,12 +10,26 @@ import { StatusTag } from "@/components/dashboard/StatusTag";
 import { Modal } from "@/components/ui/Modal";
 import { money } from "@/components/applications/wizard/types";
 import { AlertCircleIcon, ArrowUpRightIcon, CheckCircleIcon, ClockIcon, CreditCardIcon } from "@/components/icons";
-import { formatDateOnly, isBeforeToday } from "@/lib/dates";
+import { formatDateOnly, isBeforeToday, isToday } from "@/lib/dates";
 import { listPayments, markPaymentStatus, retryAutopayCharge } from "@/lib/payments";
 import { ApiError } from "@/lib/api";
 import type { Payment } from "@/types/lease-agreement";
 
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** How many payments the main list shows at first, and each time "Show more" is pressed. */
+const PAGE_SIZE = 15;
+const RECENT_PAID_COUNT = 8;
+const METHOD_LABEL: Record<string, string> = { ach: "Bank account", card: "Card", cash: "Cash", other: "Other" };
+
+function dueKey(payment: Payment): string {
+  return payment.due_date.slice(0, 10);
+}
+
+/** A debit or card charge has been started with the processor and has not settled yet. */
+function isProcessing(payment: Payment): boolean {
+  return payment.status === "pending" && (!!payment.stripe_payment_intent_id || !!payment.attempts?.some((a) => a.status === "processing"));
+}
 
 /** Why the last automatic attempt failed, e.g. "Bank account failed: account_closed". */
 function lastFailure(payment: Payment): string | null {
@@ -40,6 +54,7 @@ export function PaymentTrackingPanel() {
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [retryingId, setRetryingId] = useState<number | null>(null);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const [visible, setVisible] = useState(PAGE_SIZE);
 
   function load() {
     return listPayments()
@@ -111,13 +126,15 @@ export function PaymentTrackingPanel() {
     .filter((p) => new Date(p.paid_date!) >= startOfLastMonth && new Date(p.paid_date!) < startOfThisMonth)
     .reduce((sum, p) => sum + Number(p.amount), 0);
 
-  const overduePayments = payments.filter((p) => p.status === "pending" && isBeforeToday(p.due_date));
+  // A debit that is already on its way is not overdue, it just has not settled.
+  const overduePayments = payments.filter((p) => p.status === "pending" && isBeforeToday(p.due_date) && !isProcessing(p));
 
   const leaseIds = new Set(payments.map((p) => p.lease_agreement_id));
   const autopayLeaseIds = new Set(payments.filter((p) => p.lease_agreement?.autopay_enabled).map((p) => p.lease_agreement_id));
   const autopayPct = leaseIds.size === 0 ? 0 : Math.round((autopayLeaseIds.size / leaseIds.size) * 100);
 
-  const avgMonthlyPayment = recurring.length === 0 ? 0 : recurring.reduce((sum, p) => sum + Number(p.amount), 0) / recurring.length;
+  // Only payments that were actually collected: the schedule rows still to come would otherwise swamp this average.
+  const avgMonthlyPayment = paid.length === 0 ? 0 : paid.reduce((sum, p) => sum + Number(p.amount), 0) / paid.length;
 
   const earningsData: EarningsPoint[] = MONTH_LABELS.map((label, i) => {
     const thisYear = paid
@@ -151,14 +168,29 @@ export function PaymentTrackingPanel() {
     return { label: `Wk ${i + 1}`, units };
   });
 
-  // A monthly payment AutoPay could not collect stays "failed" and needs a
-  // person, so it is listed first, ahead of the overdue and upcoming rows.
-  const failedAutopay = payments.filter((p) => p.type === "rental" && p.status === "failed" && p.lease_agreement?.autopay_enabled);
-  const overdueRows = [
-    ...failedAutopay,
-    ...overduePayments,
-    ...payments.filter((p) => p.status === "pending" && !overduePayments.includes(p)),
-  ].slice(0, 6);
+  // What staff work from, most urgent first (client, Joel, 2026-10-16: it listed
+  // the farthest due dates first): payments that failed, then overdue ones (oldest
+  // first), then charges still settling, then only the NEXT upcoming monthly
+  // payment of each lease, soonest first. The schedule has one row per month, so
+  // listing all of them would bury the few that matter.
+  const byDue = (a: Payment, b: Payment) => dueKey(a).localeCompare(dueKey(b)) || a.id - b.id;
+  const failedRows = payments.filter((p) => p.status === "failed").sort(byDue);
+  const overdueRows = [...overduePayments].sort(byDue);
+  const processingRows = payments.filter((p) => isProcessing(p) && !overduePayments.includes(p)).sort(byDue);
+  const nextMonthly = new Map<number, Payment>();
+  const otherUpcoming: Payment[] = [];
+  for (const p of [...payments].sort(byDue)) {
+    if (p.status !== "pending" || isBeforeToday(p.due_date) || isProcessing(p)) continue;
+    if (p.type !== "rental") otherUpcoming.push(p);
+    else if (!nextMonthly.has(p.lease_agreement_id)) nextMonthly.set(p.lease_agreement_id, p);
+  }
+  const upcomingRows = [...nextMonthly.values(), ...otherUpcoming].sort(byDue);
+  const trackingRows = [...failedRows, ...overdueRows, ...processingRows, ...upcomingRows];
+
+  const recentlyPaid = payments
+    .filter((p) => p.status === "paid" && p.paid_date)
+    .sort((a, b) => b.paid_date!.localeCompare(a.paid_date!) || b.id - a.id)
+    .slice(0, RECENT_PAID_COUNT);
 
   const columns: DataTableColumn<Payment>[] = [
     {
@@ -166,10 +198,9 @@ export function PaymentTrackingPanel() {
       header: "Status",
       render: (r) => {
         if (r.status === "failed") return <StatusTag color="#DC2626" label="Charge failed" />;
-        const isOverdue = r.status === "pending" && isBeforeToday(r.due_date);
-        const debiting = r.attempts?.some((a) => a.status === "processing");
-        if (debiting) return <StatusTag color="#2563EB" label="Bank debit processing" />;
-        if (isOverdue) return <StatusTag color="#DC2626" label="Overdue" />;
+        if (isProcessing(r)) return <StatusTag color="#2563EB" label="Payment processing" />;
+        if (r.status === "pending" && isBeforeToday(r.due_date)) return <StatusTag color="#DC2626" label="Overdue" />;
+        if (r.status === "pending" && isToday(r.due_date)) return <StatusTag color="#D97706" label="Due today" />;
         if (r.lease_agreement?.autopay_paused_at) return <StatusTag color="#D97706" label="Autopay paused" />;
         if (r.lease_agreement?.autopay_enabled) return <StatusTag color="#16A34A" label="Autopay set" />;
         return <StatusTag color="#7C3AED" label="Upcoming" />;
@@ -246,6 +277,18 @@ export function PaymentTrackingPanel() {
     },
   ];
 
+  const column = (key: string) => columns.find((c) => c.key === key)!;
+  const recentColumns: DataTableColumn<Payment>[] = [
+    column("customer"),
+    column("amount"),
+    {
+      key: "method",
+      header: "Paid with",
+      render: (r) => <span className="text-neutral-500">{r.method ? METHOD_LABEL[r.method] : "—"}</span>,
+    },
+    { key: "paid", header: "Paid on", render: (r) => <span className="text-neutral-500">{formatDateOnly(r.paid_date)}</span> },
+  ];
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
@@ -281,13 +324,42 @@ export function PaymentTrackingPanel() {
         <StatCard
           label="Avg. monthly payment"
           value={money(avgMonthlyPayment)}
-          note={`Across ${recurring.length} payment${recurring.length === 1 ? "" : "s"}`}
+          note={`Across ${paid.length} collected payment${paid.length === 1 ? "" : "s"}`}
           noteTone="neutral"
           icon={CreditCardIcon}
           iconBg="#DBEAFE"
           iconColor="#2563EB"
         />
       </div>
+
+      {retryError && <p className="text-sm text-red-600">{retryError}</p>}
+      <div className="space-y-3">
+        <DataTable
+          title="Payments to track"
+          action={
+            trackingRows.length > 0 ? (
+              <span className="text-xs text-neutral-400">
+                Failed and overdue first, then the next payment due for each lease
+              </span>
+            ) : undefined
+          }
+          columns={columns}
+          rows={trackingRows.slice(0, visible)}
+          emptyLabel="No payments to track right now."
+        />
+        {trackingRows.length > visible && (
+          <div className="flex items-center justify-center gap-3 text-sm text-neutral-500">
+            <span>
+              Showing {visible} of {trackingRows.length}
+            </span>
+            <button onClick={() => setVisible((n) => n + PAGE_SIZE)} className="font-semibold text-red-600 hover:underline">
+              Show more
+            </button>
+          </div>
+        )}
+      </div>
+
+      <DataTable title="Recently paid" columns={recentColumns} rows={recentlyPaid} emptyLabel="No payments collected yet." />
 
       <EarningsChart
         data={earningsData}
@@ -297,9 +369,6 @@ export function PaymentTrackingPanel() {
       />
 
       <FundedVolumeChart data={collectionsData} title="Collections" unitLabel="payments collected" tooltipVerb="Collected" />
-
-      {retryError && <p className="text-sm text-red-600">{retryError}</p>}
-      <DataTable title="Overdue & upcoming payments" columns={columns} rows={overdueRows} emptyLabel="No pending payments." />
 
       {confirming && (
         <Modal
