@@ -91,6 +91,18 @@ export async function saveCardAsStaff(
   return { ...data.data.card, replaced: data.data.replaced };
 }
 
+/**
+ * Staff: a short-lived page for the customer to link their own bank account on the office computer (their own bank login,
+ * never seen by staff). The page does the saving; nothing is saved by this call.
+ */
+export async function startBankLinkAsStaff(leaseAgreementId: number | string): Promise<{ url: string; expires_in_minutes: number }> {
+  const data = await apiFetch<{ data: { url: string; expires_in_minutes: number } }>(`/admin/lease-agreements/${leaseAgreementId}/bank-link`, {
+    method: "POST",
+    token: getToken(),
+  });
+  return data.data;
+}
+
 /** What staff may see about a saved AutoPay method: never more than brand, last four and expiry (card) or bank name and last four. */
 export interface StaffMethodInfo {
   /** True when Stripe could not be reached, so the details are not known right now. */

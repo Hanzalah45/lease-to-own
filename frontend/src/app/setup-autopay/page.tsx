@@ -47,6 +47,9 @@ function SetupAutopayFlow() {
   const expires = searchParams.get("expires");
   const signature = searchParams.get("signature");
   const hasAllParams = Boolean(id && lease && hash && expires && signature);
+  // Opened by staff on the office computer for a customer to link their own bank account (2026-10-16). Only changes
+  // the wording on this page: the link itself is the same signed link and is valid or not exactly as before.
+  const office = searchParams.get("office") === "1";
   const params: SignedPaymentMethodLinkParams | null = hasAllParams
     ? { id: id!, lease: lease!, hash: hash!, expires: expires!, signature: signature! }
     : null;
@@ -104,9 +107,13 @@ function SetupAutopayFlow() {
         <div className="mb-6 flex flex-col items-center text-center">
           <Image src="/logo.png" alt="Prostart Leasing" width={159} height={103} className="mb-3 h-16 w-auto" priority />
           <p className="font-heading text-xs font-semibold uppercase tracking-widest text-neutral-400">Prostart Leasing</p>
-          <h1 className="mt-1 text-xl font-bold uppercase tracking-tight text-neutral-900">Set up AutoPay</h1>
+          <h1 className="mt-1 text-xl font-bold uppercase tracking-tight text-neutral-900">
+            {office ? "Link your bank account" : "Set up AutoPay"}
+          </h1>
           <p className="mt-1 text-sm text-neutral-500">
-            Add a bank account and a backup card so your monthly payments happen automatically.
+            {office
+              ? "Log in to your own bank when the window asks. Prostart Leasing staff never see your bank login."
+              : "Add a bank account and a backup card so your monthly payments happen automatically."}
           </p>
         </div>
 
@@ -134,7 +141,12 @@ function SetupAutopayFlow() {
               billingEmail={customerEmail}
             />
 
-            {bothAdded && (
+            {office && status.bank_account_added && (
+              <p className="text-center text-sm font-semibold text-green-700">
+                Your bank account is saved. You can close this tab.
+              </p>
+            )}
+            {!office && bothAdded && (
               <p className="text-center text-sm font-semibold text-green-700">
                 You&rsquo;re all set — AutoPay is ready to go.
               </p>
@@ -153,9 +165,13 @@ function SetupAutopayFlow() {
         )}
 
         <div className="mt-6 text-center text-sm text-neutral-500">
-          <Link href="/login" className="font-semibold text-neutral-900 underline">
-            Back to sign in
-          </Link>
+          {office ? (
+            "When you are finished, close this tab."
+          ) : (
+            <Link href="/login" className="font-semibold text-neutral-900 underline">
+              Back to sign in
+            </Link>
+          )}
         </div>
       </div>
     </main>

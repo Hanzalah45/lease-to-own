@@ -16,10 +16,15 @@ class PaymentMethodSigner
 {
     private const TTL_HOURS = 72;
 
-    public static function urlFor(User $customer, LeaseAgreement $lease): string
+    /**
+     * @param  int|null  $ttlMinutes  How long the link works. The emailed link keeps the default; a link staff open on
+     *                                the office computer for the customer to use right there is kept short, because
+     *                                it stays in that browser's history.
+     */
+    public static function urlFor(User $customer, LeaseAgreement $lease, ?int $ttlMinutes = null): string
     {
         $hash = sha1($customer->email);
-        $expires = now()->addHours(self::TTL_HOURS)->timestamp;
+        $expires = ($ttlMinutes ? now()->addMinutes($ttlMinutes) : now()->addHours(self::TTL_HOURS))->timestamp;
         $signature = self::sign($customer->id, $lease->id, $hash, $expires);
 
         return sprintf(

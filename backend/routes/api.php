@@ -251,6 +251,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/lease-agreements/{leaseAgreement}/autopay-methods', [AdminLeaseCardController::class, 'show']);
             Route::post('/lease-agreements/{leaseAgreement}/card/setup-intent', [AdminLeaseCardController::class, 'setupIntent']);
             Route::post('/lease-agreements/{leaseAgreement}/card', [AdminLeaseCardController::class, 'store']);
+            Route::post('/lease-agreements/{leaseAgreement}/bank-link', [AdminLeaseCardController::class, 'bankLink']);
             Route::apiResource('payments', AdminPaymentController::class);
         });
     });

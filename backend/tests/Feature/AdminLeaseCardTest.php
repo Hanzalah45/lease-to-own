@@ -236,6 +236,72 @@ class AdminLeaseCardTest extends TestCase
         $this->assertCount(0, $this->stripe->requests);
     }
 
+    /** @return array<string, string> the signed parameters of a link, as the page sends them back. */
+    private function linkParams(string $url): array
+    {
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+
+        return $query;
+    }
+
+    public function test_staff_get_a_short_lived_page_for_the_customer_to_link_their_own_bank_account(): void
+    {
+        $lease = $this->lease();
+        $this->travelTo(now()->startOfSecond());
+
+        $response = $this->actingAs($this->admin(), 'sanctum')->postJson("/api/admin/lease-agreements/{$lease->id}/bank-link")
+            ->assertOk()
+            ->assertJsonPath('data.expires_in_minutes', 30);
+
+        $url = $response->json('data.url');
+        $query = $this->linkParams($url);
+        $this->assertStringContainsString('/setup-autopay?', $url);
+        $this->assertSame('1', $query['office']);
+        $this->assertEqualsWithDelta(now()->addMinutes(30)->timestamp, (int) $query['expires'], 2);
+
+        // The same signed page the emailed link opens accepts it, for this customer and lease only.
+        $this->postJson('/api/payment-methods/verify-show', $query)
+            ->assertOk()
+            ->assertJsonPath('data.customer_email', $lease->customer->email);
+        $this->postJson('/api/payment-methods/verify-show', array_merge($query, ['lease' => $lease->id + 1]))->assertStatus(422);
+
+        // Gone once the half hour is over.
+        $this->travel(31)->minutes();
+        $this->postJson('/api/payment-methods/verify-show', $query)->assertStatus(422);
+
+        $this->assertCount(0, $this->stripe->requests);
+    }
+
+    public function test_opening_the_bank_page_leaves_a_note_on_the_application(): void
+    {
+        $lease = $this->lease();
+        $admin = $this->admin();
+
+        $this->actingAs($admin, 'sanctum')->postJson("/api/admin/lease-agreements/{$lease->id}/bank-link")->assertOk();
+
+        $note = $lease->application->dealerNotes()->latest('id')->first();
+        $this->assertStringContainsString($admin->name, $note->text);
+        $this->assertStringContainsString('link a bank account', $note->text);
+    }
+
+    public function test_the_bank_page_is_not_opened_before_the_deposit_stage(): void
+    {
+        $lease = $this->lease([], Application::STATUS_IN_VERIFICATION);
+
+        $this->actingAs($this->admin(), 'sanctum')->postJson("/api/admin/lease-agreements/{$lease->id}/bank-link")->assertStatus(422);
+    }
+
+    public function test_only_staff_with_payment_tracking_can_open_the_bank_page(): void
+    {
+        $lease = $this->lease();
+
+        $this->actingAs($lease->customer, 'sanctum')->postJson("/api/admin/lease-agreements/{$lease->id}/bank-link")->assertForbidden();
+
+        $reviewer = User::factory()->create(['role' => User::ROLE_ADMIN]);
+        AdminPermission::create(['user_id' => $reviewer->id, 'permission' => AdminPermission::APPLICATION_REVIEW]);
+        $this->actingAs($reviewer, 'sanctum')->postJson("/api/admin/lease-agreements/{$lease->id}/bank-link")->assertForbidden();
+    }
+
     public function test_only_staff_with_payment_tracking_can_add_a_card(): void
     {
         $lease = $this->lease();

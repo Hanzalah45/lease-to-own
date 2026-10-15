@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Application;
 use App\Models\LeaseAgreement;
+use App\Services\PaymentMethodSigner;
 use App\Services\StripePaymentMethodService;
 use Illuminate\Http\Request;
 
@@ -16,11 +17,16 @@ use Illuminate\Http\Request;
  * browser, so the number goes straight to Stripe and never reaches this server;
  * only the SetupIntent id comes back, and the same checks as the customer's own
  * flow decide whether it is saved (StripePaymentMethodService::attachPaymentMethod).
- * Cards only: a bank account needs the customer's own bank login. Staff never
- * see more than the brand, last four digits and expiry.
+ * Staff only ever enter cards: a bank account needs the customer's own bank
+ * login, so for a bank account staff open a page on the office computer and the
+ * customer links it themselves (bankLink). Staff never see more than the brand,
+ * last four digits and expiry.
  */
 class LeaseCardController extends Controller
 {
+    /** How long the page opened on the office computer keeps working. */
+    private const OFFICE_LINK_MINUTES = 30;
+
     public function __construct(private readonly StripePaymentMethodService $paymentMethods) {}
 
     /** The bank account and card AutoPay would use, as Stripe describes them (no full numbers). */
@@ -85,14 +91,42 @@ class LeaseCardController extends Controller
         ]]);
     }
 
+    /**
+     * A page for the customer to link their own bank account on the office computer (client, Joel, 2026-10-16:
+     * "Can't send the customer a payment link? Upload the customer's card or bank account information here").
+     * It is the same signed page the emailed link opens, so the customer logs in to their own bank in Stripe's
+     * window and staff never see the login; unlike the emailed link it only works for a short while. Nothing is
+     * saved here, the customer saves it on that page.
+     */
+    public function bankLink(Request $request, LeaseAgreement $leaseAgreement)
+    {
+        $this->assertMethodCanBeSaved($leaseAgreement, 'A bank account');
+
+        $admin = $request->user();
+        $leaseAgreement->application?->dealerNotes()->create([
+            'author_user_id' => $admin->id,
+            'text' => sprintf('A page to link a bank account was opened on the office computer by %s so the customer could link their own account.', $admin->name),
+        ]);
+
+        return response()->json(['data' => [
+            'url' => PaymentMethodSigner::urlFor($leaseAgreement->customer, $leaseAgreement, self::OFFICE_LINK_MINUTES).'&office=1',
+            'expires_in_minutes' => self::OFFICE_LINK_MINUTES,
+        ]]);
+    }
+
     private function assertCardCanBeSaved(LeaseAgreement $lease): void
+    {
+        $this->assertMethodCanBeSaved($lease, 'A card');
+    }
+
+    private function assertMethodCanBeSaved(LeaseAgreement $lease, string $what): void
     {
         // Not tied to AutoPay: a saved card is also what a customer pays with from their own screen (2026-10-15,
         // a customer with AutoPay off added the wrong card and neither she nor staff could change it).
         abort_unless(
             in_array($lease->application?->status, [Application::STATUS_WAITING_DEPOSIT, Application::STATUS_WAITING_DELIVERY, Application::STATUS_FINISHED], true),
             422,
-            'A card can only be saved once the lease is at the deposit stage or later.',
+            "{$what} can only be saved once the lease is at the deposit stage or later.",
         );
     }
 }
