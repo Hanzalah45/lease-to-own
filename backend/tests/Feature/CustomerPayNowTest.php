@@ -250,6 +250,38 @@ class CustomerPayNowTest extends TestCase
         $this->assertCount(2, array_unique($keys));
     }
 
+    /** Real case (2026-10-16): a customer whose card was declined twice got "Server Error" on every press after that. */
+    public function test_a_payment_declined_several_times_can_still_be_paid_again(): void
+    {
+        $lease = $this->lease();
+        $payment = $this->due($lease);
+
+        foreach (['pi_declined_1', 'pi_declined_2', 'pi_declined_3'] as $intentId) {
+            $this->stripe->queue(['error' => [
+                'message' => 'Your card has insufficient funds.',
+                'type' => 'card_error',
+                'code' => 'card_declined',
+                'decline_code' => 'insufficient_funds',
+                'payment_intent' => $this->intent($intentId, 'requires_payment_method'),
+            ]], 402);
+
+            $this->pay($lease->customer, $payment, ['method' => 'card'])
+                ->assertOk()
+                ->assertJsonPath('data.status', 'failed')
+                ->assertJsonPath('data.message', 'Your card has insufficient funds.');
+        }
+
+        $this->assertSame([1, 2, 3], $payment->attempts()->pluck('attempt_no')->all());
+
+        // The fourth press, with a card that works, is a new attempt numbered after the last one.
+        $this->stripe->queue($this->intent('pi_fourth_try', 'succeeded'));
+        $this->pay($lease->customer, $payment, ['method' => 'card'])->assertOk()->assertJsonPath('data.status', 'paid');
+
+        $this->assertSame(Payment::STATUS_PAID, $payment->fresh()->status);
+        $this->assertSame([1, 2, 3, 4], $payment->attempts()->pluck('attempt_no')->all());
+        $this->assertCount(4, array_unique($payment->attempts()->pluck('idempotency_key')->all()));
+    }
+
     public function test_a_payment_already_processing_at_the_bank_is_not_charged_again(): void
     {
         $lease = $this->lease();

@@ -62,7 +62,7 @@ class CustomerPaymentCharger
             return 'This account is suspended. Please contact us.';
         }
 
-        $latest = $payment->attempts()->orderByDesc('id')->first();
+        $latest = $payment->attempts()->reorder()->orderByDesc('id')->first();
         if (! $latest) {
             // An intent attached by some other path means a charge is already in flight.
             return $payment->stripe_payment_intent_id && $payment->status === Payment::STATUS_PENDING
@@ -134,7 +134,7 @@ class CustomerPaymentCharger
             $totalCents = $bankCents + $feeCents;
             abort_if($expectedTotalCents !== null && $expectedTotalCents !== $totalCents, 409, 'The amount changed. Please review the new total and try again.');
 
-            $latest = $locked->attempts()->orderByDesc('id')->first();
+            $latest = $locked->attempts()->reorder()->orderByDesc('id')->first();
             if ($latest && $latest->status === PaymentAttempt::STATUS_INITIATED && $latest->startedByCustomer()) {
                 // A press that never got its answer is repeated as it was (same key), or not at all.
                 abort_unless(
@@ -263,7 +263,7 @@ class CustomerPaymentCharger
      */
     private function settleAbandonedCardAttempt(Payment $payment): void
     {
-        $latest = $payment->attempts()->orderByDesc('id')->first();
+        $latest = $payment->attempts()->reorder()->orderByDesc('id')->first();
         if (! $latest || ! $latest->startedByCustomer() || $latest->status !== PaymentAttempt::STATUS_PROCESSING
             || $latest->method !== 'card' || ! $latest->stripe_payment_intent_id) {
             return;
