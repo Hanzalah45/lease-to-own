@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { PageHeroHeader } from "@/components/layout/PageHeroHeader";
 import { PaymentTrackingPanel } from "@/components/dashboard/panels/PaymentTrackingPanel";
@@ -26,7 +27,18 @@ export default function AdminPaymentsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeroHeader title="Payments" subtitle="Collections, overdue balances, and autopay enrollment across every lease." />
+      <PageHeroHeader
+        title="Payments"
+        subtitle="Collections, overdue balances, and autopay enrollment across every lease."
+        action={
+          <Link
+            href="/admin/reports"
+            className="font-heading self-start whitespace-nowrap rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
+          >
+            Sales tax &amp; reports →
+          </Link>
+        }
+      />
       <PaymentTrackingPanel />
     </div>
   );

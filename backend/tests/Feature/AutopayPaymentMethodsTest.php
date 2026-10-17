@@ -449,4 +449,24 @@ class AutopayPaymentMethodsTest extends TestCase
         $this->assertNull($fresh->stripe_card_payment_method_id);
         $this->assertNull($fresh->autopay_primary_method);
     }
+
+    /** Client, Joel, 2026-10-16: the confirmation says "remove the customer's saved payment method", so it must really go. */
+    public function test_clearing_a_method_also_takes_it_off_the_customers_stripe_profile(): void
+    {
+        $lease = $this->leaseAwaitingDeposit();
+        $lease->update(['stripe_card_payment_method_id' => 'pm_clear_card', 'stripe_bank_payment_method_id' => 'pm_clear_bank']);
+        $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
+
+        $this->actingAs($admin, 'sanctum')->postJson("/api/admin/lease-agreements/{$lease->id}/payment-methods/clear", ['type' => 'card'])->assertOk();
+
+        $urls = collect($this->stripe->requests)->pluck('url');
+        $this->assertTrue($urls->contains(fn ($u) => str_contains($u, '/payment_methods/pm_clear_card/detach')));
+        $this->assertFalse($urls->contains(fn ($u) => str_contains($u, 'pm_clear_bank')), 'the other method is left alone');
+        $this->assertSame('pm_clear_bank', $lease->fresh()->stripe_bank_payment_method_id);
+
+        // Clearing a method that was never saved calls nothing.
+        $before = count($this->stripe->requests);
+        $this->actingAs($admin, 'sanctum')->postJson("/api/admin/lease-agreements/{$lease->id}/payment-methods/clear", ['type' => 'card'])->assertOk();
+        $this->assertCount($before, $this->stripe->requests);
+    }
 }

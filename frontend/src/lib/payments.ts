@@ -1,4 +1,4 @@
-import { apiFetch } from "@/lib/api";
+import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import type { Payment } from "@/types/lease-agreement";
 
@@ -239,4 +239,59 @@ export async function endLeaseAsStaff(
     body: { reason: body.reason, note: body.note || undefined, tax_collected: body.taxCollected ?? undefined },
   });
   return data.data;
+}
+
+/** One month of the sales tax and payments report: what was collected, with the sales tax inside it. */
+export interface SalesTaxReportMonth {
+  month: string;
+  label: string;
+  payments: number;
+  taxable_sales: number;
+  sales_tax: number;
+  tracking_fees: number;
+  deposits: number;
+  late_fees: number;
+  extra_payments: number;
+  card_fees: number;
+  total_collected: number;
+}
+
+export interface SalesTaxReport {
+  from: string;
+  to: string;
+  months: SalesTaxReportMonth[];
+  totals: Omit<SalesTaxReportMonth, "month" | "label">;
+  /** Total collected by payment method (ach, card, cash, check, other, unknown). */
+  by_method: Record<string, number>;
+}
+
+function reportQuery(from?: string, to?: string): string {
+  const query = new URLSearchParams();
+  if (from) query.set("from", from);
+  if (to) query.set("to", to);
+  const text = query.toString();
+
+  return text ? `?${text}` : "";
+}
+
+/** Staff: money collected between two dates (a whole year by default), by month, with the sales tax inside it. */
+export async function getSalesTaxReport(from?: string, to?: string): Promise<SalesTaxReport> {
+  const data = await apiFetch<{ data: SalesTaxReport }>(`/admin/reports/sales-tax${reportQuery(from, to)}`, { token: getToken() });
+  return data.data;
+}
+
+/** Staff: downloads every payment collected between two dates as a spreadsheet file, for the books. */
+export async function downloadPaymentsCsv(from: string, to: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/admin/reports/payments.csv${reportQuery(from, to)}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!response.ok) throw new Error("Could not download the report.");
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `payments-${from}-to-${to}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
 }

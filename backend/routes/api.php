@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\Admin\EquipmentUnitController as AdminEquipmentUnit
 use App\Http\Controllers\Api\Admin\LeaseAgreementController as AdminLeaseAgreementController;
 use App\Http\Controllers\Api\Admin\ExtraPaymentController as AdminExtraPaymentController;
 use App\Http\Controllers\Api\Admin\LeaseEndController;
+use App\Http\Controllers\Api\Admin\ReportController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\Api\Admin\PaymentMethodController as AdminPaymentMethodController;
 use App\Http\Controllers\Api\Admin\PricingController as AdminPricingController;
@@ -260,6 +261,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/lease-agreements/{leaseAgreement}/bank-link', [AdminLeaseCardController::class, 'bankLink']);
             Route::post('/lease-agreements/{leaseAgreement}/extra-payment', [AdminExtraPaymentController::class, 'store']);
             Route::post('/lease-agreements/{leaseAgreement}/end', [LeaseEndController::class, 'store']);
+            Route::get('/reports/sales-tax', [ReportController::class, 'salesTax']);
+            Route::get('/reports/payments.csv', [ReportController::class, 'paymentsCsv']);
             Route::apiResource('payments', AdminPaymentController::class);
         });
     });
