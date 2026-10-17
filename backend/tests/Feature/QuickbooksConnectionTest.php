@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\QuickbooksConnection;
+use App\Models\QuickbooksSyncSetting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -29,6 +30,10 @@ class QuickbooksConnectionTest extends TestCase
             'services.quickbooks.client_id' => 'fake-client-id',
             'services.quickbooks.client_secret' => 'fake-client-secret',
             'services.quickbooks.redirect_uri' => 'http://localhost:8010/api/quickbooks/callback',
+            // Intuit's real endpoints, whatever the local .env points at (a local stand-in for Intuit is used in the browser).
+            'services.quickbooks.authorize_url' => 'https://appcenter.intuit.com/connect/oauth2',
+            'services.quickbooks.token_url' => 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer',
+            'services.quickbooks.revoke_url' => 'https://developer.api.intuit.com/v2/oauth2/tokens/revoke',
             'app.frontend_url' => 'http://localhost:3000',
         ]);
     }
@@ -75,6 +80,7 @@ class QuickbooksConnectionTest extends TestCase
     {
         $admin = $this->superAdmin();
         Cache::put('quickbooks_oauth_state:valid-state', $admin->id, now()->addMinutes(10));
+        QuickbooksSyncSetting::current()->update(['last_error' => 'QuickBooks is not connected. Reconnect it on the Settings page.']);
 
         Http::fake([
             'oauth.platform.intuit.com/*' => Http::response([
@@ -99,6 +105,9 @@ class QuickbooksConnectionTest extends TestCase
         $this->assertSame('fake-access-token', $connection->access_token);
         $this->assertSame('fake-refresh-token', $connection->refresh_token);
         $this->assertSame($admin->id, $connection->connected_by);
+
+        // A reconnect clears the sync's stale "not connected" note but keeps its choices.
+        $this->assertNull(QuickbooksSyncSetting::current()->last_error);
 
         // The state can't be replayed against a second callback.
         $this->assertNull(Cache::get('quickbooks_oauth_state:valid-state'));

@@ -7,18 +7,19 @@ use App\Http\Controllers\Api\Admin\ContractController as AdminContractController
 use App\Http\Controllers\Api\Admin\CustomerController as AdminCustomerController;
 use App\Http\Controllers\Api\Admin\DealerNoteController;
 use App\Http\Controllers\Api\Admin\DepositChargeController as AdminDepositChargeController;
-use App\Http\Controllers\Api\Admin\LeaseCardController as AdminLeaseCardController;
 use App\Http\Controllers\Api\Admin\EmailLogController as AdminEmailLogController;
 use App\Http\Controllers\Api\Admin\EquipmentServiceRecordController;
 use App\Http\Controllers\Api\Admin\EquipmentUnitController as AdminEquipmentUnitController;
-use App\Http\Controllers\Api\Admin\LeaseAgreementController as AdminLeaseAgreementController;
 use App\Http\Controllers\Api\Admin\ExtraPaymentController as AdminExtraPaymentController;
+use App\Http\Controllers\Api\Admin\LeaseAgreementController as AdminLeaseAgreementController;
+use App\Http\Controllers\Api\Admin\LeaseCardController as AdminLeaseCardController;
 use App\Http\Controllers\Api\Admin\LeaseEndController;
-use App\Http\Controllers\Api\Admin\ReportController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\Api\Admin\PaymentMethodController as AdminPaymentMethodController;
 use App\Http\Controllers\Api\Admin\PricingController as AdminPricingController;
 use App\Http\Controllers\Api\Admin\QuickbooksConnectionController;
+use App\Http\Controllers\Api\Admin\QuickbooksSyncController;
+use App\Http\Controllers\Api\Admin\ReportController;
 use App\Http\Controllers\Api\Admin\RiskProfileController;
 use App\Http\Controllers\Api\Auth\AccountSetupController;
 use App\Http\Controllers\Api\Auth\ForgotPasswordController;
@@ -33,8 +34,8 @@ use App\Http\Controllers\Api\AvatarController;
 use App\Http\Controllers\Api\Customer\ApplicationController;
 use App\Http\Controllers\Api\Customer\ContractController;
 use App\Http\Controllers\Api\Customer\DepositPaymentController;
-use App\Http\Controllers\Api\Customer\ExtraPaymentController as CustomerExtraPaymentController;
 use App\Http\Controllers\Api\Customer\EquipmentController as CustomerEquipmentController;
+use App\Http\Controllers\Api\Customer\ExtraPaymentController as CustomerExtraPaymentController;
 use App\Http\Controllers\Api\Customer\LeaseAgreementController;
 use App\Http\Controllers\Api\Customer\NotificationPreferencesController;
 use App\Http\Controllers\Api\Customer\PaymentController;
@@ -198,6 +199,12 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/quickbooks/status', [QuickbooksConnectionController::class, 'status']);
             Route::post('/quickbooks/connect', [QuickbooksConnectionController::class, 'connect']);
             Route::delete('/quickbooks/disconnect', [QuickbooksConnectionController::class, 'disconnect']);
+            Route::get('/quickbooks/sync', [QuickbooksSyncController::class, 'show']);
+            Route::put('/quickbooks/sync', [QuickbooksSyncController::class, 'update']);
+            Route::get('/quickbooks/accounts', [QuickbooksSyncController::class, 'accounts']);
+            Route::post('/quickbooks/accounts/create-missing', [QuickbooksSyncController::class, 'createAccounts']);
+            Route::post('/quickbooks/sync/run', [QuickbooksSyncController::class, 'run']);
+            Route::post('/quickbooks/sync/retry', [QuickbooksSyncController::class, 'retry']);
         });
 
         Route::middleware('permission:application_review')->group(function () {

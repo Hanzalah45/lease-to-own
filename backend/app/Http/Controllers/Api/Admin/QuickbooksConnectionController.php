@@ -18,8 +18,6 @@ use Illuminate\Support\Str;
  */
 class QuickbooksConnectionController extends Controller
 {
-    private const AUTHORIZE_URL = 'https://appcenter.intuit.com/connect/oauth2';
-
     private const SCOPE = 'com.intuit.quickbooks.accounting';
 
     public function status()
@@ -62,7 +60,7 @@ class QuickbooksConnectionController extends Controller
             'state' => $state,
         ]);
 
-        return response()->json(['data' => ['url' => self::AUTHORIZE_URL.'?'.$query]]);
+        return response()->json(['data' => ['url' => config('services.quickbooks.authorize_url').'?'.$query]]);
     }
 
     public function disconnect()
@@ -78,7 +76,7 @@ class QuickbooksConnectionController extends Controller
         Http::asForm()->withBasicAuth(
             config('services.quickbooks.client_id'),
             config('services.quickbooks.client_secret'),
-        )->post('https://developer.api.intuit.com/v2/oauth2/tokens/revoke', [
+        )->post(config('services.quickbooks.revoke_url'), [
             'token' => $connection->refresh_token,
         ]);
 

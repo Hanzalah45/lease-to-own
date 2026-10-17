@@ -51,6 +51,11 @@ class Payment extends Model
         'recorded_by',
         'stripe_payment_intent_id',
         'quickbooks_record_id',
+        'quickbooks_sync_status',
+        'quickbooks_synced_at',
+        'quickbooks_sync_error',
+        'quickbooks_sync_attempts',
+        'quickbooks_reversal_id',
     ];
 
     protected function casts(): array
@@ -60,6 +65,7 @@ class Payment extends Model
             'paid_date' => 'date',
             'amount' => 'decimal:2',
             'card_fee_amount' => 'decimal:2',
+            'quickbooks_synced_at' => 'datetime',
         ];
     }
 

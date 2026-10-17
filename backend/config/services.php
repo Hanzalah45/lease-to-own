@@ -59,6 +59,13 @@ return [
         'client_secret' => env('QUICKBOOKS_CLIENT_SECRET'),
         'env' => env('QUICKBOOKS_ENV', 'sandbox'),
         'redirect_uri' => env('QUICKBOOKS_REDIRECT_URI'),
+        // Intuit's endpoints. Only a local stand-in for Intuit (tests/fake-intuit) ever overrides these.
+        'authorize_url' => env('QUICKBOOKS_AUTHORIZE_URL', 'https://appcenter.intuit.com/connect/oauth2'),
+        'token_url' => env('QUICKBOOKS_TOKEN_URL', 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer'),
+        'revoke_url' => env('QUICKBOOKS_REVOKE_URL', 'https://developer.api.intuit.com/v2/oauth2/tokens/revoke'),
+        'api_base' => env('QUICKBOOKS_API_BASE') ?: (env('QUICKBOOKS_ENV', 'sandbox') === 'production'
+            ? 'https://quickbooks.api.intuit.com'
+            : 'https://sandbox-quickbooks.api.intuit.com'),
     ],
 
 ];

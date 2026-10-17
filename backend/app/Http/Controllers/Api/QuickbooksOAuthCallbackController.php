@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\QuickbooksConnection;
+use App\Models\QuickbooksSyncSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -19,8 +20,6 @@ use Illuminate\Support\Facades\Log;
  */
 class QuickbooksOAuthCallbackController extends Controller
 {
-    private const TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
-
     public function __invoke(Request $request)
     {
         $frontendBase = rtrim(config('app.frontend_url'), '/').'/admin/settings';
@@ -39,7 +38,7 @@ class QuickbooksOAuthCallbackController extends Controller
         $response = Http::asForm()->withBasicAuth(
             config('services.quickbooks.client_id'),
             config('services.quickbooks.client_secret'),
-        )->post(self::TOKEN_URL, [
+        )->post(config('services.quickbooks.token_url'), [
             'grant_type' => 'authorization_code',
             'code' => $request->query('code'),
             'redirect_uri' => config('services.quickbooks.redirect_uri'),
@@ -64,6 +63,9 @@ class QuickbooksOAuthCallbackController extends Controller
             'refresh_token_expires_at' => now()->addSeconds((int) $tokens['x_refresh_token_expires_in']),
             'connected_by' => $adminUserId,
         ]);
+
+        // The sync's account choices live in their own table and survive a reconnect; only its "not connected" note is stale now.
+        QuickbooksSyncSetting::current()->update(['last_error' => null]);
 
         return redirect($frontendBase.'?quickbooks=connected');
     }

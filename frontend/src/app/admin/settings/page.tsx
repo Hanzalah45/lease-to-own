@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { ApiError } from "@/lib/api";
 import { disconnectQuickbooks, getQuickbooksStatus, startQuickbooksConnect, type QuickbooksStatus } from "@/lib/quickbooks";
 import { Modal } from "@/components/ui/Modal";
+import { QuickbooksSyncCard } from "@/components/admin/QuickbooksSyncCard";
 import { AlertCircleIcon, CheckCircleIcon, DollarIcon, TrashIcon } from "@/components/icons";
 
 const CALLBACK_BANNER: Record<string, { tone: "success" | "error"; message: string }> = {
@@ -145,27 +146,43 @@ function AdminSettingsContent() {
               <p className="mt-3 text-sm text-neutral-400">Loading…</p>
             ) : status?.connected ? (
               <div className="mt-3 space-y-2">
-                <span className="font-heading inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-green-700">
-                  <CheckCircleIcon className="h-3.5 w-3.5" />
-                  Connected
-                </span>
+                {status.needs_reconnect ? (
+                  <span className="font-heading inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-700">
+                    <AlertCircleIcon className="h-3.5 w-3.5" />
+                    Expired
+                  </span>
+                ) : (
+                  <span className="font-heading inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-green-700">
+                    <CheckCircleIcon className="h-3.5 w-3.5" />
+                    Connected
+                  </span>
+                )}
                 <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
                   <dt className="text-neutral-400">Company ID</dt>
                   <dd className="text-neutral-700">{status.realm_id}</dd>
                   <dt className="text-neutral-400">Connected by</dt>
-                  <dd className="text-neutral-700">{status.connected_by ?? "—"}</dd>
+                  <dd className="text-neutral-700">{status.connected_by ?? "Unknown"}</dd>
                   <dt className="text-neutral-400">Connected on</dt>
                   <dd className="text-neutral-700">
-                    {status.connected_at ? new Date(status.connected_at).toLocaleDateString() : "—"}
+                    {status.connected_at ? new Date(status.connected_at).toLocaleDateString() : "Unknown"}
                   </dd>
                 </dl>
                 {status.needs_reconnect && (
                   <p className="flex items-center gap-1.5 text-sm font-medium text-amber-700">
                     <AlertCircleIcon className="h-4 w-4 shrink-0" />
-                    This connection has expired — reconnect to keep syncing.
+                    This connection has expired. Reconnect to keep syncing.
                   </p>
                 )}
-                <div className="pt-1">
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {status.needs_reconnect && (
+                    <button
+                      onClick={handleConnect}
+                      disabled={connecting}
+                      className="font-heading rounded-md bg-neutral-900 px-3.5 py-2 text-sm font-bold uppercase tracking-wide text-white hover:bg-neutral-800 disabled:opacity-50"
+                    >
+                      {connecting ? "Redirecting…" : "Reconnect"}
+                    </button>
+                  )}
                   <button
                     onClick={() => setConfirmingDisconnect(true)}
                     className="font-heading flex items-center gap-1.5 rounded-md border border-red-200 px-3.5 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
@@ -194,6 +211,8 @@ function AdminSettingsContent() {
           </div>
         </div>
       </div>
+
+      {status?.connected && !status.needs_reconnect && <QuickbooksSyncCard />}
 
       {confirmingDisconnect && (
         <Modal title="Disconnect QuickBooks" onClose={() => setConfirmingDisconnect(false)} maxWidthClassName="max-w-sm">

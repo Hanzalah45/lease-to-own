@@ -23,3 +23,6 @@ Schedule::command('deposits:forfeit-expired-holds')->daily();
 // a failed bank debit falls back to the card the same morning; first attempts
 // hold until 9am Central inside the command. See AutopayCharger.
 Schedule::command('payments:charge-autopay')->everyFifteenMinutes()->withoutOverlapping(10);
+
+// Sends collected payments to QuickBooks (a no-op until the sync is switched on in Settings). See QuickbooksSyncer.
+Schedule::command('quickbooks:sync-payments')->everyFiveMinutes()->withoutOverlapping(10);

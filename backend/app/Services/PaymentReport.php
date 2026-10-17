@@ -75,6 +75,17 @@ class PaymentReport
         ];
     }
 
+    /**
+     * How one collected payment splits: the sales tax and taxable sales inside it, the tracking fee, the card fee. The books
+     * (QuickbooksJournal) use the same split, so the report and QuickBooks always agree.
+     *
+     * @return array<string, mixed>
+     */
+    public function breakdown(Payment $payment): array
+    {
+        return $this->row($payment);
+    }
+
     /** @return array<string, mixed> */
     private function row(Payment $payment): array
     {
@@ -132,7 +143,7 @@ class PaymentReport
      * The first monthly row of a lease whose first month was collected inside a tracking fee and first month charge: it is
      * recorded as paid without any money moving, so counting it as well as the charge would count the month twice.
      */
-    private function isFirstMonthMirror(Payment $payment): bool
+    public function isFirstMonthMirror(Payment $payment): bool
     {
         if ($payment->type !== Payment::TYPE_RENTAL || $payment->stripe_payment_intent_id) {
             return false;
