@@ -6,7 +6,9 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { money } from "@/components/applications/wizard/types";
 import { formatDateOnly } from "@/lib/dates";
+import { ExtraPaymentModal } from "@/components/payments/ExtraPaymentModal";
 import { getMyLeaseAgreement } from "@/lib/lease-agreements";
+import { getExtraPaymentOptions, type ExtraPaymentOptions } from "@/lib/payments";
 import { ApiError } from "@/lib/api";
 import type { LeaseAgreement } from "@/types/lease-agreement";
 
@@ -21,12 +23,23 @@ export default function CustomerLeaseDetailPage() {
   const [lease, setLease] = useState<LeaseAgreement | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Extra payments toward the early purchase price (client, Joel, 2026-10-16).
+  const [extra, setExtra] = useState<ExtraPaymentOptions | null>(null);
+  const [showExtra, setShowExtra] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    getMyLeaseAgreement(params.id)
-      .then(setLease)
+  function load() {
+    return Promise.all([
+      getMyLeaseAgreement(params.id).then(setLease),
+      getExtraPaymentOptions(params.id).then(setExtra).catch(() => setExtra(null)),
+    ])
       .catch((err) => setError(err instanceof ApiError ? err.message : "Could not load this lease."))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
 
   if (loading) return <p className="py-12 text-center text-sm text-neutral-400">Loading…</p>;
@@ -65,6 +78,12 @@ export default function CustomerLeaseDetailPage() {
           </Link>
         </div>
       </div>
+
+      {notice && (
+        <p role="status" className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+          {notice}
+        </p>
+      )}
 
       <div className="rounded-xl border border-neutral-200 bg-neutral-100 px-5 py-3.5 text-sm text-neutral-700">
         <span className="font-bold">
@@ -140,6 +159,23 @@ export default function CustomerLeaseDetailPage() {
           >
             View full payoff schedule →
           </Link>
+
+          {extra && (
+            <div className="mt-3">
+              <button
+                onClick={() => setShowExtra(true)}
+                disabled={!extra.available}
+                className="font-heading block w-full rounded-md border border-red-600 bg-white py-2.5 text-center text-sm font-bold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Make an extra payment
+              </button>
+              <p className="mt-2 text-xs text-neutral-500">
+                {extra.available
+                  ? "Extra payments go toward your early purchase price and lower it by the amount you pay."
+                  : extra.blocker}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -214,6 +250,19 @@ export default function CustomerLeaseDetailPage() {
           </div>
         </div>
       </div>
+
+      {showExtra && extra && (
+        <ExtraPaymentModal
+          leaseId={lease.id}
+          options={extra}
+          onClose={() => setShowExtra(false)}
+          onDone={(message) => {
+            setShowExtra(false);
+            setNotice(message);
+            void load();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ use App\Models\RiskRedFlag;
 use App\Models\User;
 use App\Notifications\ActivateAccountNotification;
 use App\Notifications\AutopayNeedsReviewNotification;
+use App\Notifications\EarlyPurchasePricePaidNotification;
 use App\Notifications\PaymentStatusChangedNotification;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -68,8 +69,10 @@ class LeaseEngine
 
         $paymentsScheduledToDate = $m * $monthlyRental;
 
+        // Additional Funds lower the price in the first 90 days too (contract Section 19: they are applied to the EPO):
+        // paying extra early must not leave the price unchanged until month 4. Nothing changes for a lease with none.
         if ($m <= self::EPO_NINETY_DAY_MONTH_CUTOFF) {
-            return round(max(0, $cashPrice - $paymentsScheduledToDate), 2);
+            return round(max(0, $cashPrice - $paymentsScheduledToDate - $additionalFunds), 2);
         }
 
         return round(max(0, $cashPrice - 0.5 * $paymentsScheduledToDate + $amountPastDue - $additionalFunds), 2);
@@ -113,7 +116,8 @@ class LeaseEngine
         // inflate the EPO price. Late fees stay included here deliberately —
         // unlike paymentsMadeCount(), an overdue late fee genuinely is still
         // owed toward payoff.
-        $notPayoffArrears = fn (string $type) => ! in_array($type, [Payment::TYPE_DEPOSIT, Payment::TYPE_PICKUP_BALANCE], true);
+        // An extra payment (Additional Funds) is optional, so a declined or unfinished one is never money owed either.
+        $notPayoffArrears = fn (string $type) => ! in_array($type, [Payment::TYPE_DEPOSIT, Payment::TYPE_PICKUP_BALANCE, Payment::TYPE_EXTRA_PAYMENT], true);
         // A pending row with a Stripe intent is an in-flight charge (an ACH
         // debit takes days to settle), not money the customer is behind on —
         // without this every AutoPay month would briefly bump the EPO price.
@@ -129,7 +133,7 @@ class LeaseEngine
             ? (float) $lease->payments->filter($isPastDueUnpaid)->sum('amount')
             : (float) $lease->payments()
                 ->where('status', '!=', Payment::STATUS_PAID)
-                ->whereNotIn('type', [Payment::TYPE_DEPOSIT, Payment::TYPE_PICKUP_BALANCE])
+                ->whereNotIn('type', [Payment::TYPE_DEPOSIT, Payment::TYPE_PICKUP_BALANCE, Payment::TYPE_EXTRA_PAYMENT])
                 ->where(fn ($q) => $q->where('status', '!=', Payment::STATUS_PENDING)->orWhereNull('stripe_payment_intent_id'))
                 ->whereDate('due_date', '<=', $today)
                 ->sum('amount');
@@ -521,7 +525,8 @@ class LeaseEngine
             'recorded_by' => $recordedBy ?? $payment->recorded_by,
         ]);
 
-        if ($status === Payment::STATUS_FAILED && ! $wasFailed) {
+        // A declined extra payment is not a missed payment: the customer chose to pay more, so it raises no risk flag.
+        if ($status === Payment::STATUS_FAILED && ! $wasFailed && $payment->type !== Payment::TYPE_EXTRA_PAYMENT) {
             RiskRedFlagger::flag(
                 $payment->leaseAgreement->customer_id,
                 RiskRedFlag::TYPE_FAILED_ACH,
@@ -552,6 +557,21 @@ class LeaseEngine
         }
 
         self::syncPaymentsPaidToDate($payment->leaseAgreement);
+
+        // Additional Funds (contract Section 19): a paid extra payment is added to the lease's additional funds, which lower
+        // the early purchase price, and one that stops being paid (refunded) is taken off again. Only on the change into or
+        // out of "paid", so saving the same status twice never counts it twice.
+        if ($payment->type === Payment::TYPE_EXTRA_PAYMENT) {
+            $lease = $payment->leaseAgreement;
+            if ($enteredPaid) {
+                $lease->update(['additional_funds' => round((float) $lease->additional_funds + (float) $payment->amount, 2)]);
+                if (self::epoToday($lease->fresh()) <= 0) {
+                    self::earlyPurchasePricePaid($lease->fresh());
+                }
+            } elseif ($wasPaid && $status !== Payment::STATUS_PAID) {
+                $lease->update(['additional_funds' => round(max(0.0, (float) $lease->additional_funds - (float) $payment->amount), 2)]);
+            }
+        }
 
         // A successful deposit charge (client, Joel, 2026-10-01) converges
         // with the existing manual "Mark Deposit Received" admin action —
@@ -586,6 +606,28 @@ class LeaseEngine
         }
 
         return $payment->fresh();
+    }
+
+    /**
+     * The whole early purchase price has been paid through extra payments. The sales tax is due when the option is
+     * exercised and the equipment still has to be released as owned, so a person finishes it; meanwhile AutoPay is
+     * paused so nothing more is charged, and staff are told what is left to do.
+     */
+    private static function earlyPurchasePricePaid(LeaseAgreement $lease): void
+    {
+        if ($lease->autopay_enabled && ! $lease->autopay_paused_at) {
+            $lease->update(['autopay_paused_at' => now()]);
+        }
+
+        $recipients = User::where('role', User::ROLE_SUPER_ADMIN)
+            ->orWhere(function ($query) {
+                $query->where('role', User::ROLE_ADMIN)
+                    ->where(function ($inner) {
+                        $inner->whereDoesntHave('adminPermissions')
+                            ->orWhereHas('adminPermissions', fn ($p) => $p->where('permission', AdminPermission::PAYMENT_TRACKING));
+                    });
+            })->get();
+        Notification::send($recipients, new EarlyPurchasePricePaidNotification($lease));
     }
 
     /**

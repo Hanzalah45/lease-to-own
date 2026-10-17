@@ -60,7 +60,7 @@ class PaymentController extends Controller
     {
         $data = $request->validate([
             'status' => ['required', Rule::in([Payment::STATUS_PENDING, Payment::STATUS_PAID, Payment::STATUS_FAILED, Payment::STATUS_REFUNDED])],
-            'method' => ['sometimes', 'nullable', Rule::in(['ach', 'card', 'cash', 'other'])],
+            'method' => ['sometimes', 'nullable', Rule::in(['ach', 'card', 'cash', 'check', 'other'])],
         ]);
 
         $payment = LeaseEngine::applyPaymentStatusChange($payment, $data['status'], $data['method'] ?? null, Auth::id());

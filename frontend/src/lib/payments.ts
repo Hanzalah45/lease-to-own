@@ -75,7 +75,7 @@ async function chargeAsStaff(
 export async function markPaymentStatus(
   id: number | string,
   status: "pending" | "paid" | "failed" | "refunded",
-  method?: "ach" | "card" | "cash" | "other",
+  method?: "ach" | "card" | "cash" | "check" | "other",
 ): Promise<Payment> {
   const data = await apiFetch<{ data: Payment }>(`/admin/payments/${id}`, {
     method: "PUT",
@@ -167,6 +167,57 @@ export async function payMyPayment(
     method: "POST",
     token: getToken(),
     body: { method: choice.method, expected_total_cents: choice.expectedTotalCents },
+  });
+  return data.data;
+}
+
+/** What a customer can do toward the early purchase price right now (contract Section 19, "Additional Funds"). */
+export interface ExtraPaymentOptions {
+  available: boolean;
+  /** Why an extra payment cannot be made right now, in words for the customer. */
+  blocker: string | null;
+  min: number;
+  /** The whole early purchase price: paying that much leaves nothing to pay. */
+  max: number;
+  /** The early purchase price today. */
+  epo_today: number;
+  available_methods: Array<"bank" | "card">;
+  card_fee_percent: number;
+}
+
+/** Customer: whether and how much they can pay extra toward the early purchase price. */
+export async function getExtraPaymentOptions(leaseAgreementId: number | string): Promise<ExtraPaymentOptions> {
+  const data = await apiFetch<{ data: ExtraPaymentOptions }>(`/customer/lease-agreements/${leaseAgreementId}/extra-payment`, {
+    token: getToken(),
+  });
+  return data.data;
+}
+
+/**
+ * Customer: pays an extra amount toward the early purchase price with a saved bank account or card. The server refuses
+ * (409) when the total no longer matches the one shown and never charges twice for a press that got no answer.
+ */
+export async function payExtra(
+  leaseAgreementId: number | string,
+  choice: { amount: number; method: "bank" | "card"; expectedTotalCents: number },
+): Promise<PayMyPaymentResult & { epo_today: number }> {
+  const data = await apiFetch<{ data: PayMyPaymentResult & { epo_today: number } }>(`/customer/lease-agreements/${leaseAgreementId}/extra-payment`, {
+    method: "POST",
+    token: getToken(),
+    body: { amount: choice.amount, method: choice.method, expected_total_cents: choice.expectedTotalCents },
+  });
+  return data.data;
+}
+
+/** Staff: records an extra payment the customer made in the office (cash, check or other) toward the early purchase price. */
+export async function recordExtraPaymentAsStaff(
+  leaseAgreementId: number | string,
+  body: { amount: number; method: "cash" | "check" | "other" },
+): Promise<{ payment: Payment; epo_today: number }> {
+  const data = await apiFetch<{ data: { payment: Payment; epo_today: number } }>(`/admin/lease-agreements/${leaseAgreementId}/extra-payment`, {
+    method: "POST",
+    token: getToken(),
+    body,
   });
   return data.data;
 }

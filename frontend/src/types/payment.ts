@@ -1,4 +1,4 @@
-export type PaymentMethod = "ach" | "card" | "cash" | "other";
+export type PaymentMethod = "ach" | "card" | "cash" | "check" | "other";
 export type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
 
 export interface Payment {

@@ -130,7 +130,7 @@ class StripeWebhookController extends Controller
         }
 
         $metadata = $intent->metadata ? $intent->metadata->toArray() : [];
-        if (($metadata['type'] ?? null) !== Payment::TYPE_RENTAL || empty($metadata['payment_id']) || empty($metadata['attempt_no'])) {
+        if (! in_array($metadata['type'] ?? null, [Payment::TYPE_RENTAL, Payment::TYPE_EXTRA_PAYMENT], true) || empty($metadata['payment_id']) || empty($metadata['attempt_no'])) {
             return null;
         }
 

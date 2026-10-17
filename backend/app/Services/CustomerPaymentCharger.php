@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Stripe\Exception\CardException;
 use Stripe\Exception\InvalidRequestException;
 use Stripe\StripeClient;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * "Pay now": a customer pays a due monthly payment themselves, with a bank
@@ -43,7 +44,8 @@ class CustomerPaymentCharger
     /** Why the customer cannot pay this payment themselves right now, or null when they can. */
     public static function blocker(Payment $payment, LeaseAgreement $lease): ?string
     {
-        if ($payment->type !== Payment::TYPE_RENTAL) {
+        $isExtra = $payment->type === Payment::TYPE_EXTRA_PAYMENT;
+        if ($payment->type !== Payment::TYPE_RENTAL && ! $isExtra) {
             return 'Only a monthly payment can be paid here.';
         }
         if ($payment->status === Payment::STATUS_PAID) {
@@ -52,7 +54,7 @@ class CustomerPaymentCharger
         if (! in_array($payment->status, [Payment::STATUS_PENDING, Payment::STATUS_FAILED], true)) {
             return 'This payment cannot be paid here.';
         }
-        if ($payment->due_date->toDateString() > BillingClock::todayDate()) {
+        if (! $isExtra && $payment->due_date->toDateString() > BillingClock::todayDate()) {
             return 'This payment is not due yet.';
         }
         if ($lease->application?->status !== Application::STATUS_FINISHED) {
@@ -79,9 +81,132 @@ class CustomerPaymentCharger
             // closed the extra confirmation step) is cleaned up by the next press.
             PaymentAttempt::STATUS_PROCESSING => $latest->startedByCustomer() && $latest->method === 'card'
                 ? null
-                : 'A bank payment for this month is still processing. It usually clears in 1 to 4 business days.',
+                : 'A bank payment '.($isExtra ? 'is' : 'for this month is').' still processing. It usually clears in 1 to 4 business days.',
             default => null,
         };
+    }
+
+    /** The smallest extra payment (or the whole early purchase price when that is less). */
+    public const EXTRA_PAYMENT_MIN = 5.00;
+
+    /**
+     * Why the customer cannot make an extra payment right now, or null when they can. Contract Section 19 applies money
+     * paid on top of the monthly payment first to anything accrued (a missed monthly payment, a late fee) and only then
+     * to the early purchase price, so while something is due the customer pays that first.
+     */
+    public static function extraPaymentBlocker(LeaseAgreement $lease, bool $forCustomer = true): ?string
+    {
+        if ($lease->application?->status !== Application::STATUS_FINISHED) {
+            return 'The equipment has not been picked up yet.';
+        }
+        if ($lease->ownership_status === LeaseAgreement::OWNERSHIP_OWNED || LeaseEngine::epoToday($lease) <= 0) {
+            return 'There is nothing left to pay toward the early purchase price.';
+        }
+        if ($forCustomer && $lease->customer?->status === 'suspended') {
+            return 'This account is suspended. Please contact us.';
+        }
+
+        $today = BillingClock::todayDate();
+        $owed = $lease->payments()
+            ->whereIn('type', [Payment::TYPE_RENTAL, Payment::TYPE_LATE_FEE])
+            ->whereIn('status', [Payment::STATUS_PENDING, Payment::STATUS_FAILED])
+            ->whereDate('due_date', '<=', $today)
+            // A charge already on its way (a bank debit takes days) is not money still owed.
+            ->where(fn ($q) => $q->where('status', Payment::STATUS_FAILED)->orWhereNull('stripe_payment_intent_id'))
+            ->exists();
+        if ($owed) {
+            return 'Please pay the amount that is due first. Extra payments go toward the early purchase price once nothing is due.';
+        }
+
+        // An extra payment still being charged (a bank debit takes days, a press that has not been answered yet).
+        $inFlight = $lease->payments()
+            ->where('type', Payment::TYPE_EXTRA_PAYMENT)
+            ->where('status', Payment::STATUS_PENDING)
+            ->where(fn ($q) => $q->whereNotNull('stripe_payment_intent_id')->orWhere('created_at', '>=', now()->subMinutes(2)))
+            ->exists();
+        if ($inFlight) {
+            return 'An extra payment is still being processed. Please wait until it clears before making another one.';
+        }
+
+        return null;
+    }
+
+    /**
+     * What the portal shows for an extra payment: whether it can be made, why not, the range, the saved methods and the
+     * card fee, so the exact price can be shown before anything is charged.
+     *
+     * @return array{available: bool, blocker: ?string, min: float, max: float, available_methods: list<string>, card_fee_percent: float}
+     */
+    public static function extraPaymentOptions(LeaseAgreement $lease): array
+    {
+        $max = max(0.0, LeaseEngine::epoToday($lease));
+        $methods = array_values(array_filter([
+            $lease->stripe_bank_payment_method_id ? 'bank' : null,
+            $lease->stripe_card_payment_method_id ? 'card' : null,
+        ]));
+        $blocker = self::extraPaymentBlocker($lease) ?? ($methods === [] ? 'Save a bank account or card first.' : null);
+
+        return [
+            'available' => $blocker === null,
+            'blocker' => $blocker,
+            'min' => round(min(self::EXTRA_PAYMENT_MIN, $max), 2),
+            'max' => round($max, 2),
+            'available_methods' => $methods,
+            'card_fee_percent' => CardPricing::ratePercent(),
+        ];
+    }
+
+    /**
+     * Starts an extra payment of the given amount (bank price; the card adds its fee on top) with the chosen method.
+     * Money lands in the lease's Additional Funds once it is paid (LeaseEngine::applyPaymentStatusChange).
+     *
+     * @return array{payment: Payment, status: string, message: ?string, client_secret: ?string}
+     */
+    public function payExtra(LeaseAgreement $lease, float $amount, ?string $methodType, ?int $expectedTotalCents): array
+    {
+        $payment = DB::transaction(function () use ($lease, $amount) {
+            // One extra payment at a time, decided under a lock on the lease so a double press cannot start two.
+            LeaseAgreement::whereKey($lease->id)->lockForUpdate()->firstOrFail();
+            $lease->refresh()->load(['application', 'customer']);
+            abort_if($reason = self::extraPaymentBlocker($lease), 422, $reason);
+
+            $options = self::extraPaymentOptions($lease);
+            $amount = round($amount, 2);
+            abort_if($amount < $options['min'] || $amount > $options['max'], 422, sprintf(
+                'Enter an amount between $%s and $%s.',
+                number_format($options['min'], 2),
+                number_format($options['max'], 2),
+            ));
+
+            // A press that never reached the processor (nothing attached) and has gone stale is cleared away, not kept.
+            $lease->payments()
+                ->where('type', Payment::TYPE_EXTRA_PAYMENT)
+                ->where('status', Payment::STATUS_PENDING)
+                ->whereNull('stripe_payment_intent_id')
+                ->where('created_at', '<', now()->subMinutes(2))
+                ->whereDoesntHave('attempts')
+                ->delete();
+
+            return Payment::create([
+                'lease_agreement_id' => $lease->id,
+                'type' => Payment::TYPE_EXTRA_PAYMENT,
+                'amount' => $amount,
+                'due_date' => BillingClock::todayDate(),
+                'status' => Payment::STATUS_PENDING,
+            ]);
+        });
+
+        try {
+            return $this->pay($payment, $methodType, $expectedTotalCents);
+        } catch (HttpException $e) {
+            // Refused before any charge was recorded (the price moved, the method is not on file): the row has done its job
+            // and must not keep the next press waiting. One that has an attempt (an unknown outcome) is kept and repeated.
+            if (! $payment->attempts()->exists()) {
+                $payment->delete();
+            }
+
+            throw $e;
+        }
     }
 
     /**
@@ -190,8 +315,10 @@ class CustomerPaymentCharger
                 'confirm' => true,
                 // No off_session: the customer is here, so a card may ask for extra confirmation on screen.
                 'description' => sprintf(
-                    'Monthly payment due %s, Lease #%d%s',
-                    $payment->due_date->toDateString(),
+                    '%s, Lease #%d%s',
+                    $payment->type === Payment::TYPE_EXTRA_PAYMENT
+                        ? 'Extra payment toward the early purchase price'
+                        : 'Monthly payment due '.$payment->due_date->toDateString(),
                     $lease->id,
                     $attempt->fee_cents > 0 ? ' (includes card processing fee)' : '',
                 ),
@@ -199,7 +326,7 @@ class CustomerPaymentCharger
                     'payment_id' => $payment->id,
                     'lease_id' => $lease->id,
                     'attempt_no' => $attempt->attempt_no,
-                    'type' => Payment::TYPE_RENTAL,
+                    'type' => $payment->type === Payment::TYPE_EXTRA_PAYMENT ? Payment::TYPE_EXTRA_PAYMENT : Payment::TYPE_RENTAL,
                 ],
             ], ['idempotency_key' => $attempt->idempotency_key]);
         } catch (CardException $e) {

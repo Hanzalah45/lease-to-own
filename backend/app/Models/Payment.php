@@ -30,6 +30,13 @@ class Payment extends Model
     /** The $150 tracking fee + first month's rent, deferred when a customer chooses "pay deposit only" (client, Joel, 2026-10-02) — never shares a PaymentIntent with the deposit row. */
     public const TYPE_PICKUP_BALANCE = 'pickup_balance';
 
+    /**
+     * An amount paid on top of the monthly payments, toward the early purchase price (contract Section 19, "Additional
+     * Funds"). When it is paid it is added to the lease's additional_funds, which lowers the early purchase price; it is
+     * never a rental payment, so it does not count as a month paid and never counts as arrears.
+     */
+    public const TYPE_EXTRA_PAYMENT = 'extra_payment';
+
     protected $fillable = [
         'lease_agreement_id',
         'type',

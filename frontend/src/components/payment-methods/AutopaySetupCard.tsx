@@ -114,32 +114,45 @@ export function AutopaySetupCard({
   }
 
   const bothAdded = status.bank_account_added && status.card_added;
+  // A lease with AutoPay off still saves a bank account or card: it is what the customer pays with from their Payments page.
+  // Calling it "AutoPay" there made customers think saving a card turned AutoPay on (client, Joel, 2026-10-16).
+  const autopayOn = status.autopay_enabled !== false;
 
   return (
     <div className="space-y-4">
+      {!autopayOn && (
+        <p className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+          AutoPay is off for your lease. What you save here is used when you press Pay on your Payments page. Nothing is charged
+          automatically.
+        </p>
+      )}
       <MethodRow
         icon={<BuildingIcon className="h-5 w-5" />}
         label="Bank account (ACH)"
         added={status.bank_account_added}
         hint={status.monthly_prices ? `${money(status.monthly_prices.bank)} a month, no fee` : undefined}
       >
-        {!status.bank_account_added && (
-          <>
-            <button
-              onClick={startBank}
-              disabled={bankBusy}
-              className="font-heading rounded-md bg-neutral-900 px-3.5 py-2 text-sm font-bold uppercase tracking-wide text-white hover:bg-neutral-800 disabled:opacity-50"
-            >
-              {bankBusy ? "Connecting…" : "Link bank account"}
-            </button>
-            {bankError && <p className="mt-2 text-xs text-red-600">{bankError}</p>}
-          </>
+        {/* A saved account can be replaced (client, Joel, 2026-10-16): the one on file stays until the new one is linked. */}
+        <button
+          onClick={startBank}
+          disabled={bankBusy}
+          className={`font-heading rounded-md px-3.5 py-2 text-sm font-bold uppercase tracking-wide disabled:opacity-50 ${
+            status.bank_account_added
+              ? "border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+              : "bg-neutral-900 text-white hover:bg-neutral-800"
+          }`}
+        >
+          {bankBusy ? "Connecting…" : status.bank_account_added ? "Change bank account" : "Link bank account"}
+        </button>
+        {status.bank_account_added && (
+          <p className="mt-2 text-xs text-neutral-500">Your current account stays on file until you finish linking the new one.</p>
         )}
+        {bankError && <p className="mt-2 text-xs text-red-600">{bankError}</p>}
       </MethodRow>
 
       <MethodRow
         icon={<CreditCardIcon className="h-5 w-5" />}
-        label="Backup card"
+        label={autopayOn ? "Backup card" : "Card"}
         added={status.card_added}
         hint={status.monthly_prices ? `${money(status.monthly_prices.card)} a month, includes ${money(status.monthly_prices.card_fee)} card fee` : undefined}
       >
@@ -181,7 +194,7 @@ export function AutopaySetupCard({
         )}
       </MethodRow>
 
-      {bothAdded && (
+      {bothAdded && autopayOn && (
         <div className="rounded-xl border border-neutral-200 bg-white p-5">
           <h3 className="font-heading text-sm font-bold uppercase tracking-wide text-neutral-900">
             Which one should AutoPay use first?

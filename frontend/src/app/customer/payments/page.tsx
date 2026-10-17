@@ -54,7 +54,8 @@ export default function CustomerPaymentsPage() {
   }, [payments]);
 
   const nextPayment = useMemo(
-    () => payments.filter((p) => p.status === "pending").sort((a, b) => a.due_date.localeCompare(b.due_date))[0],
+    // An extra payment still clearing at the bank is not a payment that is coming up.
+    () => payments.filter((p) => p.status === "pending" && p.type !== "extra_payment").sort((a, b) => a.due_date.localeCompare(b.due_date))[0],
     [payments],
   );
 
@@ -70,6 +71,8 @@ export default function CustomerPaymentsPage() {
   // soonest pending payment's lease (falling back to the most recent payment
   // at all) is a reasonable single lease to manage it for from this page.
   const autopayLeaseId = (nextPayment ?? payments[0])?.lease_agreement_id;
+  // With AutoPay off the page only saves what the customer pays with, so it is not called "Autopay" (client, Joel, 2026-10-16).
+  const autopayOn = (nextPayment ?? payments[0])?.lease_agreement?.autopay_enabled !== false;
 
   return (
     <div className="space-y-6">
@@ -126,7 +129,7 @@ export default function CustomerPaymentsPage() {
               href={`/customer/leases/${autopayLeaseId}/autopay`}
               className="font-heading rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
             >
-              Manage Autopay
+              {autopayOn ? "Manage Autopay" : "Payment methods"}
             </Link>
           ) : (
             <button
@@ -187,6 +190,11 @@ export default function CustomerPaymentsPage() {
                       {row.type === "pickup_balance" && (
                         <span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-purple-700">
                           Pickup balance
+                        </span>
+                      )}
+                      {row.type === "extra_payment" && (
+                        <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-700">
+                          Extra payment
                         </span>
                       )}
                     </td>

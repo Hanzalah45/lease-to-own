@@ -21,7 +21,16 @@ const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "S
 /** How many payments the main list shows at first, and each time "Show more" is pressed. */
 const PAGE_SIZE = 15;
 const RECENT_PAID_COUNT = 8;
-const METHOD_LABEL: Record<string, string> = { ach: "Bank account", card: "Card", cash: "Cash", other: "Other" };
+const METHOD_LABEL: Record<string, string> = { ach: "Bank account", card: "Card", cash: "Cash", check: "Check", other: "Other" };
+
+/** How staff say a payment they mark paid was received (client, Joel, 2026-10-16: cash or check in the office). */
+const PAID_BY_OPTIONS: Array<{ value: "cash" | "check" | "ach" | "card" | "other"; label: string }> = [
+  { value: "cash", label: "Cash" },
+  { value: "check", label: "Check" },
+  { value: "ach", label: "Bank transfer" },
+  { value: "card", label: "Card" },
+  { value: "other", label: "Other" },
+];
 
 function dueKey(payment: Payment): string {
   return payment.due_date.slice(0, 10);
@@ -56,6 +65,8 @@ export function PaymentTrackingPanel() {
   const [retryingId, setRetryingId] = useState<number | null>(null);
   const [retryError, setRetryError] = useState<string | null>(null);
   const [visible, setVisible] = useState(PAGE_SIZE);
+  // How a payment staff mark paid was received.
+  const [paidBy, setPaidBy] = useState<(typeof PAID_BY_OPTIONS)[number]["value"]>("cash");
 
   function load() {
     return listPayments()
@@ -80,7 +91,7 @@ export function PaymentTrackingPanel() {
     setConfirmBusy(true);
     setConfirmError(null);
     try {
-      await markPaymentStatus(confirming.payment.id, confirming.status);
+      await markPaymentStatus(confirming.payment.id, confirming.status, confirming.status === "paid" ? paidBy : undefined);
       setConfirming(null);
       await load();
     } catch {
@@ -133,7 +144,7 @@ export function PaymentTrackingPanel() {
     .reduce((sum, p) => sum + Number(p.amount), 0);
 
   // A debit that is already on its way is not overdue, it just has not settled.
-  const overduePayments = payments.filter((p) => p.status === "pending" && isBeforeToday(p.due_date) && !isProcessing(p));
+  const overduePayments = payments.filter((p) => p.type !== "extra_payment" && p.status === "pending" && isBeforeToday(p.due_date) && !isProcessing(p));
 
   // Only leases that still have something to collect count: one with nothing but paid rows left (a cancelled lease, a finished
   // one) is neither enrolled nor missing from AutoPay.
@@ -184,13 +195,15 @@ export function PaymentTrackingPanel() {
   // payment of each lease, soonest first. The schedule has one row per month, so
   // listing all of them would bury the few that matter.
   const byDue = (a: Payment, b: Payment) => dueKey(a).localeCompare(dueKey(b)) || a.id - b.id;
-  const failedRows = payments.filter((p) => p.status === "failed").sort(byDue);
+  // An extra payment (toward the early purchase price) is optional: a declined one is nothing to follow up, so only one that
+  // is still clearing shows here.
+  const failedRows = payments.filter((p) => p.status === "failed" && p.type !== "extra_payment").sort(byDue);
   const overdueRows = [...overduePayments].sort(byDue);
   const processingRows = payments.filter((p) => isProcessing(p) && !overduePayments.includes(p)).sort(byDue);
   const nextMonthly = new Map<number, Payment>();
   const otherUpcoming: Payment[] = [];
   for (const p of [...payments].sort(byDue)) {
-    if (p.status !== "pending" || isBeforeToday(p.due_date) || isProcessing(p)) continue;
+    if (p.type === "extra_payment" || p.status !== "pending" || isBeforeToday(p.due_date) || isProcessing(p)) continue;
     if (p.type !== "rental") otherUpcoming.push(p);
     else if (!nextMonthly.has(p.lease_agreement_id)) nextMonthly.set(p.lease_agreement_id, p);
   }
@@ -250,6 +263,11 @@ export function PaymentTrackingPanel() {
               Pickup balance
             </span>
           )}
+          {r.type === "extra_payment" && (
+            <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-700">
+              Extra payment
+            </span>
+          )}
           {r.status === "failed" && lastFailure(r) && (
             <span className="mt-0.5 block text-xs text-red-600">{lastFailure(r)}</span>
           )}
@@ -272,7 +290,11 @@ export function PaymentTrackingPanel() {
             </button>
           )}
           <button
-            onClick={() => setConfirming({ payment: r, status: "paid" })}
+            onClick={() => {
+              // Keeps how it was paid when that is already known (a bank debit marked paid by hand stays a bank payment).
+              setPaidBy(r.method ?? "cash");
+              setConfirming({ payment: r, status: "paid" });
+            }}
             className="text-sm font-semibold text-green-700 hover:underline"
           >
             Mark Paid
@@ -408,6 +430,26 @@ export function PaymentTrackingPanel() {
                 </>
               )}
             </p>
+            {confirming.status === "paid" && (
+              <div>
+                <label htmlFor="paid-by" className="mb-1 block text-xs font-bold uppercase tracking-wide text-neutral-500">
+                  Received by
+                </label>
+                <select
+                  id="paid-by"
+                  value={paidBy}
+                  onChange={(e) => setPaidBy(e.target.value as typeof paidBy)}
+                  disabled={confirmBusy}
+                  className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                >
+                  {PAID_BY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setConfirming(null)}

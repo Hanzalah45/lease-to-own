@@ -66,6 +66,9 @@ class PaymentMethodController extends Controller
         $pricing = $leaseAgreement->pricingSummary();
 
         return [
+            // A lease with AutoPay off still saves a bank account or card (it is what the customer pays with), so the page
+            // needs to know which words to use (client, Joel, 2026-10-16).
+            'autopay_enabled' => (bool) $leaseAgreement->autopay_enabled,
             'bank_account_added' => (bool) $leaseAgreement->stripe_bank_payment_method_id,
             'card_added' => (bool) $leaseAgreement->stripe_card_payment_method_id,
             'autopay_primary_method' => $leaseAgreement->autopay_primary_method,

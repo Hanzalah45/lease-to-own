@@ -94,6 +94,8 @@ function SetupAutopayFlow() {
 
   const bothAdded = status?.bank_account_added && status?.card_added;
   const atLeastOneMethodAdded = status?.bank_account_added || status?.card_added;
+  // A lease with AutoPay off still saves a bank account or card, to pay with; it is not "AutoPay" for that customer.
+  const autopayOn = status?.autopay_enabled !== false;
 
   return (
     <main
@@ -108,12 +110,14 @@ function SetupAutopayFlow() {
           <Image src="/logo.png" alt="Prostart Leasing" width={159} height={103} className="mb-3 h-16 w-auto" priority />
           <p className="font-heading text-xs font-semibold uppercase tracking-widest text-neutral-400">Prostart Leasing</p>
           <h1 className="mt-1 text-xl font-bold uppercase tracking-tight text-neutral-900">
-            {office ? "Link your bank account" : "Set up AutoPay"}
+            {office ? "Link your bank account" : autopayOn ? "Set up AutoPay" : "Payment methods"}
           </h1>
           <p className="mt-1 text-sm text-neutral-500">
             {office
               ? "Log in to your own bank when the window asks. Prostart Leasing staff never see your bank login."
-              : "Add a bank account and a backup card so your monthly payments happen automatically."}
+              : autopayOn
+                ? "Add a bank account and a backup card so your monthly payments happen automatically."
+                : "Save a bank account or a card to pay your monthly payments with."}
           </p>
         </div>
 
@@ -146,7 +150,7 @@ function SetupAutopayFlow() {
                 Your bank account is saved. You can close this tab.
               </p>
             )}
-            {!office && bothAdded && (
+            {!office && bothAdded && autopayOn && (
               <p className="text-center text-sm font-semibold text-green-700">
                 You&rsquo;re all set — AutoPay is ready to go.
               </p>

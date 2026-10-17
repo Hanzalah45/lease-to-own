@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\Admin\EmailLogController as AdminEmailLogController
 use App\Http\Controllers\Api\Admin\EquipmentServiceRecordController;
 use App\Http\Controllers\Api\Admin\EquipmentUnitController as AdminEquipmentUnitController;
 use App\Http\Controllers\Api\Admin\LeaseAgreementController as AdminLeaseAgreementController;
+use App\Http\Controllers\Api\Admin\ExtraPaymentController as AdminExtraPaymentController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
 use App\Http\Controllers\Api\Admin\PaymentMethodController as AdminPaymentMethodController;
 use App\Http\Controllers\Api\Admin\PricingController as AdminPricingController;
@@ -30,6 +31,7 @@ use App\Http\Controllers\Api\AvatarController;
 use App\Http\Controllers\Api\Customer\ApplicationController;
 use App\Http\Controllers\Api\Customer\ContractController;
 use App\Http\Controllers\Api\Customer\DepositPaymentController;
+use App\Http\Controllers\Api\Customer\ExtraPaymentController as CustomerExtraPaymentController;
 use App\Http\Controllers\Api\Customer\EquipmentController as CustomerEquipmentController;
 use App\Http\Controllers\Api\Customer\LeaseAgreementController;
 use App\Http\Controllers\Api\Customer\NotificationPreferencesController;
@@ -162,6 +164,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/lease-agreements/{leaseAgreement}/payment-methods/setup-intent', [PaymentMethodController::class, 'setupIntent']);
         Route::post('/lease-agreements/{leaseAgreement}/payment-methods/confirm', [PaymentMethodController::class, 'confirm']);
         Route::post('/lease-agreements/{leaseAgreement}/payment-methods/primary', [PaymentMethodController::class, 'setPrimary']);
+        Route::get('/lease-agreements/{leaseAgreement}/extra-payment', [CustomerExtraPaymentController::class, 'show']);
+        Route::post('/lease-agreements/{leaseAgreement}/extra-payment', [CustomerExtraPaymentController::class, 'store'])->middleware('throttle:10,1');
         Route::get('/lease-agreements/{leaseAgreement}/deposit-payment', [DepositPaymentController::class, 'show']);
         Route::post('/lease-agreements/{leaseAgreement}/deposit-payment/charge', [DepositPaymentController::class, 'charge']);
         Route::post('/lease-agreements/{leaseAgreement}/deposit-payment/charge-balance', [DepositPaymentController::class, 'chargeBalance']);
@@ -253,6 +257,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/lease-agreements/{leaseAgreement}/card/setup-intent', [AdminLeaseCardController::class, 'setupIntent']);
             Route::post('/lease-agreements/{leaseAgreement}/card', [AdminLeaseCardController::class, 'store']);
             Route::post('/lease-agreements/{leaseAgreement}/bank-link', [AdminLeaseCardController::class, 'bankLink']);
+            Route::post('/lease-agreements/{leaseAgreement}/extra-payment', [AdminExtraPaymentController::class, 'store']);
             Route::apiResource('payments', AdminPaymentController::class);
         });
     });

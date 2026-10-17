@@ -41,6 +41,7 @@ const PAYMENT_TYPE_LABEL: Record<Payment["type"], string> = {
   late_fee: "late fee",
   deposit: "security deposit",
   pickup_balance: "tracking fee and first month",
+  extra_payment: "extra payment",
 };
 
 function num(value: string | number | null | undefined): number {

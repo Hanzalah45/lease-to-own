@@ -101,6 +101,8 @@ export function methodLabel(method: Payment["method"]): string {
       return "card";
     case "cash":
       return "cash";
+    case "check":
+      return "check";
     case "other":
       return "other method";
     default:

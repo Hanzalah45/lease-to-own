@@ -18,6 +18,7 @@ import { ChangeMowerModal } from "@/components/applications/detail/ChangeMowerMo
 import { AddCardForCustomerModal } from "@/components/applications/detail/AddCardForCustomerModal";
 import { AutopayMethodsCard } from "@/components/applications/detail/AutopayMethodsCard";
 import { ChargeDepositModal } from "@/components/applications/detail/ChargeDepositModal";
+import { RecordExtraPaymentModal } from "@/components/applications/detail/RecordExtraPaymentModal";
 import { ProgressCard } from "@/components/applications/detail/ProgressCard";
 import { PaymentsCard } from "@/components/applications/detail/PaymentsCard";
 import { EmailsCard } from "@/components/emails/EmailsCard";
@@ -153,6 +154,7 @@ export default function ApplicationDetailPage() {
   const [changeNotice, setChangeNotice] = useState<string | null>(null);
   const [showChargeDeposit, setShowChargeDeposit] = useState(false);
   const [showChargeBalance, setShowChargeBalance] = useState(false);
+  const [showRecordExtra, setShowRecordExtra] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
   const [methodsRefresh, setMethodsRefresh] = useState(0);
   const [postingNote, setPostingNote] = useState(false);
@@ -574,6 +576,10 @@ export default function ApplicationDetailPage() {
     !balanceOnRecord &&
     (status === "waiting_deposit" || status === "waiting_delivery") &&
     !!(lease?.stripe_card_payment_method_id || lease?.stripe_bank_payment_method_id);
+  // An extra payment taken in the office, toward the early purchase price (client, Joel, 2026-10-16). Only once the lease has
+  // started and while something is left to pay toward the price; the server enforces the rest (nothing due, the range).
+  const canRecordExtra =
+    can("payment_tracking") && status === "finished" && !!lease && lease.ownership_status !== "owned" && Number(lease.epo_today) > 0;
   // Staff see the customer's saved bank account and card and add or change the card when the customer cannot (client, Joel, 2026-10-14/15). Not tied to AutoPay: the card is also what the customer pays with herself.
   const showAutopayMethods =
     can("payment_tracking") &&
@@ -1381,6 +1387,24 @@ export default function ApplicationDetailPage() {
         </div>
       </div>
 
+      {canRecordExtra && lease && (
+        <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-neutral-900">Extra payment toward the early purchase price</p>
+            <p className="text-xs text-neutral-500">
+              Early purchase price today: {money(lease.epo_today)}. Did the customer pay extra in the office? Record it here and the
+              price updates right away.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowRecordExtra(true)}
+            className="font-heading shrink-0 rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50"
+          >
+            Record an extra payment
+          </button>
+        </div>
+      )}
+
       {progress && can("payment_tracking") && <PaymentsCard payments={lease?.payments ?? []} />}
 
       <EmailsCard customerId={application.customer_id} />
@@ -1442,6 +1466,20 @@ export default function ApplicationDetailPage() {
                 ? "Deposit charged. The payment is recorded and a note was added to this application."
                 : "Deposit bank debit started. It will show as paid once the bank settles it (a few business days).",
             );
+            void load();
+          }}
+        />
+      )}
+
+      {showRecordExtra && lease && (
+        <RecordExtraPaymentModal
+          leaseId={lease.id}
+          customerName={application.customer?.name ?? "the customer"}
+          epoToday={Number(lease.epo_today)}
+          onClose={() => setShowRecordExtra(false)}
+          onRecorded={(message) => {
+            setShowRecordExtra(false);
+            setChangeNotice(message);
             void load();
           }}
         />

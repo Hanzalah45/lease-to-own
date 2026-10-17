@@ -79,10 +79,12 @@ class LeaseEngineTest extends TestCase
         // credit/month before it vs. 50%/month after — an inherent, small
         // consequence of the formula, not a bug), but must not explode the
         // way the superseded "full term" version did (a ~$5,000 jump on
-        // this exact lease). One month's worth of rental is a generous cap.
+        // this exact lease). One month's worth of rental is the cap: the step is
+        // exactly that, whatever the additional funds are (they now lower the
+        // price on both sides of the mark, contract Section 19).
         $atCutoff = LeaseEngine::epoAt($lease, 3);
         $justAfter = LeaseEngine::epoAt($lease, 4);
-        $this->assertLessThan(150, abs($justAfter - $atCutoff), 'EPO must not jump discontinuously across the 90-day mark.');
+        $this->assertLessThanOrEqual(150, abs($justAfter - $atCutoff), 'EPO must not jump discontinuously across the 90-day mark.');
 
         $laterMonth = 12;
         $laterScheduledToDate = $laterMonth * 150; // 1800

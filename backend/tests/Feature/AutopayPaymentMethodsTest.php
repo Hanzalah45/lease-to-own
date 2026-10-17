@@ -150,6 +150,49 @@ class AutopayPaymentMethodsTest extends TestCase
         );
     }
 
+    /** Client, Joel, 2026-10-16: "yes please add a direct change bank account". */
+    public function test_changing_the_bank_account_replaces_it_and_takes_the_old_one_off_stripe(): void
+    {
+        $lease = $this->leaseAwaitingDeposit();
+        $lease->update(['stripe_bank_payment_method_id' => 'pm_old_bank', 'autopay_primary_method' => 'ach']);
+
+        $this->queueCompletedSetup($lease, 'seti_bank2', [
+            'id' => 'pm_new_bank',
+            'object' => 'payment_method',
+            'type' => 'us_bank_account',
+            'us_bank_account' => ['last4' => '6789'],
+        ]);
+
+        $this->actingAs($lease->customer, 'sanctum')
+            ->postJson("/api/customer/lease-agreements/{$lease->id}/payment-methods/confirm", [
+                'type' => 'bank',
+                'setup_intent_id' => 'seti_bank2',
+            ])->assertOk()->assertJsonPath('data.bank_account_added', true);
+
+        $fresh = $lease->fresh();
+        $this->assertSame('pm_new_bank', $fresh->stripe_bank_payment_method_id);
+        // The customer's choice of which method is charged first is not touched by changing the account.
+        $this->assertSame('ach', $fresh->autopay_primary_method);
+        $this->assertTrue(
+            collect($this->stripe->requests)->contains(fn ($r) => str_contains($r['url'], '/payment_methods/pm_old_bank/detach')),
+            'the replaced bank account should be taken off the customer in Stripe',
+        );
+    }
+
+    public function test_the_status_says_whether_autopay_is_on_so_the_page_can_use_the_right_words(): void
+    {
+        $lease = $this->leaseAwaitingDeposit();
+
+        foreach ([true, false] as $enabled) {
+            $lease->update(['autopay_enabled' => $enabled]);
+
+            $this->actingAs($lease->customer, 'sanctum')
+                ->getJson("/api/customer/lease-agreements/{$lease->id}/payment-methods")
+                ->assertOk()
+                ->assertJsonPath('data.autopay_enabled', $enabled);
+        }
+    }
+
     public function test_confirming_the_same_card_again_does_not_detach_anything(): void
     {
         $lease = $this->leaseAwaitingDeposit();

@@ -11,6 +11,7 @@ const TYPE_LABEL: Record<Payment["type"], string> = {
   pickup_balance: "Tracking fee and first month",
   rental: "Monthly payment",
   late_fee: "Late fee",
+  extra_payment: "Extra payment toward the early purchase price",
 };
 
 /** How many upcoming monthly payments to list before folding the rest into one line. */

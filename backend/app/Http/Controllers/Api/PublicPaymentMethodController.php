@@ -88,6 +88,7 @@ class PublicPaymentMethodController extends Controller
         $pricing = $lease->pricingSummary();
 
         return [
+            'autopay_enabled' => (bool) $lease->autopay_enabled,
             'bank_account_added' => (bool) $lease->stripe_bank_payment_method_id,
             'card_added' => (bool) $lease->stripe_card_payment_method_id,
             'autopay_primary_method' => $lease->autopay_primary_method,

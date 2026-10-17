@@ -4,6 +4,8 @@ import { getToken } from "@/lib/auth";
 export type AutopayMethodType = "card" | "bank";
 
 export interface PaymentMethodsStatus {
+  /** False when the lease has AutoPay off: the saved methods are then only what the customer pays with. Absent on a few admin-only responses (treated as on). */
+  autopay_enabled?: boolean;
   bank_account_added: boolean;
   card_added: boolean;
   autopay_primary_method: "ach" | "card" | null;

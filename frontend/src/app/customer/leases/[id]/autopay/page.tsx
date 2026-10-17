@@ -67,6 +67,8 @@ export default function AutopaySetupPage() {
 
   const bothAdded = status.bank_account_added && status.card_added;
   const atLeastOneMethodAdded = status.bank_account_added || status.card_added;
+  // A lease with AutoPay off still saves a bank account or card, to pay with; it is not "AutoPay" for that customer.
+  const autopayOn = status.autopay_enabled !== false;
 
   return (
     <div className="space-y-6">
@@ -77,9 +79,13 @@ export default function AutopaySetupPage() {
         >
           ← Back
         </Link>
-        <h1 className="mt-1 text-3xl font-black uppercase tracking-tight text-neutral-900 sm:text-4xl">Set up AutoPay</h1>
+        <h1 className="mt-1 text-3xl font-black uppercase tracking-tight text-neutral-900 sm:text-4xl">
+          {autopayOn ? "Set up AutoPay" : "Payment methods"}
+        </h1>
         <p className="text-sm text-neutral-400">
-          Add a bank account and a backup card so your monthly payments happen automatically.
+          {autopayOn
+            ? "Add a bank account and a backup card so your monthly payments happen automatically."
+            : "Save a bank account or a card to pay your monthly payments from your Payments page."}
         </p>
       </div>
 
@@ -93,7 +99,7 @@ export default function AutopaySetupPage() {
         billingEmail={user?.email ?? ""}
       />
 
-      {bothAdded && (
+      {bothAdded && autopayOn && (
         <p className="text-sm font-semibold text-green-700">You&rsquo;re all set — AutoPay is ready to go.</p>
       )}
 

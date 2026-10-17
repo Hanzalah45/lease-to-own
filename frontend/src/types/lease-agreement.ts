@@ -82,7 +82,7 @@ export interface PaymentAttempt {
 export interface Payment {
   id: number;
   lease_agreement_id: number;
-  type: "rental" | "late_fee" | "deposit" | "pickup_balance";
+  type: "rental" | "late_fee" | "deposit" | "pickup_balance" | "extra_payment";
   late_fee_for_payment_id: number | null;
   /** The BANK price. The total actually charged is amount + card_fee_amount. */
   amount: string;
@@ -90,7 +90,7 @@ export interface Payment {
   card_fee_amount: string;
   due_date: string;
   paid_date: string | null;
-  method: "ach" | "card" | "cash" | "other" | null;
+  method: "ach" | "card" | "cash" | "check" | "other" | null;
   status: "pending" | "paid" | "failed" | "refunded";
   /** Why a charge failed, in the processor's words (client, Joel, 2026-10-13). Rental payments keep theirs per attempt. */
   failure_message?: string | null;
