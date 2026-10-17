@@ -71,7 +71,10 @@ class Application extends Model
         // automatic — see RiskProfileController's manual trigger actions).
         self::STATUS_WAITING_APPROVAL => [self::STATUS_IN_VERIFICATION, self::STATUS_NEEDS_INFO, self::STATUS_DECLINED],
         self::STATUS_IN_VERIFICATION => [self::STATUS_WAITING_DEPOSIT, self::STATUS_DECLINED],
-        self::STATUS_WAITING_DEPOSIT => [self::STATUS_WAITING_DELIVERY, self::STATUS_DECLINED],
+        // Delivered straight from here too (client, Joel, 2026-10-16: "we need to document the mower as received by the
+        // customer now, so do I not mark the deposit as received?"): the customer already has the equipment while the
+        // deposit bank debit is still clearing, and recording the delivery must not claim a deposit that has not arrived.
+        self::STATUS_WAITING_DEPOSIT => [self::STATUS_WAITING_DELIVERY, self::STATUS_FINISHED, self::STATUS_DECLINED],
         self::STATUS_WAITING_DELIVERY => [self::STATUS_FINISHED, self::STATUS_DECLINED],
         self::STATUS_FINISHED => [],
         self::STATUS_DECLINED => [self::STATUS_WAITING_REVIEW],

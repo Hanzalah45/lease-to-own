@@ -54,6 +54,9 @@ class LeaseAgreement extends Model
         'promo_code',
         'promo_discount',
         'updated_by',
+        'ended_at',
+        'ended_reason',
+        'ended_by',
     ];
 
     protected function casts(): array
@@ -74,7 +77,14 @@ class LeaseAgreement extends Model
             'autopay_enabled' => 'boolean',
             'autopay_paused_at' => 'datetime',
             'payment_methods_override_at' => 'datetime',
+            'ended_at' => 'datetime',
         ];
+    }
+
+    /** The lease was ended by staff (equipment returned, early purchase completed, or another reason): nothing more is billed. */
+    public function hasEnded(): bool
+    {
+        return $this->ended_at !== null;
     }
 
     public function application(): BelongsTo

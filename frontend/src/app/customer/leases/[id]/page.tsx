@@ -67,7 +67,9 @@ export default function CustomerLeaseDetailPage() {
             </h1>
             <p className="text-sm text-neutral-400">
               {lease.equipment_unit?.model ?? "Equipment"} · {lease.term_months}-month lease ·{" "}
-              <span className="font-semibold text-green-600">{lease.ownership_status === "owned" ? "Paid Off" : "Active"}</span>
+              <span className="font-semibold text-green-600">
+                {lease.ownership_status === "owned" ? "Paid Off" : lease.ended_at ? "Ended" : "Active"}
+              </span>
             </p>
           </div>
           <Link

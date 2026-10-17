@@ -96,6 +96,9 @@ class CustomerPaymentCharger
      */
     public static function extraPaymentBlocker(LeaseAgreement $lease, bool $forCustomer = true): ?string
     {
+        if ($lease->hasEnded()) {
+            return 'This lease has ended.';
+        }
         if ($lease->application?->status !== Application::STATUS_FINISHED) {
             return 'The equipment has not been picked up yet.';
         }

@@ -253,6 +253,11 @@ class ApplicationController extends Controller
             'risk.background_check_notes' => ['sometimes', 'nullable', 'string', 'max:1000'],
         ]);
 
+        // Delivered straight from "waiting on deposit" (client, Joel, 2026-10-16): the checks of "ready for pickup" still apply,
+        // but the deposit is NOT marked received, because it may still be clearing at the bank.
+        $deliveredFromDeposit = ($data['status'] ?? null) === Application::STATUS_FINISHED
+            && $application->status === Application::STATUS_WAITING_DEPOSIT;
+
         if (array_key_exists('status', $data) && $data['status'] !== $application->status) {
             $legalNextStatuses = Application::LEGAL_STATUS_TRANSITIONS[$application->status] ?? [];
             abort_unless(
@@ -269,11 +274,12 @@ class ApplicationController extends Controller
             // checklist reads signature_received/deposit_received, which
             // stayed false forever unless an admin separately remembered to
             // toggle them by hand — misleading, not just cosmetic.
-            if ($data['status'] === Application::STATUS_WAITING_DELIVERY) {
+            if ($data['status'] === Application::STATUS_WAITING_DELIVERY || $deliveredFromDeposit) {
+                $stepName = $deliveredFromDeposit ? 'delivered' : 'ready for delivery';
                 abort_unless(
                     $application->leaseAgreement?->contract()->exists(),
                     422,
-                    'Cannot mark this ready for delivery until the lease contract is signed.',
+                    "Cannot mark this {$stepName} until the lease contract is signed.",
                 );
 
                 // AutoPay requires both a bank account and a card on file
@@ -286,7 +292,7 @@ class ApplicationController extends Controller
                     abort_unless(
                         $application->leaseAgreement?->hasBothAutopayMethods(),
                         422,
-                        'Cannot mark this ready for delivery until both a bank account and a card are added for AutoPay.',
+                        "Cannot mark this {$stepName} until both a bank account and a card are added for AutoPay.",
                     );
                 } elseif (! $application->leaseAgreement?->hasBothAutopayMethods()) {
                     $application->leaseAgreement?->update([
@@ -385,6 +391,11 @@ class ApplicationController extends Controller
             // checklist to show "not yet signed"/"not yet collected" forever.
             if ($data['status'] === Application::STATUS_WAITING_DELIVERY) {
                 $application->update(['signature_received' => true, 'deposit_received' => true]);
+            }
+            // Delivered before the deposit was marked received: the signature is on file (checked above), the deposit stays
+            // exactly as it is, and it is marked received by itself when its payment clears.
+            if ($deliveredFromDeposit) {
+                $application->update(['signature_received' => true]);
             }
 
             // "Mark Delivered & Paid" (waiting_delivery -> finished) STARTS the

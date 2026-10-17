@@ -221,3 +221,22 @@ export async function recordExtraPaymentAsStaff(
   });
   return data.data;
 }
+
+export type LeaseEndReason = "returned" | "purchased" | "other";
+
+/**
+ * Staff: ends a lease that was already picked up (equipment returned, early purchase completed, or another reason). AutoPay is
+ * switched off, the monthly payments nobody has been charged for are removed and the equipment is released. Money already
+ * collected is not refunded here.
+ */
+export async function endLeaseAsStaff(
+  leaseAgreementId: number | string,
+  body: { reason: LeaseEndReason; note?: string; taxCollected?: boolean },
+): Promise<{ removed: number; late_fees_left: number; ended_at: string }> {
+  const data = await apiFetch<{ data: { removed: number; late_fees_left: number; ended_at: string } }>(`/admin/lease-agreements/${leaseAgreementId}/end`, {
+    method: "POST",
+    token: getToken(),
+    body: { reason: body.reason, note: body.note || undefined, tax_collected: body.taxCollected ?? undefined },
+  });
+  return data.data;
+}

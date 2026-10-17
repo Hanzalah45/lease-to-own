@@ -18,6 +18,7 @@ import { ChangeMowerModal } from "@/components/applications/detail/ChangeMowerMo
 import { AddCardForCustomerModal } from "@/components/applications/detail/AddCardForCustomerModal";
 import { AutopayMethodsCard } from "@/components/applications/detail/AutopayMethodsCard";
 import { ChargeDepositModal } from "@/components/applications/detail/ChargeDepositModal";
+import { EndLeaseModal } from "@/components/applications/detail/EndLeaseModal";
 import { RecordExtraPaymentModal } from "@/components/applications/detail/RecordExtraPaymentModal";
 import { ProgressCard } from "@/components/applications/detail/ProgressCard";
 import { PaymentsCard } from "@/components/applications/detail/PaymentsCard";
@@ -155,6 +156,7 @@ export default function ApplicationDetailPage() {
   const [showChargeDeposit, setShowChargeDeposit] = useState(false);
   const [showChargeBalance, setShowChargeBalance] = useState(false);
   const [showRecordExtra, setShowRecordExtra] = useState(false);
+  const [showEndLease, setShowEndLease] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
   const [methodsRefresh, setMethodsRefresh] = useState(0);
   const [postingNote, setPostingNote] = useState(false);
@@ -196,6 +198,16 @@ export default function ApplicationDetailPage() {
   const [showDeliveryConfirm, setShowDeliveryConfirm] = useState(false);
   const [pickupDate, setPickupDate] = useState("");
   const [deliveryCycle, setDeliveryCycle] = useState<"" | "1st" | "15th">("");
+  // The delivery that was refused for missing AutoPay methods, kept so the override sends the same one.
+  const [pendingDelivery, setPendingDelivery] = useState<{ pickup_date: string; billing_cycle?: "1st" | "15th" } | null>(null);
+
+  // Opens the delivery window straight from "waiting on deposit": the customer already has the equipment.
+  function startDirectDelivery() {
+    setPickupDate(localToday());
+    setDeliveryCycle("");
+    setActionError(null);
+    setShowDeliveryConfirm(true);
+  }
 
   function localToday(): string {
     const now = new Date();
@@ -205,7 +217,9 @@ export default function ApplicationDetailPage() {
 
   async function advance(overridePaymentMethodsCheck?: boolean, delivery?: { pickup_date: string; billing_cycle?: "1st" | "15th" }) {
     if (!application) return;
-    const next = FLOW[application.status];
+    // Delivered straight from "waiting on deposit" (client, Joel, 2026-10-16): the deposit is not marked received by it.
+    const fromDeposit = application.status === "waiting_deposit" && !!delivery;
+    const next = fromDeposit ? "finished" : FLOW[application.status];
     if (!next) return;
     if (next === "finished" && !delivery) {
       setPickupDate(localToday());
@@ -226,11 +240,14 @@ export default function ApplicationDetailPage() {
       );
       setShowPaymentMethodsOverrideConfirm(false);
       setShowDeliveryConfirm(false);
+      setPendingDelivery(null);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Could not update this application.";
       // Recoverable, unlike every other status-transition guard — offer the
       // override instead of just showing the dead-end error banner.
-      if (!overridePaymentMethodsCheck && next === "waiting_delivery" && message.includes("AutoPay")) {
+      if (!overridePaymentMethodsCheck && (next === "waiting_delivery" || fromDeposit) && message.includes("AutoPay")) {
+        if (delivery) setPendingDelivery(delivery);
+        setShowDeliveryConfirm(false);
         setShowPaymentMethodsOverrideConfirm(true);
       } else {
         setActionError(message);
@@ -579,7 +596,10 @@ export default function ApplicationDetailPage() {
   // An extra payment taken in the office, toward the early purchase price (client, Joel, 2026-10-16). Only once the lease has
   // started and while something is left to pay toward the price; the server enforces the rest (nothing due, the range).
   const canRecordExtra =
-    can("payment_tracking") && status === "finished" && !!lease && lease.ownership_status !== "owned" && Number(lease.epo_today) > 0;
+    can("payment_tracking") && status === "finished" && !!lease && !lease.ended_at && lease.ownership_status !== "owned" && Number(lease.epo_today) > 0;
+  // Ending a lease that was picked up (client, Joel, 2026-10-16); the server checks the rest (nothing still processing).
+  const canEndLease = can("payment_tracking") && status === "finished" && !!lease && !lease.ended_at && lease.ownership_status !== "owned";
+  const scheduledCount = (lease?.payments ?? []).filter((p) => p.type === "rental" && p.status === "pending" && !p.stripe_payment_intent_id).length;
   // Staff see the customer's saved bank account and card and add or change the card when the customer cannot (client, Joel, 2026-10-14/15). Not tied to AutoPay: the card is also what the customer pays with herself.
   const showAutopayMethods =
     can("payment_tracking") &&
@@ -976,6 +996,22 @@ export default function ApplicationDetailPage() {
             disabled={!can("application_review") || acting}
             noPermission={!can("application_review")}
           />
+          {can("application_review") && (
+            <div className="rounded-xl border border-neutral-200 bg-white p-5">
+              <p className="text-sm font-semibold text-neutral-900">Customer already has the equipment?</p>
+              <p className="mt-1 text-xs text-neutral-500">
+                Record the delivery now without marking the deposit received. The deposit stays as it is, and it is marked received by
+                itself when its payment clears.
+              </p>
+              <button
+                onClick={startDirectDelivery}
+                disabled={acting}
+                className="font-heading mt-3 rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                Mark Delivered
+              </button>
+            </div>
+          )}
           <InfoCallout tone="blue" icon={CheckCircleIcon} title="Next step" description={progress?.nextStep ?? "Application passed verification. Payment schedule generated."} />
           {application.customer?.status === "pending" && !lease?.contract && can("application_review") && (
             <div className="rounded-xl border border-neutral-200 bg-white p-5">
@@ -1387,6 +1423,33 @@ export default function ApplicationDetailPage() {
         </div>
       </div>
 
+      {lease?.ended_at && (
+        <div className="rounded-xl border border-neutral-300 bg-neutral-100 px-5 py-4 text-sm text-neutral-700">
+          <span className="font-semibold text-neutral-900">This lease ended on {formatDateOnly(lease.ended_at)}</span>
+          {lease.ended_reason === "returned" && " because the equipment was returned"}
+          {lease.ended_reason === "purchased" && " because the customer completed the early purchase"}
+          {lease.ended_reason === "other" && " for another reason"}. AutoPay is off and nothing more is scheduled. See the dealer notes for what was done.
+        </div>
+      )}
+
+      {canEndLease && lease && (
+        <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-neutral-900">End this lease</p>
+            <p className="text-xs text-neutral-500">
+              The equipment came back, or the customer completed the early purchase? End the lease here: AutoPay stops, the monthly
+              payments still scheduled are removed and the equipment is released.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowEndLease(true)}
+            className="font-heading shrink-0 rounded-md border border-red-600 px-3.5 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
+          >
+            End lease
+          </button>
+        </div>
+      )}
+
       {canRecordExtra && lease && (
         <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -1466,6 +1529,20 @@ export default function ApplicationDetailPage() {
                 ? "Deposit charged. The payment is recorded and a note was added to this application."
                 : "Deposit bank debit started. It will show as paid once the bank settles it (a few business days).",
             );
+            void load();
+          }}
+        />
+      )}
+
+      {showEndLease && lease && (
+        <EndLeaseModal
+          leaseId={lease.id}
+          customerName={application.customer?.name ?? "the customer"}
+          scheduledCount={scheduledCount}
+          onClose={() => setShowEndLease(false)}
+          onEnded={(message) => {
+            setShowEndLease(false);
+            setChangeNotice(message);
             void load();
           }}
         />
@@ -1588,6 +1665,12 @@ export default function ApplicationDetailPage() {
                 return "This starts the lease and builds the monthly payment schedule from the pickup date. The first month is recorded as paid on the pickup date without any money being taken here, so charge the tracking fee and first month first, or take it in person.";
               })()}
             </p>
+            {application.status === "waiting_deposit" && (
+              <p className="rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+                The deposit is not marked received by this. It stays as it is, and it is marked received by itself when its payment
+                clears.
+              </p>
+            )}
             <div>
               <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-neutral-500" htmlFor="pickup-date">
                 Pickup date
@@ -1660,23 +1743,26 @@ export default function ApplicationDetailPage() {
         >
           <div className="space-y-4">
             <p className="text-sm text-neutral-600">
-              This customer hasn&rsquo;t added both a bank account and a card for AutoPay yet. You can still mark
-              the deposit received — this will be recorded as an override on the lease.
+              This customer hasn&rsquo;t added both a bank account and a card for AutoPay yet. You can still mark{" "}
+              {pendingDelivery ? "it delivered" : "the deposit received"}: this will be recorded as an override on the lease.
             </p>
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => setShowPaymentMethodsOverrideConfirm(false)}
+                onClick={() => {
+                  setShowPaymentMethodsOverrideConfirm(false);
+                  setPendingDelivery(null);
+                }}
                 disabled={acting}
                 className="font-heading rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
-                onClick={() => advance(true)}
+                onClick={() => advance(true, pendingDelivery ?? undefined)}
                 disabled={acting}
                 className="font-heading rounded-md bg-red-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {acting ? "Marking…" : "Mark deposit received anyway"}
+                {acting ? "Marking…" : pendingDelivery ? "Mark delivered anyway" : "Mark deposit received anyway"}
               </button>
             </div>
           </div>

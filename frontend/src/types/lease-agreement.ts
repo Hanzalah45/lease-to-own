@@ -142,6 +142,9 @@ export interface LeaseAgreement {
   rental_payments_paid_to_date: string;
   additional_funds: string;
   ownership_status: OwnershipStatus;
+  /** Set when staff ended the lease (equipment returned, early purchase completed, or another reason): nothing more is billed. */
+  ended_at?: string | null;
+  ended_reason?: "returned" | "purchased" | "other" | null;
   ldw_selected: boolean;
   ldw_amount: string | null;
   promo_code: string | null;
