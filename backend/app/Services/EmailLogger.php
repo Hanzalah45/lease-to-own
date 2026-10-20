@@ -9,6 +9,7 @@ use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Symfony\Component\Mime\Address;
+use Symfony\Component\Mime\Message;
 use Throwable;
 
 /**
@@ -79,11 +80,22 @@ class EmailLogger
                 'status' => EmailLog::STATUS_SENT,
                 'error' => null,
                 'provider_message_id' => Str::limit((string) $event->sent->getMessageId(), 191, '') ?: null,
+                // Amazon SES's own id for the message (the transport writes it on the message once SES has accepted it): how its delivery results find this row.
+                'ses_message_id' => $this->sesMessageIdOf($event),
                 'updated_at' => now(),
             ]);
         } catch (Throwable $e) {
             $this->noteOwnFailure($e);
         }
+    }
+
+    private function sesMessageIdOf(MessageSent $event): ?string
+    {
+        $original = $event->sent->getOriginalMessage();
+        $header = $original instanceof Message ? $original->getHeaders()->get('X-SES-Message-ID') : null;
+        $id = $header ? trim($header->getBodyAsString()) : '';
+
+        return $id !== '' ? Str::limit($id, 191, '') : null;
     }
 
     /** The email service (or the connection to it) refused or failed: settle every message still in flight as failed. */

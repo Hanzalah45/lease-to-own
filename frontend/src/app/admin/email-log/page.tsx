@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { PageHeroHeader } from "@/components/layout/PageHeroHeader";
-import { EmailStatusBadge } from "@/components/emails/EmailStatusBadge";
+import { DeliveryBadge, EmailStatusBadge } from "@/components/emails/EmailStatusBadge";
 import { SearchIcon } from "@/components/icons";
 import { ApiError } from "@/lib/api";
 import { listEmailLogs, type EmailLogPage } from "@/lib/email-logs";
@@ -20,6 +20,9 @@ const STATUS_FILTERS: { value: string; label: string }[] = [
   { value: "failed", label: "Failed" },
   { value: "sending", label: "Not confirmed" },
   { value: "sent", label: "Sent" },
+  // What the mailbox provider did with a message the email service accepted.
+  { value: "delivery:bounced", label: "Bounced" },
+  { value: "delivery:delivered", label: "Delivered" },
 ];
 
 /**
@@ -104,7 +107,7 @@ export default function EmailLogPage() {
     <div className="space-y-6">
       <PageHeroHeader
         title="Email Log"
-        subtitle={`Every email the system sent, to whom, and what the email service answered. Updates by itself every ${REFRESH_MS / 1000} seconds${
+        subtitle={`Every email the system sent, to whom, whether the email service accepted it, and whether it was delivered or bounced. Updates by itself every ${REFRESH_MS / 1000} seconds${
           updatedAt ? ` (last checked ${updatedAt.toLocaleTimeString()})` : ""
         }.`}
       />
@@ -168,10 +171,14 @@ export default function EmailLogPage() {
                   <p className="break-all text-xs text-neutral-500">To {e.to_address}</p>
                   {e.subject && <p className="text-xs text-neutral-400">{e.subject}</p>}
                   {e.error && <p className="mt-0.5 text-xs font-medium text-red-600">{e.error}</p>}
+                  {e.delivery_detail && e.delivery_status && e.delivery_status !== "delivered" && (
+                    <p className="mt-0.5 text-xs font-medium text-red-600">{e.delivery_detail}</p>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-neutral-400">{new Date(e.created_at).toLocaleString()}</span>
                   <EmailStatusBadge status={e.status} />
+                  <DeliveryBadge log={e} />
                 </div>
               </li>
             ))}

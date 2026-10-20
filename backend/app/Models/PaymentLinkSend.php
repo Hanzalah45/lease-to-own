@@ -16,6 +16,7 @@ class PaymentLinkSend extends Model
 
     protected $fillable = [
         'payment_link_id',
+        'email_log_id',
         'email',
         'sent_by',
         'outcome',
@@ -31,6 +32,12 @@ class PaymentLinkSend extends Model
     public function link(): BelongsTo
     {
         return $this->belongsTo(PaymentLink::class, 'payment_link_id');
+    }
+
+    /** The email log row of this email: what the mailbox provider did with it. */
+    public function emailLog(): BelongsTo
+    {
+        return $this->belongsTo(EmailLog::class);
     }
 
     public function sentBy(): BelongsTo

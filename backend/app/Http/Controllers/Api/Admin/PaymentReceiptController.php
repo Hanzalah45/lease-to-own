@@ -17,7 +17,7 @@ class PaymentReceiptController extends Controller
 {
     public function __construct(private readonly PaymentReceipts $receipts) {}
 
-    private const WITH = ['sends.sentBy:id,name', 'payment:id,type,due_date,status'];
+    private const WITH = ['sends.sentBy:id,name', 'sends.emailLog:id,delivery_status,delivered_at,delivery_detail', 'payment:id,type,due_date,status'];
 
     /** Every receipt of a lease, newest first. */
     public function index(LeaseAgreement $leaseAgreement)

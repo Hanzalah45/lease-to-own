@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SectionHeading } from "@/components/dashboard/SectionHeading";
+import { DeliveryNote } from "@/components/emails/EmailStatusBadge";
 import { Modal } from "@/components/ui/Modal";
 import { money } from "@/components/applications/wizard/types";
 import { ApiError } from "@/lib/api";
@@ -107,6 +108,7 @@ function ReceiptRow({ receipt, onSend, onDownload, busy }: { receipt: Receipt; o
             <li key={s.id} className={`text-xs ${s.outcome === "failed" ? "text-red-600" : "text-neutral-600"}`}>
               {s.outcome === "failed" ? "Could not be emailed to" : "Emailed to"} {s.email} on {when(s.sent_at)} · {s.trigger === "auto" ? "sent automatically" : s.sent_by ? s.sent_by.name : "sent by staff"}
               {s.outcome === "failed" && s.error ? `: ${s.error}` : ""}
+              <DeliveryNote log={s.email_log} />
             </li>
           ))}
         </ul>

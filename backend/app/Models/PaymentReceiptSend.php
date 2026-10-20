@@ -20,6 +20,7 @@ class PaymentReceiptSend extends Model
 
     protected $fillable = [
         'payment_receipt_id',
+        'email_log_id',
         'email',
         'trigger',
         'sent_by',
@@ -36,6 +37,12 @@ class PaymentReceiptSend extends Model
     public function receipt(): BelongsTo
     {
         return $this->belongsTo(PaymentReceipt::class, 'payment_receipt_id');
+    }
+
+    /** The email log row of this email: what the mailbox provider did with it. */
+    public function emailLog(): BelongsTo
+    {
+        return $this->belongsTo(EmailLog::class);
     }
 
     public function sentBy(): BelongsTo

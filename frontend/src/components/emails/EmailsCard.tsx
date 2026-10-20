@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SectionHeading } from "@/components/dashboard/SectionHeading";
-import { EmailStatusBadge } from "@/components/emails/EmailStatusBadge";
+import { DeliveryBadge, EmailStatusBadge } from "@/components/emails/EmailStatusBadge";
 import { ApiError } from "@/lib/api";
 import { listCustomerEmails, type EmailLogEntry } from "@/lib/email-logs";
 
@@ -59,7 +59,7 @@ export function EmailsCard({ customerId }: { customerId: number | string }) {
 
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-5">
-      <SectionHeading title="Emails sent" subtitle="Sent means our email service accepted the message. Updates by itself every few seconds." />
+      <SectionHeading title="Emails sent" subtitle="Sent means our email service accepted the message. Delivered or Bounced says what the mailbox provider did with it. Updates by itself every few seconds." />
       {error ? (
         <p className="mt-3 text-sm text-red-600">{error}</p>
       ) : !emails ? (
@@ -75,10 +75,14 @@ export function EmailsCard({ customerId }: { customerId: number | string }) {
                 <p className="break-all text-xs text-neutral-500">To {e.to_address}</p>
                 {e.subject && <p className="text-xs text-neutral-400">{e.subject}</p>}
                 {e.error && <p className="mt-0.5 text-xs font-medium text-red-600">{e.error}</p>}
+                {e.delivery_detail && e.delivery_status && e.delivery_status !== "delivered" && (
+                  <p className="mt-0.5 text-xs font-medium text-red-600">{e.delivery_detail}</p>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-neutral-400">{new Date(e.created_at).toLocaleString()}</span>
                 <EmailStatusBadge status={e.status} />
+                <DeliveryBadge log={e} />
               </div>
             </li>
           ))}

@@ -16,8 +16,23 @@ export interface EmailLogEntry {
   kind_label: string;
   status: "sending" | "sent" | "failed";
   error: string | null;
+  /** What the mailbox provider did with the message after the email service accepted it. Null: no result yet, or not tracked. */
+  delivery_status?: DeliveryStatus | null;
+  delivered_at?: string | null;
+  /** Why, in the provider's words: a bounce's type and reason, a delay's cause. */
+  delivery_detail?: string | null;
   created_at: string;
   user?: { id: number; name: string; role?: string } | null;
+}
+
+/** delivered: reached the mailbox. bounced: the mailbox provider refused it. complaint: the person marked it as spam. delayed: still being tried. rejected: never left the email service. */
+export type DeliveryStatus = "delivered" | "bounced" | "complaint" | "delayed" | "rejected";
+
+/** The part of an email log row that says what happened to the message: also carried by every send of a receipt or a payment link. */
+export interface DeliveryInfo {
+  delivery_status: DeliveryStatus | null;
+  delivered_at: string | null;
+  delivery_detail: string | null;
 }
 
 export interface EmailLogPage {
@@ -28,7 +43,9 @@ export interface EmailLogPage {
 export async function listEmailLogs(params: { search?: string; status?: string; page?: number }): Promise<EmailLogPage> {
   const query = new URLSearchParams();
   if (params.search) query.set("search", params.search);
-  if (params.status) query.set("status", params.status);
+  // "delivery:bounced" and the like filter by what happened after the email service accepted the message.
+  if (params.status?.startsWith("delivery:")) query.set("delivery", params.status.slice("delivery:".length));
+  else if (params.status) query.set("status", params.status);
   if (params.page && params.page > 1) query.set("page", String(params.page));
   const suffix = query.toString() ? `?${query.toString()}` : "";
   return apiFetch<EmailLogPage>(`/admin/email-logs${suffix}`, { token: getToken() });

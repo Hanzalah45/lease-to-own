@@ -62,6 +62,7 @@ use App\Http\Controllers\Api\PublicPaymentLinkController;
 use App\Http\Controllers\Api\PublicPaymentMethodController;
 use App\Http\Controllers\Api\PublicPlaidVerificationController;
 use App\Http\Controllers\Api\QuickbooksOAuthCallbackController;
+use App\Http\Controllers\Api\SesWebhookController;
 use App\Http\Controllers\Api\StripeWebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -150,6 +151,8 @@ Route::post('/info-requests/verify-respond', [PublicInfoRequestController::class
 // STRIPE_WEBHOOK_SECRET) inside the controller is what proves a request
 // actually came from Stripe. See StripeWebhookController.
 Route::post('/webhooks/stripe', [StripeWebhookController::class, 'handle'])->middleware('throttle:60,1');
+// Amazon SNS, carrying what Amazon SES reports about each email (delivered, bounced, marked as spam).
+Route::post('/webhooks/ses', [SesWebhookController::class, 'handle'])->middleware('throttle:120,1');
 
 // Intuit redirects the admin's browser here after the consent screen — see
 // QuickbooksOAuthCallbackController for why this can't be auth:sanctum.

@@ -1,7 +1,8 @@
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import type { DeliveryInfo } from "@/lib/email-logs";
 
-/** One time a receipt was emailed (client, Joel, 2026-10-19 checklist, section 8). "Delivered" is not known: only that the mail service took it. */
+/** One time a receipt was emailed (client, Joel, 2026-10-19 checklist, section 8). Each send says whether the mail service took it and, once it reports it, whether it was delivered or bounced. */
 export interface ReceiptSend {
   id: number;
   email: string;
@@ -11,6 +12,8 @@ export interface ReceiptSend {
   error: string | null;
   sent_at: string;
   sent_by?: { id: number; name: string } | null;
+  /** What the mailbox provider did with this email, once the email service has reported it. */
+  email_log?: DeliveryInfo | null;
 }
 
 export interface ReceiptLine {

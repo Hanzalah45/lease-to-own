@@ -21,12 +21,18 @@ class EmailLogController extends Controller
         $data = $request->validate([
             'search' => ['nullable', 'string', 'max:100'],
             'status' => ['nullable', Rule::in([EmailLog::STATUS_SENDING, EmailLog::STATUS_SENT, EmailLog::STATUS_FAILED])],
+            // What the mailbox provider did with a message the email service accepted (see SesEventProcessor).
+            'delivery' => ['nullable', Rule::in([EmailLog::DELIVERY_DELIVERED, EmailLog::DELIVERY_BOUNCED, EmailLog::DELIVERY_COMPLAINT, EmailLog::DELIVERY_DELAYED, EmailLog::DELIVERY_REJECTED])],
         ]);
 
         $query = EmailLog::query()->with('user:id,name,role')->latest('id');
 
         if (! empty($data['status'])) {
             $query->where('status', $data['status']);
+        }
+
+        if (! empty($data['delivery'])) {
+            $query->where('delivery_status', $data['delivery']);
         }
 
         if (! empty($data['search'])) {

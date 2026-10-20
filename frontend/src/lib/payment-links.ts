@@ -1,5 +1,6 @@
 import { apiFetch } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import type { DeliveryInfo } from "@/lib/email-logs";
 import type { PriceOption } from "@/types/lease-agreement";
 
 /** Where a link is in its life (client, Joel, 2026-10-19 checklist, section 6). "expired" is what a link past its day reads as. */
@@ -35,6 +36,8 @@ export interface PaymentLinkSend {
   error: string | null;
   sent_at: string;
   sent_by?: { id: number; name: string } | null;
+  /** What the mailbox provider did with this email, once the email service has reported it. */
+  email_log?: DeliveryInfo | null;
 }
 
 /** A link as staff see it. The secret is never part of it: it is only shown once, when the link is made or sent. */

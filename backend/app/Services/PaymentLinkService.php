@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\EmailLog;
 use App\Models\LeaseAgreement;
 use App\Models\Payment;
 use App\Models\PaymentLink;
@@ -129,6 +130,8 @@ class PaymentLinkService
         }
 
         $link->sends()->create([
+            // The email log row of this email, which later says whether it was delivered or bounced.
+            'email_log_id' => $error ? null : EmailLog::latestFor($email, 'PaymentLinkNotification')?->id,
             'email' => $email,
             'sent_by' => $staff->id,
             'outcome' => $error ? PaymentLinkSend::OUTCOME_FAILED : PaymentLinkSend::OUTCOME_SENT,

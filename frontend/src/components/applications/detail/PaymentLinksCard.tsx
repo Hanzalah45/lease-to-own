@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { SectionHeading } from "@/components/dashboard/SectionHeading";
+import { DeliveryNote } from "@/components/emails/EmailStatusBadge";
 import { Modal } from "@/components/ui/Modal";
 import { money } from "@/components/applications/wizard/types";
 import { LinkAddress, PaymentLinkModal } from "@/components/applications/detail/PaymentLinkModal";
@@ -127,6 +128,7 @@ function LinkRow({ link, busyId, onResend, onCancel }: { link: PaymentLink; busy
               {s.outcome === "failed" ? "Could not be emailed to" : "Emailed to"} {s.email} on {when(s.sent_at)}
               {s.sent_by ? ` · ${s.sent_by.name}` : ""}
               {s.outcome === "failed" && s.error ? `: ${s.error}` : ""}
+              <DeliveryNote log={s.email_log} />
             </li>
           ))}
         </ul>

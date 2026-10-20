@@ -21,7 +21,7 @@ class PaymentLinkController extends Controller
     public function index(LeaseAgreement $leaseAgreement)
     {
         return response()->json(['data' => PaymentLink::where('lease_agreement_id', $leaseAgreement->id)
-            ->with(['sends.sentBy:id,name', 'createdBy:id,name', 'payment:id,type,due_date'])
+            ->with(['sends.sentBy:id,name', 'sends.emailLog:id,delivery_status,delivered_at,delivery_detail', 'createdBy:id,name', 'payment:id,type,due_date'])
             ->orderByDesc('id')
             ->get()]);
     }
@@ -105,6 +105,6 @@ class PaymentLinkController extends Controller
 
     private function fresh(PaymentLink $link): PaymentLink
     {
-        return $link->fresh(['sends.sentBy:id,name', 'createdBy:id,name', 'payment:id,type,due_date']);
+        return $link->fresh(['sends.sentBy:id,name', 'sends.emailLog:id,delivery_status,delivered_at,delivery_detail', 'createdBy:id,name', 'payment:id,type,due_date']);
     }
 }

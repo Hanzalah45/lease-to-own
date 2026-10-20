@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\EmailLog;
 use App\Models\Payment;
 use App\Models\PaymentPart;
 use App\Models\PaymentReceipt;
@@ -354,6 +355,8 @@ class PaymentReceipts
         }
 
         $send = $receipt->sends()->create([
+            // The email log row of this email, which later says whether it was delivered or bounced.
+            'email_log_id' => $error ? null : EmailLog::latestFor($email, 'PaymentReceiptNotification')?->id,
             'email' => $email,
             'trigger' => $trigger,
             'sent_by' => $by?->id,

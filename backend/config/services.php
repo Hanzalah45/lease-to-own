@@ -26,6 +26,13 @@ return [
         'key' => env('AWS_ACCESS_KEY_ID'),
         'secret' => env('AWS_SECRET_ACCESS_KEY'),
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+        // The configuration set tells SES where to publish what happens to each message (delivered, bounced): empty means it does not.
+        'options' => array_filter(['ConfigurationSetName' => env('SES_CONFIGURATION_SET')]),
+    ],
+
+    // Amazon SNS carries those SES events to /api/webhooks/ses. Only messages from this topic are accepted.
+    'ses_events' => [
+        'topic_arn' => env('SES_SNS_TOPIC_ARN'),
     ],
 
     'slack' => [
