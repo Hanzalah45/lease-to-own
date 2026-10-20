@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\LeaseAgreement;
 use App\Models\Payment;
+use App\Models\PaymentPart;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -74,10 +76,32 @@ class StripeDepositPaymentService
      */
     private function chargeType(LeaseAgreement $lease, string $type, float $amount, string $description, ?string $methodType, ?int $expectedTotalCents, ?int $staffUserId = null): array
     {
+        // A deposit or pickup balance that was already paid in part (cash first, the rest by card): what is left is charged as one more
+        // piece of that same payment, never as a new row for the full amount.
+        $split = $lease->payments()
+            ->where('type', $type)
+            ->whereIn('status', [Payment::STATUS_PENDING, Payment::STATUS_FAILED])
+            ->whereHas('parts', fn ($q) => $q->whereIn('status', ['paid', 'pending']))
+            ->latest('id')
+            ->first();
+        if ($split) {
+            $chosen = $lease->paymentMethodFor($methodType);
+            abort_unless($chosen, 422, $lease->methodRefusal($methodType));
+            $result = app(PaymentSplitter::class)->charge(
+                $split,
+                $chosen['type'],
+                $split->chargeableAmount(),
+                $expectedTotalCents,
+                $staffUserId ? User::find($staffUserId) : null,
+                $staffUserId ? PaymentPart::BY_STAFF : PaymentPart::BY_CUSTOMER,
+            );
+
+            return ['payment' => $split->fresh(), 'requires_action' => $result['status'] === 'requires_action', 'client_secret' => $result['client_secret']];
+        }
         // The customer picks bank or card per payment (dual pricing, client
         // 2026-10-05); with no explicit choice the AutoPay primary is used.
         $method = $lease->paymentMethodFor($methodType);
-        abort_unless($method, 422, $methodType ? 'That payment method is not on file. Add it first.' : 'Add a bank account or card before paying.');
+        abort_unless($method, 422, $lease->methodRefusal($methodType));
 
         // Priced per charge in whole cents. The expected total is what the
         // customer saw on screen: if it no longer matches (the price or the

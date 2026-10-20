@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\AdditionalFundsEntry;
 use App\Models\Application;
 use App\Models\LeaseAgreement;
 use App\Models\Payment;
+use App\Models\PaymentRefund;
 use App\Models\QuickbooksConnection;
 use App\Models\QuickbooksSyncSetting;
 use App\Models\User;
@@ -233,6 +235,49 @@ class QuickbooksSyncTest extends TestCase
         $this->assertSame((string) ($this->nextId - 1), $payment->quickbooks_record_id);
         $this->assertNotNull($payment->quickbooks_synced_at);
         $this->assertNull($payment->quickbooks_sync_error);
+    }
+
+    /** Rent $150 plus a $25 loss damage waiver at 8.25% tax: a monthly payment is $189.44, of which $14.44 is sales tax. */
+    private function ldwLease(): LeaseAgreement
+    {
+        $lease = $this->lease('Jane Doe');
+        $lease->update(['monthly_rental_payment' => 150, 'ldw_selected' => true, 'ldw_amount' => 25]);
+
+        return $lease->fresh();
+    }
+
+    public function test_the_loss_damage_waiver_goes_to_its_own_account_and_the_entry_still_balances(): void
+    {
+        $this->connect();
+        $this->enableSync();
+        $payment = $this->paid($this->ldwLease(), Payment::TYPE_RENTAL, 189.44, '2026-10-15');
+
+        $this->runSync();
+
+        $lines = $this->lines($this->entries['PL-'.$payment->id]);
+        $this->assertEqualsWithDelta(189.44, $lines['debit']['amount'], 0.001);
+        $this->assertEqualsWithDelta(150.00, $lines['credits'][$this->account('rent_income')], 0.001);
+        $this->assertEqualsWithDelta(25.00, $lines['credits'][$this->account('ldw_income')], 0.001);
+        $this->assertEqualsWithDelta(14.44, $lines['credits'][$this->account('sales_tax')], 0.001);
+        $this->assertEqualsWithDelta(189.44, array_sum($lines['credits']), 0.001);
+    }
+
+    public function test_a_refund_gives_back_its_share_of_the_loss_damage_waiver_too(): void
+    {
+        $this->connect();
+        $this->enableSync();
+        $payment = $this->paid($this->ldwLease(), Payment::TYPE_RENTAL, 189.44, '2026-10-15');
+        $this->runSync();
+        $refund = $this->refundOf($payment, 94.72);
+
+        $this->runSync();
+
+        $sides = $this->sides($this->entries['PL-F'.$refund->id]);
+        $this->assertEqualsWithDelta(94.72, $sides['debits'][$this->account('rent_income')] + $sides['debits'][$this->account('ldw_income')] + $sides['debits'][$this->account('sales_tax')], 0.001);
+        $this->assertEqualsWithDelta(75.00, $sides['debits'][$this->account('rent_income')], 0.001);
+        $this->assertEqualsWithDelta(12.50, $sides['debits'][$this->account('ldw_income')], 0.001);
+        $this->assertEqualsWithDelta(7.22, $sides['debits'][$this->account('sales_tax')], 0.001);
+        $this->assertEqualsWithDelta(94.72, $sides['credits'][$this->account('deposit_account')], 0.001);
     }
 
     public function test_the_tracking_fee_and_first_month_charge_splits_four_ways_and_its_mirror_row_is_not_sent_twice(): void
@@ -516,6 +561,146 @@ class QuickbooksSyncTest extends TestCase
         $this->assertSame([], $this->entries);
     }
 
+    private function refundOf(Payment $payment, float $amount): PaymentRefund
+    {
+        return $payment->refunds()->create([
+            'amount' => $amount,
+            'reason' => 'customer_request',
+            'source' => 'manual',
+            'status' => PaymentRefund::STATUS_SUCCEEDED,
+            'refunded_at' => now(),
+        ]);
+    }
+
+    /** @return array{debits: array<string, float>, credits: array<string, float>} an entry's amounts by account and side */
+    private function sides(array $entry): array
+    {
+        $sides = ['debits' => [], 'credits' => []];
+        foreach ($entry['Line'] as $line) {
+            $detail = $line['JournalEntryLineDetail'];
+            $side = $detail['PostingType'] === 'Debit' ? 'debits' : 'credits';
+            $sides[$side][$detail['AccountRef']['value']] = ($sides[$side][$detail['AccountRef']['value']] ?? 0) + $line['Amount'];
+        }
+
+        return $sides;
+    }
+
+    public function test_a_partial_refund_becomes_an_entry_that_gives_back_its_share_of_each_account(): void
+    {
+        $this->connect();
+        $this->enableSync();
+        $payment = $this->paid($this->lease('Jane Doe'), Payment::TYPE_RENTAL, 216.50, '2026-10-15');
+        $this->runSync();
+        $refund = $this->refundOf($payment, 108.25);
+
+        $result = $this->runSync();
+
+        $this->assertSame(1, $result['sent']);
+        $this->assertSame(0, $result['reversed']);
+        $entry = $this->entries['PL-F'.$refund->id];
+        $this->assertSame('2026-10-20', $entry['TxnDate']);
+        $sides = $this->sides($entry);
+        // Money out of the received-money account, back out of half the rent income and half the sales tax.
+        $this->assertEqualsWithDelta(108.25, $sides['credits'][$this->account('deposit_account')], 0.001);
+        $this->assertEqualsWithDelta(100.00, $sides['debits'][$this->account('rent_income')], 0.001);
+        $this->assertEqualsWithDelta(8.25, $sides['debits'][$this->account('sales_tax')], 0.001);
+        $this->assertEqualsWithDelta(array_sum($sides['debits']), array_sum($sides['credits']), 0.001);
+        $this->assertStringContainsString('Jane Doe', $entry['Line'][0]['Description']);
+
+        $refund->refresh();
+        $this->assertSame('synced', $refund->quickbooks_sync_status);
+        $this->assertNotNull($refund->quickbooks_record_id);
+        $this->assertSame(0, $this->runSync()['sent'], 'Once only.');
+    }
+
+    public function test_a_payment_refunded_in_full_is_taken_back_by_its_refund_not_also_reversed(): void
+    {
+        $this->connect();
+        $this->enableSync();
+        $payment = $this->paid($this->lease(), Payment::TYPE_RENTAL, 216.50, '2026-10-15');
+        $this->runSync();
+        $refund = $this->refundOf($payment, 216.50);
+        $payment->update(['status' => Payment::STATUS_REFUNDED]);
+
+        $result = $this->runSync();
+
+        $this->assertSame(1, $result['sent']);
+        $this->assertSame(0, $result['reversed']);
+        $this->assertArrayNotHasKey('PL-R'.$payment->id, $this->entries);
+        // What the payment credited, the refund debits: every account nets to nothing.
+        $original = $this->sides($this->entries['PL-'.$payment->id]);
+        $back = $this->sides($this->entries['PL-F'.$refund->id]);
+        foreach ($original['credits'] as $account => $amount) {
+            $this->assertEqualsWithDelta($amount, $back['debits'][$account], 0.001);
+        }
+        $this->assertEqualsWithDelta($original['debits'][$this->account('deposit_account')], $back['credits'][$this->account('deposit_account')], 0.001);
+    }
+
+    public function test_a_payment_refunded_before_it_was_sent_is_sent_together_with_its_refund(): void
+    {
+        $this->connect();
+        $this->enableSync();
+        $payment = $this->paid($this->lease(), Payment::TYPE_RENTAL, 216.50, '2026-10-15', ['status' => Payment::STATUS_REFUNDED]);
+        $refund = $this->refundOf($payment, 216.50);
+
+        $result = $this->runSync();
+
+        $this->assertSame(2, $result['sent']);
+        $this->assertArrayHasKey('PL-'.$payment->id, $this->entries);
+        $this->assertArrayHasKey('PL-F'.$refund->id, $this->entries);
+    }
+
+    public function test_a_refund_of_a_payment_older_than_the_start_day_is_skipped(): void
+    {
+        $this->connect();
+        $this->enableSync();
+        $payment = $this->paid($this->lease(), Payment::TYPE_RENTAL, 216.50, '2026-09-15');
+        $refund = $this->refundOf($payment, 50);
+
+        $result = $this->runSync();
+
+        $this->assertSame(0, $result['sent']);
+        $this->assertSame([], $this->entries);
+        $this->assertSame('skipped', $refund->refresh()->quickbooks_sync_status);
+    }
+
+    public function test_funds_applied_to_repairs_move_from_the_held_account_to_repair_income(): void
+    {
+        $this->connect();
+        $this->enableSync();
+        $lease = $this->lease('Jane Doe');
+        $entry = AdditionalFundsEntry::create([
+            'lease_agreement_id' => $lease->id, 'kind' => 'repairs', 'amount' => -35.50, 'balance_after' => 64.50, 'description' => 'Applied to repairs: new deck belt',
+        ]);
+
+        $result = $this->runSync();
+
+        $this->assertSame(1, $result['sent']);
+        $built = $this->entries['PL-A'.$entry->id];
+        $this->assertSame('2026-10-20', $built['TxnDate']);
+        $sides = $this->sides($built);
+        $this->assertEqualsWithDelta(35.50, $sides['debits'][$this->account('extra_payment')], 0.001);
+        $this->assertEqualsWithDelta(35.50, $sides['credits'][$this->account('repair_income')], 0.001);
+        $this->assertSame('synced', $entry->refresh()->quickbooks_sync_status);
+        $this->assertSame(0, $this->runSync()['sent'], 'Once only.');
+    }
+
+    public function test_funds_applied_before_the_start_day_are_skipped(): void
+    {
+        $this->connect();
+        $this->enableSync(['sync_from' => '2026-10-15']);
+        $entry = AdditionalFundsEntry::create([
+            'lease_agreement_id' => $this->lease()->id, 'kind' => 'repairs', 'amount' => -10, 'balance_after' => 0, 'description' => 'x',
+        ]);
+        $entry->forceFill(['created_at' => '2026-10-02 12:00:00'])->save();
+
+        $result = $this->runSync();
+
+        $this->assertSame(0, $result['sent']);
+        $this->assertSame('skipped', $entry->refresh()->quickbooks_sync_status);
+        $this->assertSame([], $this->entries);
+    }
+
     public function test_the_command_runs_the_sync(): void
     {
         $this->connect();
@@ -557,7 +742,7 @@ class QuickbooksSyncTest extends TestCase
         $response->assertJsonPath('data.ready', true);
         $response->assertJsonPath('data.sync_from', '2026-10-01');
         $response->assertJsonPath('data.counts', ['synced' => 2, 'waiting' => 1, 'failed' => 0, 'skipped' => 0]);
-        $response->assertJsonCount(8, 'data.accounts');
+        $response->assertJsonCount(10, 'data.accounts');
         $response->assertJsonPath('data.recent.0.customer', 'Jane Doe');
         $response->assertJsonPath('data.recent.0.amount', 216.5);
         $this->assertNotNull($response->json('data.recent.0.entry_id'));
@@ -654,10 +839,13 @@ class QuickbooksSyncTest extends TestCase
             ->values()->all();
         $this->assertContains(['Sales Tax Collected', 'Other Current Liability'], $created);
         $this->assertContains(['Payments Clearing', 'Other Current Asset'], $created);
-        $this->assertContains(['Card Fees Collected', 'Income'], $created);
+        $this->assertContains(['Card Processing Fees', 'Expense'], $created);
+        $this->assertContains(['Security Deposit Income', 'Income'], $created);
         $this->assertNotContains(['Rental Income', 'Income'], $created);
         $this->assertNotContains(['Late Fee Income', 'Income'], $created);
-        $this->assertCount(6, $created);
+        $this->assertContains(['Repair Cost Recovery Income', 'Income'], $created);
+        $this->assertContains(['Loss Damage Waiver Income', 'Income'], $created);
+        $this->assertCount(8, $created);
     }
 
     public function test_send_now_sends_the_waiting_payments_and_reports_what_happened(): void

@@ -6,6 +6,7 @@ use App\Models\Application;
 use App\Models\LeaseAgreement;
 use App\Models\Payment;
 use App\Models\PaymentAttempt;
+use App\Models\PaymentPart;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Stripe\Exception\CardException;
@@ -62,6 +63,13 @@ class CustomerPaymentCharger
         }
         if ($lease->customer?->status === 'suspended') {
             return 'This account is suspended. Please contact us.';
+        }
+        // A piece of this payment is still being collected (a bank debit takes days): its money must not be asked for twice.
+        if ($payment->parts()->where('status', 'pending')->exists()) {
+            return 'A part of this payment is still being collected. Please check again once it has cleared.';
+        }
+        if ($payment->chargeableAmount() < 0.01 && $payment->status !== Payment::STATUS_PAID) {
+            return 'Nothing is left to pay on this payment.';
         }
 
         $latest = $payment->attempts()->reorder()->orderByDesc('id')->first();
@@ -143,11 +151,10 @@ class CustomerPaymentCharger
     public static function extraPaymentOptions(LeaseAgreement $lease): array
     {
         $max = max(0.0, LeaseEngine::epoToday($lease));
-        $methods = array_values(array_filter([
-            $lease->stripe_bank_payment_method_id ? 'bank' : null,
-            $lease->stripe_card_payment_method_id ? 'card' : null,
-        ]));
-        $blocker = self::extraPaymentBlocker($lease) ?? ($methods === [] ? 'Save a bank account or card first.' : null);
+        $methods = $lease->usableMethodTypes();
+        $blocker = self::extraPaymentBlocker($lease) ?? ($methods === []
+            ? ($lease->stripe_bank_payment_method_id || $lease->stripe_card_payment_method_id ? 'Your saved payment method is locked. Please contact us.' : 'Save a bank account or card first.')
+            : null);
 
         return [
             'available' => $blocker === null,
@@ -231,11 +238,15 @@ class CustomerPaymentCharger
         return [
             'payable' => $blocker === null,
             'blocker' => $blocker,
-            'available_methods' => array_values(array_filter([
-                $lease->stripe_bank_payment_method_id ? 'bank' : null,
-                $lease->stripe_card_payment_method_id ? 'card' : null,
-            ])),
-            'prices' => CardPricing::both((float) $payment->amount),
+            // A locked method stays on file but cannot be picked.
+            'available_methods' => $lease->usableMethodTypes(),
+            'prices' => CardPricing::both($payment->chargeableAmount()),
+            // Paid in pieces: what is left, and the smallest piece a customer can pay on their own (see PaymentSplitter).
+            'remaining_amount' => $payment->remainingAmount(),
+            'chargeable_amount' => $payment->chargeableAmount(),
+            'min_piece' => PaymentPart::MIN_CUSTOMER_PIECE,
+            'card_fee_bps' => CardPricing::rateBps(),
+            'can_pay_in_parts' => PaymentSplitter::blocker($payment, true) === null,
         ];
     }
 
@@ -254,10 +265,11 @@ class CustomerPaymentCharger
             abort_if($reason = self::blocker($locked, $lease), 422, $reason);
 
             $method = $lease->paymentMethodFor($methodType);
-            abort_unless($method, 422, $methodType ? 'That payment method is not on file. Add it first.' : 'Add a bank account or card before paying.');
+            abort_unless($method, 422, $lease->methodRefusal($methodType));
 
             // Priced per charge in whole cents, and checked against the total the customer saw on screen.
-            $bankCents = CardPricing::toCents((float) $locked->amount);
+            // What is left to pay: a payment paid in pieces is charged only for the rest.
+            $bankCents = CardPricing::toCents($locked->chargeableAmount());
             $feeCents = CardPricing::feeCentsFor($bankCents, $method['type']);
             $totalCents = $bankCents + $feeCents;
             abort_if($expectedTotalCents !== null && $expectedTotalCents !== $totalCents, 409, 'The amount changed. Please review the new total and try again.');
@@ -297,6 +309,10 @@ class CustomerPaymentCharger
 
             return $attempt;
         });
+
+        AuditLog::record('charge.customer_started', sprintf('The customer started a payment of $%s from a saved %s.', number_format($attempt->amount_cents / 100, 2), $attempt->method === 'bank' ? 'bank account' : 'card'), [
+            'payment' => $payment, 'method' => $attempt->paymentMethodLabel(), 'amount' => $attempt->amount_cents / 100,
+        ]);
 
         return $this->send($attempt);
     }

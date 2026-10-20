@@ -31,12 +31,26 @@ export default function AdminPaymentsPage() {
         title="Payments"
         subtitle="Collections, overdue balances, and autopay enrollment across every lease."
         action={
-          <Link
-            href="/admin/reports"
-            className="font-heading self-start whitespace-nowrap rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
-          >
-            Sales tax &amp; reports →
-          </Link>
+          <div className="flex flex-wrap gap-2 self-start">
+            <Link
+              href="/admin/autopay-log"
+              className="font-heading whitespace-nowrap rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
+            >
+              AutoPay log →
+            </Link>
+            <Link
+              href="/admin/audit-log"
+              className="font-heading whitespace-nowrap rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
+            >
+              Audit log →
+            </Link>
+            <Link
+              href="/admin/reports"
+              className="font-heading whitespace-nowrap rounded-md border border-red-600 bg-white px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-50"
+            >
+              Sales tax &amp; reports →
+            </Link>
+          </div>
         }
       />
       <PaymentTrackingPanel />

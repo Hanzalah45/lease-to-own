@@ -5,7 +5,9 @@ import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-
 import { getStripe } from "@/lib/stripe-client";
 import { ApiError } from "@/lib/api";
 import { money } from "@/components/applications/wizard/types";
-import type { AutopayMethodType, PaymentMethodsStatus } from "@/lib/payment-methods";
+import { Modal } from "@/components/ui/Modal";
+import { formatDateOnly } from "@/lib/dates";
+import type { AutopayMethodType, PaymentMethodsStatus, PendingBankCheck } from "@/lib/payment-methods";
 import { AlertCircleIcon, BuildingIcon, CheckCircleIcon, CreditCardIcon } from "@/components/icons";
 
 interface AutopaySetupCardProps {
@@ -14,6 +16,12 @@ interface AutopaySetupCardProps {
   onCreateSetupIntent: (type: AutopayMethodType) => Promise<string>;
   onConfirm: (type: AutopayMethodType, setupIntentId: string) => Promise<PaymentMethodsStatus>;
   onSetPrimary: (type: AutopayMethodType) => Promise<PaymentMethodsStatus>;
+  /** A bank account that needs two small test deposits: remember it, ask whether it was confirmed, or drop it. */
+  onBankPending?: (setupIntentId: string) => Promise<PaymentMethodsStatus>;
+  onBankPendingCheck?: () => Promise<PendingBankCheck>;
+  onBankPendingCancel?: () => Promise<PaymentMethodsStatus>;
+  /** The customer removes a saved bank account or card (only the logged-in portal offers it). */
+  onRemove?: (type: AutopayMethodType) => Promise<PaymentMethodsStatus>;
   billingName: string;
   billingEmail: string;
 }
@@ -39,6 +47,10 @@ export function AutopaySetupCard({
   onCreateSetupIntent,
   onConfirm,
   onSetPrimary,
+  onBankPending,
+  onBankPendingCheck,
+  onBankPendingCancel,
+  onRemove,
   billingName,
   billingEmail,
 }: AutopaySetupCardProps) {
@@ -48,6 +60,13 @@ export function AutopaySetupCard({
 
   const [bankBusy, setBankBusy] = useState(false);
   const [bankError, setBankError] = useState<string | null>(null);
+
+  const [removing, setRemoving] = useState<AutopayMethodType | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+
+  const [pendingBusy, setPendingBusy] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
   const [primaryBusy, setPrimaryBusy] = useState(false);
   const [primaryError, setPrimaryError] = useState<string | null>(null);
@@ -87,17 +106,72 @@ export function AutopaySetupCard({
       const confirmed = await stripe.confirmUsBankAccountSetup(clientSecret);
       if (confirmed.error) throw new Error(confirmed.error.message ?? "Could not confirm the bank account.");
 
-      // The server checks this SetupIntent actually succeeded (a bank still
-      // waiting on microdeposit verification can't be charged later) and
-      // reads the saved payment method from it.
       const setupIntentId = confirmed.setupIntent?.id;
       if (!setupIntentId) throw new Error("Could not confirm the bank account.");
 
+      // An account typed in by hand cannot be confirmed at once: Stripe sends two small deposits and the account waits until their
+      // amounts are confirmed (client, Joel, 2026-10-19 checklist, section 2).
+      if (
+        onBankPending &&
+        confirmed.setupIntent?.status === "requires_action" &&
+        confirmed.setupIntent.next_action?.type === "verify_with_microdeposits"
+      ) {
+        onStatusChange(await onBankPending(setupIntentId));
+        return;
+      }
+
+      // The server checks this SetupIntent actually succeeded (a bank still
+      // waiting on microdeposit verification can't be charged later) and
+      // reads the saved payment method from it.
       onStatusChange(await onConfirm("bank", setupIntentId));
     } catch (err) {
       setBankError(errorMessage(err, "Could not link the bank account."));
     } finally {
       setBankBusy(false);
+    }
+  }
+
+  async function confirmRemove() {
+    if (!removing || !onRemove) return;
+    setRemoveBusy(true);
+    setRemoveError(null);
+    try {
+      onStatusChange(await onRemove(removing));
+      setRemoving(null);
+    } catch (err) {
+      // The server says why in words for the customer (for example that AutoPay needs another method first).
+      setRemoveError(errorMessage(err, "Could not remove it. Please try again."));
+    } finally {
+      setRemoveBusy(false);
+    }
+  }
+
+  async function checkPending() {
+    if (!onBankPendingCheck) return;
+    setPendingBusy(true);
+    setPendingMessage(null);
+    try {
+      const checked = await onBankPendingCheck();
+      onStatusChange(checked.status);
+      // Still waiting or failed: say so. Confirmed: the account shows as added.
+      if (checked.result.state !== "verified") setPendingMessage(checked.result.message);
+    } catch (err) {
+      setPendingMessage(errorMessage(err, "Could not check the bank account."));
+    } finally {
+      setPendingBusy(false);
+    }
+  }
+
+  async function dropPending() {
+    if (!onBankPendingCancel) return;
+    setPendingBusy(true);
+    setPendingMessage(null);
+    try {
+      onStatusChange(await onBankPendingCancel());
+    } catch (err) {
+      setPendingMessage(errorMessage(err, "Could not drop the bank account."));
+    } finally {
+      setPendingBusy(false);
     }
   }
 
@@ -130,9 +204,51 @@ export function AutopaySetupCard({
         icon={<BuildingIcon className="h-5 w-5" />}
         label="Bank account (ACH)"
         added={status.bank_account_added}
+        pending={!!status.bank_pending}
+        locked={status.bank_locked}
         hint={status.monthly_prices ? `${money(status.monthly_prices.bank)} a month, no fee` : undefined}
       >
+        {status.bank_pending && (
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-semibold">Confirm your bank account</p>
+            <p className="mt-1 text-xs leading-relaxed">
+              Stripe sent {status.bank_pending.kind === "descriptor_code" ? "a small deposit" : "two small deposits"} to your bank account
+              {status.bank_pending.arrives_by ? `, which should arrive by ${formatDateOnly(status.bank_pending.arrives_by)}` : ", which usually arrive in 1 to 2 business days"}.
+              When {status.bank_pending.kind === "descriptor_code" ? "it shows" : "they show"} on your statement, open the confirmation page and enter{" "}
+              {status.bank_pending.kind === "descriptor_code" ? "the code in its description" : "the two amounts"}, then come back here and press
+              &ldquo;I confirmed it&rdquo;. Nothing is charged to this account until it is confirmed.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {status.bank_pending.verify_url && (
+                <a
+                  href={status.bank_pending.verify_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-heading rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-amber-900 hover:bg-amber-100"
+                >
+                  Open the confirmation page
+                </a>
+              )}
+              <button
+                onClick={checkPending}
+                disabled={pendingBusy}
+                className="font-heading rounded-md bg-neutral-900 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {pendingBusy ? "Checking…" : "I confirmed it"}
+              </button>
+              <button onClick={dropPending} disabled={pendingBusy} className="text-xs font-semibold text-amber-900 underline disabled:opacity-50">
+                Use a different account
+              </button>
+            </div>
+          </div>
+        )}
+        {pendingMessage && (
+          <p role="status" className="mb-3 text-xs font-medium text-amber-800">
+            {pendingMessage}
+          </p>
+        )}
         {/* A saved account can be replaced (client, Joel, 2026-10-16): the one on file stays until the new one is linked. */}
+        {!status.bank_pending && (
         <button
           onClick={startBank}
           disabled={bankBusy}
@@ -144,16 +260,29 @@ export function AutopaySetupCard({
         >
           {bankBusy ? "Connecting…" : status.bank_account_added ? "Change bank account" : "Link bank account"}
         </button>
+        )}
         {status.bank_account_added && (
           <p className="mt-2 text-xs text-neutral-500">Your current account stays on file until you finish linking the new one.</p>
         )}
         {bankError && <p className="mt-2 text-xs text-red-600">{bankError}</p>}
+        {status.bank_account_added && onRemove && (
+          <button
+            onClick={() => {
+              setRemoveError(null);
+              setRemoving("bank");
+            }}
+            className="mt-2 block text-xs font-semibold text-neutral-500 hover:text-red-600 hover:underline"
+          >
+            Remove this bank account
+          </button>
+        )}
       </MethodRow>
 
       <MethodRow
         icon={<CreditCardIcon className="h-5 w-5" />}
         label={autopayOn ? "Backup card" : "Card"}
         added={status.card_added}
+        locked={status.card_locked}
         hint={status.monthly_prices ? `${money(status.monthly_prices.card)} a month, includes ${money(status.monthly_prices.card_fee)} card fee` : undefined}
       >
         {!cardFormSecret && (
@@ -192,7 +321,50 @@ export function AutopaySetupCard({
             )}
           </>
         )}
+        {status.card_added && onRemove && !cardFormSecret && (
+          <button
+            onClick={() => {
+              setRemoveError(null);
+              setRemoving("card");
+            }}
+            className="mt-2 block text-xs font-semibold text-neutral-500 hover:text-red-600 hover:underline"
+          >
+            Remove this card
+          </button>
+        )}
       </MethodRow>
+
+      {removing && (
+        <Modal title={removing === "bank" ? "Remove your bank account?" : "Remove your card?"} onClose={() => !removeBusy && setRemoving(null)} maxWidthClassName="max-w-md">
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-600">
+              It will be taken off your account and can no longer be used for payments. Anything already being processed is not affected. To pay with
+              {removing === "bank" ? " a bank account" : " a card"} again you will need to add one.
+            </p>
+            {removeError && (
+              <p role="alert" className="text-sm text-red-600">
+                {removeError}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setRemoving(null)}
+                disabled={removeBusy}
+                className="font-heading rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+              >
+                Keep it
+              </button>
+              <button
+                onClick={confirmRemove}
+                disabled={removeBusy}
+                className="font-heading rounded-md bg-red-600 px-3.5 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {removeBusy ? "Removing…" : "Remove it"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {bothAdded && autopayOn && (
         <div className="rounded-xl border border-neutral-200 bg-white p-5">
@@ -245,12 +417,17 @@ function MethodRow({
   icon,
   label,
   added,
+  pending,
+  locked,
   hint,
   children,
 }: {
   icon: React.ReactNode;
   label: string;
   added: boolean;
+  /** A bank account typed in by hand that waits for its two small deposits to be confirmed. */
+  pending?: boolean;
+  locked?: boolean;
   hint?: string;
   children?: React.ReactNode;
 }) {
@@ -268,6 +445,11 @@ function MethodRow({
               <CheckCircleIcon className="h-3.5 w-3.5" />
               Added
             </span>
+          ) : pending ? (
+            <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700">
+              <AlertCircleIcon className="h-3.5 w-3.5" />
+              Waiting to be confirmed
+            </span>
           ) : (
             <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700">
               <AlertCircleIcon className="h-3.5 w-3.5" />
@@ -276,6 +458,11 @@ function MethodRow({
           )}
         </div>
       </div>
+      {added && locked && (
+        <p role="status" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+          This one is locked, so it cannot be used for payments right now. Please contact us, or add a different one below.
+        </p>
+      )}
       {children && <div className="mt-3">{children}</div>}
     </div>
   );

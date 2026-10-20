@@ -9,6 +9,7 @@ import { StatCard } from "@/components/dashboard/StatCard";
 import { StatusTag } from "@/components/dashboard/StatusTag";
 import { Modal } from "@/components/ui/Modal";
 import { money } from "@/components/applications/wizard/types";
+import { RefundModal } from "@/components/applications/detail/RefundModal";
 import { AlertCircleIcon, ArrowUpRightIcon, CheckCircleIcon, ClockIcon, CreditCardIcon } from "@/components/icons";
 import { formatDateOnly, isBeforeToday, isToday } from "@/lib/dates";
 import { firstMonthMirrors } from "@/lib/application-progress";
@@ -18,10 +19,10 @@ import type { Payment } from "@/types/lease-agreement";
 
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** How many payments the main list shows at first, and each time "Show more" is pressed. */
+/** How many payments one page of the main list shows. */
 const PAGE_SIZE = 15;
 const RECENT_PAID_COUNT = 8;
-const METHOD_LABEL: Record<string, string> = { ach: "Bank account", card: "Card", cash: "Cash", check: "Check", other: "Other" };
+const METHOD_LABEL: Record<string, string> = { ach: "Bank account", card: "Card", cash: "Cash", check: "Check", other: "Other", split: "More than one" };
 
 /** How staff say a payment they mark paid was received (client, Joel, 2026-10-16: cash or check in the office). */
 const PAID_BY_OPTIONS: Array<{ value: "cash" | "check" | "ach" | "card" | "other"; label: string }> = [
@@ -49,6 +50,26 @@ function lastFailure(payment: Payment): string | null {
   return `${failed.method === "bank" ? "Bank account" : "Card"} failed${reason ? `: ${reason}` : ""}`;
 }
 
+/** What the "Payments to track" list can be narrowed to (client, Joel, 2026-10-19: see what is processing apart from what is set to be paid). */
+type TrackingFilter = "all" | "attention" | "processing" | "autopay" | "upcoming";
+
+const FILTERS: Array<{ value: TrackingFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "attention", label: "Failed or overdue" },
+  { value: "processing", label: "Processing" },
+  { value: "autopay", label: "AutoPay set" },
+  { value: "upcoming", label: "Upcoming, no AutoPay" },
+];
+
+/** Which filter a row of the list belongs to. */
+function trackingGroup(payment: Payment): Exclude<TrackingFilter, "all"> {
+  if (payment.status === "failed" || (payment.status === "pending" && isBeforeToday(payment.due_date) && !isProcessing(payment))) return "attention";
+  if (isProcessing(payment)) return "processing";
+  if (payment.lease_agreement?.autopay_enabled && !payment.lease_agreement.autopay_paused_at) return "autopay";
+
+  return "upcoming";
+}
+
 function pctChange(current: number, prior: number): string {
   if (prior === 0) return current > 0 ? "New this month" : "No change vs last month";
   const change = ((current - prior) / prior) * 100;
@@ -64,7 +85,11 @@ export function PaymentTrackingPanel() {
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [retryingId, setRetryingId] = useState<number | null>(null);
   const [retryError, setRetryError] = useState<string | null>(null);
-  const [visible, setVisible] = useState(PAGE_SIZE);
+  const [refunding, setRefunding] = useState<Payment | null>(null);
+  const [refundNotice, setRefundNotice] = useState<string | null>(null);
+  const [filter, setFilter] = useState<TrackingFilter>("all");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   // How a payment staff mark paid was received.
   const [paidBy, setPaidBy] = useState<(typeof PAID_BY_OPTIONS)[number]["value"]>("cash");
 
@@ -209,6 +234,17 @@ export function PaymentTrackingPanel() {
   }
   const upcomingRows = [...nextMonthly.values(), ...otherUpcoming].sort(byDue);
   const trackingRows = [...failedRows, ...overdueRows, ...processingRows, ...upcomingRows];
+  const groupCounts: Record<TrackingFilter, number> = { all: trackingRows.length, attention: 0, processing: 0, autopay: 0, upcoming: 0 };
+  for (const row of trackingRows) groupCounts[trackingGroup(row)]++;
+  const needle = search.trim().toLowerCase();
+  const shownRows = trackingRows.filter(
+    (row) =>
+      (filter === "all" || trackingGroup(row) === filter) &&
+      (needle === "" || (row.lease_agreement?.customer?.name ?? "").toLowerCase().includes(needle)),
+  );
+  const pageCount = Math.max(1, Math.ceil(shownRows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pageRows = shownRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const recentlyPaid = payments
     // The first month's record row is left out: its money is listed once, as the tracking fee and first month payment.
@@ -292,7 +328,7 @@ export function PaymentTrackingPanel() {
           <button
             onClick={() => {
               // Keeps how it was paid when that is already known (a bank debit marked paid by hand stays a bank payment).
-              setPaidBy(r.method ?? "cash");
+              setPaidBy(r.method && r.method !== "split" ? r.method : "cash");
               setConfirming({ payment: r, status: "paid" });
             }}
             className="text-sm font-semibold text-green-700 hover:underline"
@@ -320,6 +356,26 @@ export function PaymentTrackingPanel() {
       render: (r) => <span className="text-neutral-500">{r.method ? METHOD_LABEL[r.method] : "—"}</span>,
     },
     { key: "paid", header: "Paid on", render: (r) => <span className="text-neutral-500">{formatDateOnly(r.paid_date)}</span> },
+    {
+      key: "refund",
+      header: "",
+      render: (r) => (
+        <div className="flex items-center justify-end gap-3">
+          {(r.refunded_total ?? 0) > 0 && <span className="text-xs text-amber-700">{money(r.refunded_total ?? 0)} refunded</span>}
+          {(r.refundable_amount ?? 0) > 0 && (
+            <button
+              onClick={() => {
+                setRefundNotice(null);
+                setRefunding(r);
+              }}
+              className="text-sm font-semibold text-red-600 hover:underline"
+            >
+              Refund
+            </button>
+          )}
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -367,6 +423,36 @@ export function PaymentTrackingPanel() {
 
       {retryError && <p className="text-sm text-red-600">{retryError}</p>}
       <div className="space-y-3">
+        {trackingRows.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {FILTERS.map((f) => (
+              <button
+                key={f.value}
+                onClick={() => {
+                  setFilter(f.value);
+                  setPage(1);
+                }}
+                aria-pressed={filter === f.value}
+                className={`font-heading rounded-full border px-3 py-1.5 text-xs font-bold ${
+                  filter === f.value ? "border-red-600 bg-red-600 text-white" : "border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
+                }`}
+              >
+                {f.label} <span className={filter === f.value ? "text-red-100" : "text-neutral-400"}>{groupCounts[f.value]}</span>
+              </button>
+            ))}
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Search by customer name"
+              aria-label="Search payments by customer name"
+              className="ml-auto w-full rounded-md border border-neutral-300 px-3 py-1.5 text-sm sm:w-64"
+            />
+          </div>
+        )}
         <DataTable
           title="Payments to track"
           action={
@@ -377,22 +463,50 @@ export function PaymentTrackingPanel() {
             ) : undefined
           }
           columns={columns}
-          rows={trackingRows.slice(0, visible)}
-          emptyLabel="No payments to track right now."
+          rows={pageRows}
+          emptyLabel={trackingRows.length === 0 ? "No payments to track right now." : "No payments match this filter."}
         />
-        {trackingRows.length > visible && (
-          <div className="flex items-center justify-center gap-3 text-sm text-neutral-500">
+        {shownRows.length > PAGE_SIZE && (
+          <div className="flex flex-wrap items-center justify-center gap-3 text-sm text-neutral-500">
+            <button
+              onClick={() => setPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="font-semibold text-red-600 hover:underline disabled:text-neutral-300 disabled:no-underline"
+            >
+              Previous
+            </button>
             <span>
-              Showing {visible} of {trackingRows.length}
+              Page {currentPage} of {pageCount} ({shownRows.length} payments)
             </span>
-            <button onClick={() => setVisible((n) => n + PAGE_SIZE)} className="font-semibold text-red-600 hover:underline">
-              Show more
+            <button
+              onClick={() => setPage(Math.min(pageCount, currentPage + 1))}
+              disabled={currentPage === pageCount}
+              className="font-semibold text-red-600 hover:underline disabled:text-neutral-300 disabled:no-underline"
+            >
+              Next
             </button>
           </div>
         )}
       </div>
 
+      {refundNotice && (
+        <p role="status" className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">
+          {refundNotice}
+        </p>
+      )}
       <DataTable title="Recently paid" columns={recentColumns} rows={recentlyPaid} emptyLabel="No payments collected yet." />
+
+      {refunding && (
+        <RefundModal
+          payment={refunding}
+          onClose={() => setRefunding(null)}
+          onRefunded={(message) => {
+            setRefunding(null);
+            setRefundNotice(message);
+            void load();
+          }}
+        />
+      )}
 
       <EarningsChart
         data={earningsData}

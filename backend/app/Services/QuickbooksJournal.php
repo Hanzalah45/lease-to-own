@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\AdditionalFundsEntry;
 use App\Models\Payment;
+use App\Models\PaymentRefund;
 use App\Models\QuickbooksSyncSetting;
 use Carbon\Carbon;
 use InvalidArgumentException;
@@ -21,7 +23,8 @@ class QuickbooksJournal
 {
     /** breakdown field => [settings account key, what the line says]. */
     private const PARTS = [
-        'taxable_sales' => ['rent_income', 'Rent'],
+        'rent' => ['rent_income', 'Rent'],
+        'ldw' => ['ldw_income', 'Loss damage waiver'],
         'sales_tax' => ['sales_tax', 'Sales tax'],
         'tracking_fees' => ['tracking_fee_income', 'Tracking fee'],
         'deposits' => ['security_deposit', 'Security deposit'],
@@ -104,29 +107,7 @@ class QuickbooksJournal
             return null;
         }
 
-        $credits = [];
-        foreach (self::PARTS as $field => [$accountKey, $label]) {
-            $cents = $this->cents($row[$field]);
-            if ($cents > 0) {
-                $credits[] = ['account' => $this->account($settings, $accountKey), 'cents' => $cents, 'text' => "{$label}, {$who}"];
-            }
-        }
-
-        // The parts add up to the total by construction; if a rounding step ever left a cent over or short, it goes on the
-        // largest part so the entry always balances (QuickBooks refuses one that does not).
-        $diff = $debit - array_sum(array_column($credits, 'cents'));
-        if ($diff !== 0) {
-            if ($credits === []) {
-                throw new InvalidArgumentException("Payment #{$payment->id} has no part to record.");
-            }
-            $largest = 0;
-            foreach ($credits as $i => $credit) {
-                if ($credit['cents'] > $credits[$largest]['cents']) {
-                    $largest = $i;
-                }
-            }
-            $credits[$largest]['cents'] += $diff;
-        }
+        $credits = $this->parts($row, $debit, $settings, $who, "Payment #{$payment->id}", '');
 
         $lines = [$this->line('Debit', $this->account($settings, 'deposit_account'), $debit, "Received ({$this->methodLabel($row)}), {$who}")];
         foreach ($credits as $credit) {
@@ -134,6 +115,109 @@ class QuickbooksJournal
         }
 
         return $lines;
+    }
+
+    /**
+     * The account and amount for each part of $split (a payment's breakdown, or the share of it a refund takes). The parts add up to
+     * the total by construction; if a rounding step ever left a cent over or short, it goes on the largest part so the entry always
+     * balances (QuickBooks refuses one that does not).
+     *
+     * @param  array<string, mixed>  $split
+     * @return list<array{account: string, cents: int, text: string}>
+     */
+    private function parts(array $split, int $total, QuickbooksSyncSetting $settings, string $who, string $what, string $prefix): array
+    {
+        $parts = [];
+        foreach (self::PARTS as $field => [$accountKey, $label]) {
+            $cents = $this->cents($split[$field] ?? 0);
+            if ($cents > 0) {
+                $parts[] = ['account' => $this->account($settings, $accountKey), 'cents' => $cents, 'text' => "{$prefix}{$label}, {$who}"];
+            }
+        }
+
+        $diff = $total - array_sum(array_column($parts, 'cents'));
+        if ($diff !== 0) {
+            if ($parts === []) {
+                throw new InvalidArgumentException("{$what} has no part to record.");
+            }
+            $largest = 0;
+            foreach ($parts as $i => $part) {
+                if ($part['cents'] > $parts[$largest]['cents']) {
+                    $largest = $i;
+                }
+            }
+            $parts[$largest]['cents'] += $diff;
+        }
+
+        return $parts;
+    }
+
+    /**
+     * The entry for money that went back to a customer (a refund, or a chargeback that was lost): what the payment's entry credited
+     * is debited in the refund's share, and the money-received account is credited. Null when there is nothing to record.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function forRefund(PaymentRefund $refund, QuickbooksSyncSetting $settings): ?array
+    {
+        $payment = $refund->payment;
+        $row = $this->report->breakdown($payment);
+        $who = $this->who($row, $payment);
+
+        $credit = $this->cents($refund->amount);
+        if ($credit <= 0) {
+            return null;
+        }
+
+        $debits = $this->parts($this->report->refundBreakdown($refund), $credit, $settings, $who, "Refund #{$refund->id}", 'Refund: ');
+
+        $lines = [$this->line('Credit', $this->account($settings, 'deposit_account'), $credit, "Refunded ({$this->methodLabel($row)}), {$who}")];
+        foreach ($debits as $debit) {
+            $lines[] = $this->line('Debit', $debit['account'], $debit['cents'], $debit['text']);
+        }
+
+        $date = $refund->refunded_at->setTimezone(BillingClock::TIMEZONE)->toDateString();
+        $why = $refund->reason === PaymentRefund::REASON_CHARGEBACK ? 'a chargeback was lost' : 'it was refunded';
+
+        return [
+            'DocNumber' => self::refundDocNumber($refund),
+            'TxnDate' => $date,
+            'PrivateNote' => "Prostart Leasing refund #{$refund->id} of payment #{$payment->id} ({$payment->type}): {$why}",
+            'Line' => $lines,
+        ];
+    }
+
+    /**
+     * The entry for Additional Funds applied to repairs: the money the customer paid toward the early purchase price, held as a
+     * liability, becomes income that covers the repair. Debit the held-funds account, credit the repair income account.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function forFundsApplied(AdditionalFundsEntry $entry, QuickbooksSyncSetting $settings): ?array
+    {
+        $cents = abs($this->cents($entry->amount));
+        if ($cents <= 0) {
+            return null;
+        }
+
+        $entry->loadMissing('leaseAgreement.customer:id,name');
+        $name = trim(preg_replace('/[\x00-\x1F\x7F]+/u', ' ', (string) ($entry->leaseAgreement?->customer?->name ?? '')));
+        $who = mb_substr($name === '' ? 'customer' : $name, 0, 100).", lease #{$entry->lease_agreement_id}";
+
+        return [
+            'DocNumber' => 'PL-A'.$entry->id,
+            'TxnDate' => $entry->created_at->setTimezone(BillingClock::TIMEZONE)->toDateString(),
+            'PrivateNote' => "Prostart Leasing Additional Funds applied to repairs (entry #{$entry->id}, lease #{$entry->lease_agreement_id})",
+            'Line' => [
+                $this->line('Debit', $this->account($settings, 'extra_payment'), $cents, "Additional Funds applied to repairs, {$who}"),
+                $this->line('Credit', $this->account($settings, 'repair_income'), $cents, mb_substr('Repair costs recovered, '.$who.($entry->description ? ' ('.$entry->description.')' : ''), 0, 4000)),
+            ],
+        ];
+    }
+
+    public static function refundDocNumber(PaymentRefund $refund): string
+    {
+        return 'PL-F'.$refund->id;
     }
 
     /** @return array<string, mixed> */
@@ -169,6 +253,7 @@ class QuickbooksJournal
             'card' => 'card',
             'cash' => 'cash',
             'check' => 'check',
+            'split' => 'split payment',
             null, '' => 'method not recorded',
             default => (string) $row['method'],
         };

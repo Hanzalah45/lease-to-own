@@ -112,6 +112,9 @@ class AutopayOutcome
                 'failure_message' => $message ? mb_substr($message, 0, 500) : null,
             ]);
 
+            // A decline that will never work (a closed account, a stolen card) locks that method, so nothing tries it again.
+            PaymentMethodLocker::lockAfterHardDecline($payment, $attempt->fresh(), $code);
+
             self::settleFailure($payment, $attempt);
         });
     }

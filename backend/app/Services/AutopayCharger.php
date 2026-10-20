@@ -62,6 +62,10 @@ class AutopayCharger
         if ($lease->autopay_paused_at) {
             return 'AutoPay is paused on this lease.';
         }
+        // The customer's notice has run out: AutoPay is switched off for good by the morning job, and must not charge in the meantime.
+        if (AutopayRevocationService::hasTakenEffect($lease)) {
+            return 'The customer asked to turn AutoPay off, and the notice has run out.';
+        }
         if ($lease->application?->status !== Application::STATUS_FINISHED) {
             return 'The equipment has not been picked up yet.';
         }
@@ -69,7 +73,9 @@ class AutopayCharger
             return 'The customer account is suspended.';
         }
         if (! $lease->autopayChargeablePaymentMethod()) {
-            return 'No bank account or card is on file.';
+            return $lease->stripe_bank_payment_method_id || $lease->stripe_card_payment_method_id
+                ? 'Every saved payment method is locked.'
+                : 'No bank account or card is on file.';
         }
 
         return null;
@@ -96,7 +102,19 @@ class AutopayCharger
             return $this->skip($retry ? 'Only a failed payment can be retried.' : "The payment is {$payment->status}.");
         }
 
+        // A piece of this payment is still being collected (a bank debit takes days): its money must not be asked for twice.
+        if ($payment->parts()->where('status', 'pending')->exists()) {
+            return $this->skip('A part of this payment is still being collected.');
+        }
+        if ($payment->chargeableAmount() < 0.01) {
+            return $this->skip('Nothing is left to charge on this payment.');
+        }
+
         $lease = $payment->leaseAgreement()->with(['application', 'customer'])->first();
+        // AutoPay turned on with the tick box starts with the first payment due on or after that day; an earlier one stays payable by the customer.
+        if ($lease->autopay_started_on && $payment->due_date && $payment->due_date->lt($lease->autopay_started_on)) {
+            return $this->skip('AutoPay was turned on after this payment was due.');
+        }
         if ($reason = self::leaseBlocker($lease)) {
             return $this->skip($reason);
         }
@@ -391,7 +409,8 @@ class AutopayCharger
      */
     private function chargeSpec(Payment $payment, string $kind, int $round, int $attemptNo, array $method): array
     {
-        $bankCents = CardPricing::toCents((float) $payment->amount);
+        // What is left to pay: a payment paid in pieces is charged only for the rest.
+        $bankCents = CardPricing::toCents($payment->chargeableAmount());
         $feeCents = CardPricing::feeCentsFor($bankCents, $method['type']);
 
         return [

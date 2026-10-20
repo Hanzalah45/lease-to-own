@@ -125,6 +125,8 @@ class PublicContractController extends Controller
                 'signer_user_id' => $customer->id,
                 'signer_name' => $data['signer_name'],
                 'version' => ($lockedLease->contracts()->max('version') ?? 0) + 1,
+                // The wording of the agreement the customer was shown and signed (see Contract::CURRENT_TERMS_VERSION).
+                'terms_version' => Contract::CURRENT_TERMS_VERSION,
                 'signed_at' => now(),
                 'ip_address' => $request->ip(),
                 'user_agent' => substr((string) $request->userAgent(), 0, 512),

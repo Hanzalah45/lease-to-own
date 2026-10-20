@@ -58,6 +58,8 @@ export interface Contract {
   signer_name: string | null;
   file_path: string | null;
   version: number;
+  /** Which wording of the agreement this signature was given on (1 = the original wording). */
+  terms_version?: number;
   signed_at: string;
   external_provider: string | null;
   external_envelope_id: string | null;
@@ -79,6 +81,87 @@ export interface PaymentAttempt {
   failure_message: string | null;
 }
 
+/** Money that went back to the customer for one payment, in full or in part (client, Joel, 2026-10-19). */
+export interface PaymentRefund {
+  id: number;
+  payment_id: number;
+  /** Includes the card fee when the whole payment is refunded. */
+  amount: string;
+  reason: string;
+  note: string | null;
+  /** portal: made from here through Stripe. manual: given back outside the portal and recorded. stripe: made in the Stripe dashboard. dispute: a chargeback that was lost. */
+  source: "portal" | "manual" | "stripe" | "dispute";
+  /** pending: on its way (a bank refund), or Stripe gave no answer yet. */
+  status: "pending" | "succeeded" | "failed";
+  stripe_refund_id: string | null;
+  failure_message: string | null;
+  refunded_at: string | null;
+  created_at: string;
+  refunded_by?: { id: number; name: string } | null;
+}
+
+/** A chargeback: the customer disputed a payment with their bank. */
+export interface PaymentDispute {
+  id: number;
+  payment_id: number;
+  amount: string;
+  reason: string | null;
+  /** Stripe's own words: needs_response, under_review, won, lost, warning_closed. */
+  status: string;
+  evidence_due_by: string | null;
+  opened_at: string;
+  closed_at: string | null;
+}
+
+/** One piece of a payment that was paid in more than one (client, Joel, 2026-10-19 checklist, section 7). */
+export interface PaymentPart {
+  id: number;
+  payment_id?: number;
+  method: "ach" | "card" | "cash" | "check" | "other";
+  /** The bank price of this piece; the card fee is on top. */
+  amount: string;
+  card_fee_amount: string;
+  /** pending: a bank debit on its way (or a charge nobody has an answer for). refunded: taken back whole from a payment that was still open. */
+  status: "pending" | "paid" | "failed" | "refunded";
+  failure_message?: string | null;
+  paid_date: string | null;
+  created_at?: string;
+  started_by?: "staff" | "customer" | "system";
+  /** Staff views only. */
+  recorded_by?: { id: number; name: string } | null;
+  refunded_total?: number;
+  refundable_amount?: number;
+}
+
+/** What staff wrote about one payment. Never shown to customers. */
+export interface PaymentNote {
+  id: number;
+  payment_id: number;
+  kind: "general" | "failed" | "refund" | "chargeback";
+  body: string;
+  created_at: string;
+  author?: { id: number; name: string } | null;
+}
+
+/** One line of the payment audit trail: who did what to which payment, when, with what method, from where. */
+export interface PaymentAuditEntry {
+  id: number;
+  actor_type: "staff" | "customer" | "system";
+  actor_name: string | null;
+  /** A family and an action, like refund.completed or payment.paid. */
+  action: string;
+  lease_agreement_id: number | null;
+  payment_id: number | null;
+  method: string | null;
+  amount: string | null;
+  summary: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+  payment?: { id: number; lease_agreement_id: number; type: Payment["type"]; due_date: string } | null;
+  lease_agreement?: { id: number; customer_id: number; application_id: number; customer?: { id: number; name: string } | null } | null;
+}
+
 export interface Payment {
   id: number;
   lease_agreement_id: number;
@@ -90,7 +173,8 @@ export interface Payment {
   card_fee_amount: string;
   due_date: string;
   paid_date: string | null;
-  method: "ach" | "card" | "cash" | "check" | "other" | null;
+  /** split: paid in pieces that used different methods. */
+  method: "ach" | "card" | "cash" | "check" | "other" | "split" | null;
   status: "pending" | "paid" | "failed" | "refunded";
   /** Why a charge failed, in the processor's words (client, Joel, 2026-10-13). Rental payments keep theirs per attempt. */
   failure_message?: string | null;
@@ -99,6 +183,21 @@ export interface Payment {
   recorded_by?: { id: number; name: string } | null;
   /** Automatic-charge history for a rental payment, oldest first (admin views only). */
   attempts?: PaymentAttempt[];
+  /** Staff views only: refunds of this payment (oldest first), what they add up to and what can still be refunded. */
+  refunds?: PaymentRefund[];
+  refunded_total?: number;
+  refundable_amount?: number;
+  /** Staff views only: chargebacks reported against this payment. */
+  disputes?: PaymentDispute[];
+  /** Staff views only: what staff wrote about this payment, oldest first. */
+  notes?: PaymentNote[];
+  /** The pieces this payment was paid in, when it was not paid in one go, oldest first. */
+  parts?: PaymentPart[];
+  /** What is still to be paid (the price less the pieces that went through), and what a new charge may be for (also less pieces still on their way). */
+  remaining_amount?: number;
+  chargeable_amount?: number;
+  /** Staff views only: what this payment is applied to. */
+  applied_to?: "rent" | "fees" | "epo" | "deposit" | "tracking_fee_and_first_month" | "other";
   /** Customer portal only: whether this due monthly payment can be paid from the portal now (see CustomerPaymentCharger::options). Null when it is not due or not a monthly payment. */
   pay?: PayOptions | null;
   lease_agreement?: {
@@ -116,7 +215,14 @@ export interface PayOptions {
   blocker: string | null;
   /** The saved methods that can be used. */
   available_methods: Array<"bank" | "card">;
+  /** Prices for what can still be charged (everything that is left of the payment). */
   prices: PriceOption;
+  /** Paying in parts: what is left, the smallest part a customer can pay on their own, the card fee rate in basis points, and whether a part can be paid now. */
+  remaining_amount?: number;
+  chargeable_amount?: number;
+  min_piece?: number;
+  card_fee_bps?: number;
+  can_pay_in_parts?: boolean;
 }
 
 export interface LeaseAgreement {
@@ -162,6 +268,8 @@ export interface LeaseAgreement {
   equipment_unit?: EquipmentUnit | null;
   payments?: Payment[];
   contract?: Contract | null;
+  /** The latest time the customer turned AutoPay on with the tick box, if they did. */
+  autopay_agreement?: { id: number; agreed_at: string; via: "portal" | "signed_link"; wording_version: number } | null;
   /** Full signature history including voided ones, newest first — admin views only. */
   contracts?: Contract[];
   /** Server-computed — see LeaseEngine on the backend. */

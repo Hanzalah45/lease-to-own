@@ -8,7 +8,7 @@ import { money } from "@/components/applications/wizard/types";
 import { formatDateOnly } from "@/lib/dates";
 import { ExtraPaymentModal } from "@/components/payments/ExtraPaymentModal";
 import { getMyLeaseAgreement } from "@/lib/lease-agreements";
-import { getExtraPaymentOptions, type ExtraPaymentOptions } from "@/lib/payments";
+import { getExtraPaymentOptions, type AdditionalFundsMovement, type ExtraPaymentOptions } from "@/lib/payments";
 import { ApiError } from "@/lib/api";
 import type { LeaseAgreement } from "@/types/lease-agreement";
 
@@ -16,6 +16,15 @@ function num(value: string | number | null | undefined): number {
   const n = Number(value ?? 0);
   return Number.isFinite(n) ? n : 0;
 }
+
+/** How a movement of the customer's Additional Funds reads to them. */
+const CUSTOMER_FUNDS_LABEL: Record<AdditionalFundsMovement["kind"], string> = {
+  added: "Extra payment added",
+  reversed: "Extra payment no longer counted",
+  refunded: "Refunded to you",
+  repairs: "Applied to repairs",
+  adjusted: "Adjusted",
+};
 
 export default function CustomerLeaseDetailPage() {
   const params = useParams<{ id: string }>();
@@ -176,6 +185,32 @@ export default function CustomerLeaseDetailPage() {
                   ? "Extra payments go toward your early purchase price and lower it by the amount you pay."
                   : extra.blocker}
               </p>
+            </div>
+          )}
+
+          {extra?.history && extra.history.length > 0 && (
+            <div className="mt-5 border-t border-neutral-100 pt-4">
+              <div className="mb-2 flex items-baseline justify-between gap-3">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-neutral-500">Your Additional Funds</h3>
+                <span className="font-semibold tabular-nums text-neutral-900">{money(extra.additional_funds ?? 0)}</span>
+              </div>
+              <ul className="divide-y divide-neutral-100 text-sm">
+                {extra.history.map((h) => (
+                  <li key={h.id} className="flex items-start justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-neutral-800">{CUSTOMER_FUNDS_LABEL[h.kind]}</p>
+                      <p className="text-xs text-neutral-400">
+                        {new Date(h.created_at).toLocaleDateString()}
+                        {h.description && h.kind === "repairs" ? ` · ${h.description.replace(/^Applied to repairs: /, "")}` : ""}
+                      </p>
+                    </div>
+                    <span className={`shrink-0 font-semibold tabular-nums ${Number(h.amount) < 0 ? "text-red-600" : "text-green-700"}`}>
+                      {Number(h.amount) < 0 ? "−" : "+"}
+                      {money(Math.abs(Number(h.amount)))}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>

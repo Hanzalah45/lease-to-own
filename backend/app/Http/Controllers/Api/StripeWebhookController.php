@@ -8,6 +8,9 @@ use App\Models\PaymentAttempt;
 use App\Models\StripeWebhookEvent;
 use App\Services\AutopayOutcome;
 use App\Services\LeaseEngine;
+use App\Services\PaymentRefunder;
+use App\Services\PaymentSplitter;
+use App\Services\StripePaymentMethodService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -88,12 +91,32 @@ class StripeWebhookController extends Controller
         match ($event->type) {
             'payment_intent.succeeded' => $this->handleIntent($event->data->object, Payment::STATUS_PAID),
             'payment_intent.payment_failed' => $this->handleIntent($event->data->object, Payment::STATUS_FAILED),
+            // Refunds and chargebacks: made here, made in the Stripe dashboard, or decided by the customer's bank.
+            'refund.created', 'refund.updated', 'refund.failed', 'charge.refund.updated' => app(PaymentRefunder::class)->applyStripeRefund($event->data->object),
+            'charge.refunded' => app(PaymentRefunder::class)->syncRefundsOf($this->intentIdOf($event->data->object)),
+            'charge.dispute.created', 'charge.dispute.updated', 'charge.dispute.closed' => app(PaymentRefunder::class)->applyDispute($event->data->object),
+            // A bank account waiting for its two small deposits was confirmed, or could not be.
+            'setup_intent.succeeded' => app(StripePaymentMethodService::class)->applySetupIntentEvent($event->data->object, true),
+            'setup_intent.setup_failed', 'setup_intent.canceled' => app(StripePaymentMethodService::class)->applySetupIntentEvent($event->data->object, false),
             default => null,
         };
     }
 
+    /** The payment intent a charge belongs to (Stripe sends it as an id). */
+    private function intentIdOf(object $charge): ?string
+    {
+        $intent = $charge->payment_intent ?? null;
+
+        return is_object($intent) ? ($intent->id ?? null) : $intent;
+    }
+
     private function handleIntent(PaymentIntent $intent, string $status): void
     {
+        // A charge for one piece of a payment that is paid in pieces settles that piece.
+        if (app(PaymentSplitter::class)->applyIntent($intent, $status === Payment::STATUS_PAID ? 'paid' : 'failed')) {
+            return;
+        }
+
         $attempt = $this->attemptFor($intent);
         if (! $attempt) {
             $this->markFromIntent($intent, $status);

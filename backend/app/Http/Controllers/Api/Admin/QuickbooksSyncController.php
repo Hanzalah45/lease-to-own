@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdditionalFundsEntry;
 use App\Models\Payment;
+use App\Models\PaymentRefund;
 use App\Models\QuickbooksConnection;
 use App\Models\QuickbooksSyncSetting;
 use App\Services\BillingClock;
@@ -166,17 +168,46 @@ class QuickbooksSyncController extends Controller
             'ready' => $settings->isReady(),
             'missing' => $settings->missingAccounts(),
             'accounts' => $accounts,
+            // Refunds and lost chargebacks are entries too, counted with the payments.
             'counts' => [
-                'synced' => Payment::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_SYNCED)->count(),
-                'waiting' => $waiting,
-                'failed' => Payment::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_FAILED)->count(),
-                'skipped' => Payment::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_SKIPPED)->count(),
+                'synced' => Payment::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_SYNCED)->count()
+                    + PaymentRefund::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_SYNCED)->count()
+                    + AdditionalFundsEntry::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_SYNCED)->count(),
+                'waiting' => $waiting + ($settings->sync_from
+                    ? PaymentRefund::where('status', PaymentRefund::STATUS_SUCCEEDED)->whereNull('quickbooks_sync_status')->count()
+                        + AdditionalFundsEntry::where('kind', AdditionalFundsEntry::KIND_REPAIRS)->whereNull('quickbooks_sync_status')->count()
+                    : 0),
+                'failed' => Payment::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_FAILED)->count()
+                    + PaymentRefund::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_FAILED)->count()
+                    + AdditionalFundsEntry::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_FAILED)->count(),
+                'skipped' => Payment::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_SKIPPED)->count()
+                    + PaymentRefund::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_SKIPPED)->count()
+                    + AdditionalFundsEntry::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_SKIPPED)->count(),
             ],
             'last_synced_at' => $settings->last_synced_at,
             'last_error' => $settings->last_error,
             'recent' => $this->rows(Payment::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_SYNCED)->orderByDesc('quickbooks_synced_at')->orderByDesc('id')->limit(10)),
-            'failed' => $this->rows(Payment::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_FAILED)->orderByDesc('id')->limit(20)),
+            'failed' => [
+                ...$this->rows(Payment::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_FAILED)->orderByDesc('id')->limit(20)),
+                ...$this->refundRows(PaymentRefund::where('quickbooks_sync_status', QuickbooksSyncer::STATUS_FAILED)->orderByDesc('id')->limit(20)),
+            ],
         ];
+    }
+
+    /** A refund that QuickBooks refused, shown in the same list as the payments it refunds (the amount is what went back, so negative). */
+    private function refundRows($query): array
+    {
+        return $query->with('payment.leaseAgreement.customer:id,name')->get()->map(fn (PaymentRefund $r) => [
+            'payment_id' => $r->payment_id,
+            'lease_id' => $r->payment->lease_agreement_id,
+            'customer' => $r->payment->leaseAgreement?->customer?->name,
+            'type' => 'refund',
+            'paid_date' => $r->refunded_at?->setTimezone(BillingClock::TIMEZONE)->toDateString(),
+            'amount' => -1 * (float) $r->amount,
+            'entry_id' => $r->quickbooks_record_id,
+            'synced_at' => $r->quickbooks_synced_at,
+            'error' => $r->quickbooks_sync_error,
+        ])->all();
     }
 
     /** @return list<array<string, mixed>> */

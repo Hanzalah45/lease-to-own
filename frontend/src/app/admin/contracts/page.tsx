@@ -140,7 +140,16 @@ export default function AdminContractsPage() {
     {
       key: "status",
       header: "Status",
-      render: () => <StatusTag color="#16A34A" label="Signed" />,
+      // A lease that was ended (returned, purchased or otherwise) keeps its signed contract on file, and says so here (client, Joel, 2026-10-19).
+      render: (r) =>
+        r.ended_at ? (
+          <StatusTag
+            color="#6B7280"
+            label={`Ended: ${r.ended_reason === "returned" ? "returned" : r.ended_reason === "purchased" ? "purchased" : "other"}, ${new Date(r.ended_at).toLocaleDateString()}`}
+          />
+        ) : (
+          <StatusTag color="#16A34A" label="Signed" />
+        ),
     },
     {
       key: "action",

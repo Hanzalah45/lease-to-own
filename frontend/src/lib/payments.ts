@@ -1,6 +1,6 @@
 import { API_BASE_URL, apiFetch } from "@/lib/api";
 import { getToken } from "@/lib/auth";
-import type { Payment } from "@/types/lease-agreement";
+import type { Payment, PaymentAuditEntry, PaymentNote } from "@/types/lease-agreement";
 
 export async function listMyPayments(): Promise<Payment[]> {
   const data = await apiFetch<{ data: Payment[] }>("/customer/payments", { token: getToken() });
@@ -72,9 +72,194 @@ async function chargeAsStaff(
   return data.data.payment;
 }
 
+/** What staff can give as the reason for a refund (the server holds the same list). */
+export const REFUND_REASONS = [
+  { value: "customer_request", label: "The customer asked for a refund" },
+  { value: "overpayment", label: "The customer paid too much" },
+  { value: "duplicate", label: "The customer was charged twice" },
+  { value: "posted_in_error", label: "The payment was recorded in error" },
+  { value: "returned_equipment", label: "The equipment was returned" },
+  { value: "other", label: "Other, explained in the note" },
+] as const;
+
+export type RefundReason = (typeof REFUND_REASONS)[number]["value"];
+
+/** A reason in words, including the two the system gives itself. */
+export function refundReasonLabel(reason: string): string {
+  if (reason === "refunded_in_stripe") return "Refunded in Stripe";
+  if (reason === "chargeback") return "Chargeback lost";
+
+  return REFUND_REASONS.find((r) => r.value === reason)?.label ?? reason;
+}
+
+/**
+ * Staff: gives money back for a paid payment, all of it or part. A payment taken through Stripe is refunded through Stripe to the
+ * card or bank account it came from; one recorded by hand is only recorded as refunded. Returns the payment with its refunds.
+ */
+export async function refundPayment(paymentId: number | string, body: { amount: number; reason: RefundReason; note?: string; /** A payment paid in parts is refunded one part at a time. */ partId?: number }): Promise<Payment> {
+  const data = await apiFetch<{ data: Payment }>(`/admin/payments/${paymentId}/refunds`, {
+    method: "POST",
+    token: getToken(),
+    body: { amount: body.amount, reason: body.reason, note: body.note || undefined, part_id: body.partId },
+  });
+  return data.data;
+}
+
+/** Staff: cancels a refund Stripe never answered, after checking in Stripe that it was not made. */
+export async function cancelUnansweredRefund(refundId: number | string): Promise<Payment> {
+  const data = await apiFetch<{ data: Payment }>(`/admin/payment-refunds/${refundId}/cancel`, { method: "POST", token: getToken() });
+  return data.data;
+}
+
+/** How staff take a piece of a payment: received in the office, or charged to the customer's saved bank account or card. */
+export type TakeMethod = "cash" | "check" | "other" | "bank" | "card";
+
+export interface TakePaymentBody {
+  method: TakeMethod;
+  /** The bank price of the piece. */
+  amount: number;
+  note?: string;
+  /** A charge to a saved method: the total shown on screen, and that the customer agreed to it. */
+  expectedTotalCents?: number;
+  customerAgreed?: boolean;
+}
+
+function takeBody(body: TakePaymentBody): Record<string, unknown> {
+  return {
+    method: body.method,
+    amount: body.amount,
+    note: body.note || undefined,
+    expected_total_cents: body.expectedTotalCents,
+    customer_agreed: body.customerAgreed || undefined,
+  };
+}
+
+/**
+ * Staff: take a payment toward something that is due, in whole or in part (client, Joel, 2026-10-19 checklist, sections 1 and 7): cash,
+ * a check or another method received in the office, or a charge to the saved bank account or card. Returns the payment with its pieces.
+ */
+export async function takePayment(paymentId: number | string, body: TakePaymentBody): Promise<Payment> {
+  const data = await apiFetch<{ data: Payment }>(`/admin/payments/${paymentId}/parts`, { method: "POST", token: getToken(), body: takeBody(body) });
+  return data.data;
+}
+
+/** The same for the deposit or the tracking fee and first month of an application, which may have no payment row yet. */
+export async function takeApplicationPayment(applicationId: number | string, type: "deposit" | "pickup_balance", body: TakePaymentBody): Promise<Payment> {
+  const data = await apiFetch<{ data: Payment }>(`/admin/applications/${applicationId}/payment-parts`, {
+    method: "POST",
+    token: getToken(),
+    body: { type, ...takeBody(body) },
+  });
+  return data.data;
+}
+
+/** Staff: cancels a charge for a piece that Stripe never answered, after checking in Stripe that it was not made. */
+export async function cancelUnansweredPart(partId: number | string): Promise<Payment> {
+  const data = await apiFetch<{ data: Payment }>(`/admin/payment-parts/${partId}/cancel`, { method: "POST", token: getToken() });
+  return data.data;
+}
+
+export const NOTE_KINDS = [
+  { value: "general", label: "Note" },
+  { value: "failed", label: "Failed payment" },
+  { value: "refund", label: "Refund" },
+  { value: "chargeback", label: "Chargeback" },
+] as const;
+
+export type NoteKind = (typeof NOTE_KINDS)[number]["value"];
+
+/** Staff: adds an internal note to a payment. Customers never see it. */
+export async function addPaymentNote(paymentId: number | string, body: { kind: NoteKind; body: string }): Promise<PaymentNote> {
+  const data = await apiFetch<{ data: PaymentNote }>(`/admin/payments/${paymentId}/notes`, { method: "POST", token: getToken(), body });
+  return data.data;
+}
+
+/** Staff: the notes and the audit trail of one payment, newest first. */
+export async function getPaymentHistory(paymentId: number | string): Promise<{ notes: PaymentNote[]; audit: PaymentAuditEntry[] }> {
+  const data = await apiFetch<{ data: { notes: PaymentNote[]; audit: PaymentAuditEntry[] } }>(`/admin/payments/${paymentId}/history`, { token: getToken() });
+  return data.data;
+}
+
+export interface AutopayLogFilters {
+  status?: "succeeded" | "failed" | "processing" | "initiated" | "";
+  method?: "bank" | "card" | "";
+  startedBy?: "autopay" | "customer" | "";
+  from?: string;
+  to?: string;
+}
+
+/** One try at collecting a monthly payment through Stripe, as the AutoPay log lists it. */
+export interface AutopayLogEntry {
+  id: number;
+  created_at: string;
+  attempt_no: number;
+  round: number;
+  method: "bank" | "card";
+  amount: number;
+  fee: number;
+  status: "initiated" | "processing" | "succeeded" | "failed";
+  failure_code: string | null;
+  failure_message: string | null;
+  started_by: "autopay" | "customer";
+  payment_id: number;
+  payment_type: string | null;
+  due_date: string | null;
+  lease_agreement_id: number | null;
+  application_id: number | null;
+  customer: string | null;
+}
+
+export interface AutopayLogPage {
+  data: AutopayLogEntry[];
+  current_page: number;
+  last_page: number;
+  total: number;
+}
+
+/** Staff: every try at collecting a monthly payment through Stripe, newest first, 50 to a page. */
+export async function listAutopayLog(filters: AutopayLogFilters, page: number): Promise<AutopayLogPage> {
+  const query = new URLSearchParams({ page: String(page) });
+  if (filters.status) query.set("status", filters.status);
+  if (filters.method) query.set("method", filters.method);
+  if (filters.startedBy) query.set("started_by", filters.startedBy);
+  if (filters.from) query.set("from", filters.from);
+  if (filters.to) query.set("to", filters.to);
+
+  return apiFetch<AutopayLogPage>(`/admin/autopay-log?${query.toString()}`, { token: getToken() });
+}
+
+export interface AuditLogFilters {
+  action?: string;
+  who?: "staff" | "customer" | "system" | "";
+  from?: string;
+  to?: string;
+  paymentId?: number | string;
+  leaseId?: number | string;
+}
+
+export interface AuditLogPage {
+  data: PaymentAuditEntry[];
+  current_page: number;
+  last_page: number;
+  total: number;
+}
+
+/** Staff: the payment audit trail as one list, newest first, 50 to a page. */
+export async function listAuditLog(filters: AuditLogFilters, page: number): Promise<AuditLogPage> {
+  const query = new URLSearchParams({ page: String(page) });
+  if (filters.action) query.set("action", filters.action);
+  if (filters.who) query.set("who", filters.who);
+  if (filters.from) query.set("from", filters.from);
+  if (filters.to) query.set("to", filters.to);
+  if (filters.paymentId) query.set("payment_id", String(filters.paymentId));
+  if (filters.leaseId) query.set("lease_agreement_id", String(filters.leaseId));
+
+  return apiFetch<AuditLogPage>(`/admin/payment-audit-log?${query.toString()}`, { token: getToken() });
+}
+
 export async function markPaymentStatus(
   id: number | string,
-  status: "pending" | "paid" | "failed" | "refunded",
+  status: "pending" | "paid" | "failed",
   method?: "ach" | "card" | "cash" | "check" | "other",
 ): Promise<Payment> {
   const data = await apiFetch<{ data: Payment }>(`/admin/payments/${id}`, {
@@ -132,11 +317,50 @@ export interface StaffMethodInfo {
   account_type?: string | null;
 }
 
+/** A saved method that is locked: still on file, never charged (fraud, a dispute, a hard decline). */
+export interface MethodLock {
+  locked_at: string;
+  reason: string | null;
+}
+
 export interface StaffAutopayMethods {
   autopay_enabled: boolean;
   primary: "ach" | "card" | null;
   bank: StaffMethodInfo | null;
+  /** A bank account typed in by hand that is waiting for its two small test deposits to be confirmed: not yet chargeable. */
+  bank_pending?: { since: string; arrives_by: string | null } | null;
   card: StaffMethodInfo | null;
+  bank_lock: MethodLock | null;
+  card_lock: MethodLock | null;
+  /** A chargeback froze this lease: AutoPay is paused and the method it was paid with is locked until it is decided. */
+  chargeback_frozen: boolean;
+  /** The card fee in basis points (300 is 3%), for pricing a charge on screen the way the server prices it. */
+  card_fee_bps: number;
+  /** The customer's request to turn AutoPay off, waiting for its day. */
+  autopay_revocation: { requested_at: string; effective_on: string; via: "portal" | "staff" } | null;
+}
+
+/** Staff: records that the customer asked in writing to turn AutoPay off. The same three business days run, then the system switches it off. */
+export async function recordAutopayRevocation(leaseAgreementId: number | string): Promise<{ effective_on: string }> {
+  const data = await apiFetch<{ data: { effective_on: string } }>(`/admin/lease-agreements/${leaseAgreementId}/autopay/revocation`, {
+    method: "POST",
+    token: getToken(),
+    body: { customer_asked_in_writing: true },
+  });
+  return data.data;
+}
+
+/** Staff: locks a saved bank account or card (a reason is required), or unlocks it. A locked method is never charged. */
+export async function setMethodLock(
+  leaseAgreementId: number | string,
+  body: { type: "bank" | "card"; locked: boolean; reason?: string },
+): Promise<{ bank_lock: MethodLock | null; card_lock: MethodLock | null }> {
+  const data = await apiFetch<{ data: { bank_lock: MethodLock | null; card_lock: MethodLock | null } }>(`/admin/lease-agreements/${leaseAgreementId}/method-lock`, {
+    method: "POST",
+    token: getToken(),
+    body,
+  });
+  return data.data;
 }
 
 /** Staff: the bank account and card AutoPay would use, as Stripe describes them. */
@@ -161,14 +385,27 @@ export interface PayMyPaymentResult {
  */
 export async function payMyPayment(
   paymentId: number | string,
-  choice: { method: "bank" | "card"; expectedTotalCents: number },
+  choice: { method: "bank" | "card"; expectedTotalCents: number; /** Pay only part of what is due: the amount, at the bank price. */ amount?: number },
 ): Promise<PayMyPaymentResult> {
   const data = await apiFetch<{ data: PayMyPaymentResult }>(`/customer/payments/${paymentId}/pay`, {
     method: "POST",
     token: getToken(),
-    body: { method: choice.method, expected_total_cents: choice.expectedTotalCents },
+    body: { method: choice.method, expected_total_cents: choice.expectedTotalCents, amount: choice.amount },
   });
   return data.data;
+}
+
+/** One movement of a lease's Additional Funds balance, newest first in a list. */
+export interface AdditionalFundsMovement {
+  id: number;
+  kind: "added" | "reversed" | "refunded" | "repairs" | "adjusted";
+  /** Signed: money in is positive, money out is negative. */
+  amount: string;
+  balance_after: string;
+  description: string | null;
+  created_at: string;
+  /** Staff views only. */
+  created_by?: { id: number; name: string } | null;
 }
 
 /** What a customer can do toward the early purchase price right now (contract Section 19, "Additional Funds"). */
@@ -183,6 +420,9 @@ export interface ExtraPaymentOptions {
   epo_today: number;
   available_methods: Array<"bank" | "card">;
   card_fee_percent: number;
+  /** What the customer has put toward the early purchase price, and every movement of it. */
+  additional_funds?: number;
+  history?: AdditionalFundsMovement[];
 }
 
 /** Customer: whether and how much they can pay extra toward the early purchase price. */
@@ -222,6 +462,40 @@ export async function recordExtraPaymentAsStaff(
   return data.data;
 }
 
+/** Staff: the Additional Funds of a lease (contract Section 19): balance, history, and whether they can be applied to repairs or refunded. */
+export interface AdditionalFundsView {
+  balance: number;
+  /** The balance less any refund still waiting for the bank. */
+  available: number;
+  epo_today: number;
+  entries: AdditionalFundsMovement[];
+  /** Why funds cannot be applied to repairs right now, or null when they can. */
+  repairs_blocker: string | null;
+  refund_blocker: string | null;
+  pending_refunds: number;
+}
+
+export async function getAdditionalFunds(leaseAgreementId: number | string): Promise<AdditionalFundsView> {
+  const data = await apiFetch<{ data: AdditionalFundsView }>(`/admin/lease-agreements/${leaseAgreementId}/additional-funds`, { token: getToken() });
+  return data.data;
+}
+
+/** Staff: applies part or all of the Additional Funds to what repairs cost (contract Section 19: repairs first). */
+export async function applyFundsToRepairs(leaseAgreementId: number | string, body: { amount: number; description: string }): Promise<AdditionalFundsView> {
+  const data = await apiFetch<{ data: AdditionalFundsView }>(`/admin/lease-agreements/${leaseAgreementId}/additional-funds/repairs`, { method: "POST", token: getToken(), body });
+  return data.data;
+}
+
+/** Staff: gives Additional Funds back (all that is left when no amount is given), each through the extra payment it came from. */
+export async function refundAdditionalFunds(leaseAgreementId: number | string, body: { amount?: number; note?: string }): Promise<AdditionalFundsView> {
+  const data = await apiFetch<{ data: AdditionalFundsView }>(`/admin/lease-agreements/${leaseAgreementId}/additional-funds/refund`, {
+    method: "POST",
+    token: getToken(),
+    body: { amount: body.amount, note: body.note || undefined },
+  });
+  return data.data;
+}
+
 export type LeaseEndReason = "returned" | "purchased" | "other";
 
 /**
@@ -246,7 +520,14 @@ export interface SalesTaxReportMonth {
   month: string;
   label: string;
   payments: number;
+  /** How many refunds went back in the month, and what they came to. The figures below already have them taken off. */
+  refunds: number;
+  refunded: number;
+  /** Rent and loss damage waiver together, before tax: the figure the sales tax return needs. */
   taxable_sales: number;
+  /** The same taxable sales told apart: the rent, and the loss damage waiver (LDW) inside them. */
+  rent: number;
+  ldw: number;
   sales_tax: number;
   tracking_fees: number;
   deposits: number;

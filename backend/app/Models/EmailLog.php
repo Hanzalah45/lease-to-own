@@ -45,6 +45,8 @@ class EmailLog extends Model
         'ActivateAccountNotification' => 'Account setup link',
         'VerifyEmailNotification' => 'Email verification',
         'PaymentStatusChangedNotification' => 'Payment update',
+        'PaymentReceiptNotification' => 'Payment receipt',
+        'PaymentLinkNotification' => 'Payment link',
         'AutopayPaymentReminderNotification' => 'Upcoming payment reminder',
         'ApplicationStatusChangedNotification' => 'Application status update',
         'AccountSecurityUpdatedNotification' => 'Account change notice',

@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\AdditionalFundsEntry;
 use App\Models\Payment;
+use App\Models\PaymentRefund;
 use App\Models\QuickbooksConnection;
 use App\Models\QuickbooksSyncSetting;
 use Illuminate\Support\Facades\Cache;
@@ -67,6 +69,8 @@ class QuickbooksSyncer
 
         try {
             $result['stopped'] = $this->sendPending($settings, $limit, $result)
+                ?? $this->sendRefunds($settings, $limit, $result)
+                ?? $this->sendFundsApplied($settings, $limit, $result)
                 ?? $this->reverseTakenBack($settings, $limit, $result);
         } finally {
             $lock->release();
@@ -80,11 +84,15 @@ class QuickbooksSyncer
     /** Puts every failed payment back in line to be sent again (the "Try again" button). */
     public function retryFailed(): int
     {
-        return Payment::where('quickbooks_sync_status', self::STATUS_FAILED)->update([
+        $reset = [
             'quickbooks_sync_status' => null,
             'quickbooks_sync_attempts' => 0,
             'quickbooks_sync_error' => null,
-        ]);
+        ];
+
+        return Payment::where('quickbooks_sync_status', self::STATUS_FAILED)->update($reset)
+            + PaymentRefund::where('quickbooks_sync_status', self::STATUS_FAILED)->update($reset)
+            + AdditionalFundsEntry::where('quickbooks_sync_status', self::STATUS_FAILED)->update($reset);
     }
 
     /**
@@ -93,8 +101,10 @@ class QuickbooksSyncer
      */
     private function sendPending(QuickbooksSyncSetting $settings, int $limit, array &$result): ?string
     {
+        // A payment that was refunded is still sent as the payment it was: its refunds are entries of their own, so the books show
+        // both the money that came in and the money that went back.
         $pending = Payment::with('leaseAgreement.customer:id,name,email')
-            ->where('status', Payment::STATUS_PAID)
+            ->where(fn ($q) => $q->where('status', Payment::STATUS_PAID)->orWhere(fn ($r) => $r->where('status', Payment::STATUS_REFUNDED)->whereHas('refunds', fn ($f) => $f->where('status', PaymentRefund::STATUS_SUCCEEDED))))
             ->whereNull('quickbooks_sync_status')
             ->whereDate('paid_date', '>=', $settings->sync_from->toDateString())
             ->orderBy('paid_date')
@@ -133,6 +143,8 @@ class QuickbooksSyncer
             ->whereNotNull('quickbooks_record_id')
             ->whereNull('quickbooks_reversal_id')
             ->where('status', '!=', Payment::STATUS_PAID)
+            // A payment refunded through the portal is taken back by its refund entries, never by a second, full reversal.
+            ->whereDoesntHave('refunds', fn ($f) => $f->where('status', PaymentRefund::STATUS_SUCCEEDED))
             ->where(fn ($q) => $q->whereNull('quickbooks_sync_status')->orWhere('quickbooks_sync_status', '!=', self::STATUS_FAILED))
             ->orderBy('id')
             ->limit($limit)
@@ -157,6 +169,128 @@ class QuickbooksSyncer
                 $result['failed']++;
             } catch (InvalidArgumentException $e) {
                 $this->recordRefusal($payment, 'The reversal could not be built: '.$e->getMessage());
+                $result['failed']++;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Sends the refunds that went through (and lost chargebacks) as entries of their own. A refund can only be booked once the
+     * payment it refunds is in QuickBooks; one whose payment was never going to be sent (it is older than the start day) is skipped.
+     *
+     * @param  array<string, mixed>  $result
+     * @return string|null why the run had to stop early, or null when it got through them all
+     */
+    private function sendRefunds(QuickbooksSyncSetting $settings, int $limit, array &$result): ?string
+    {
+        $refunds = PaymentRefund::with('payment.leaseAgreement.customer:id,name,email')
+            ->where('status', PaymentRefund::STATUS_SUCCEEDED)
+            ->whereNull('quickbooks_sync_status')
+            ->orderBy('refunded_at')
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+
+        foreach ($refunds as $refund) {
+            $payment = $refund->payment;
+            if (! $payment->quickbooks_record_id) {
+                $neverSent = $payment->quickbooks_sync_status === self::STATUS_SKIPPED
+                    || ! $payment->paid_date
+                    || $payment->paid_date->lt($settings->sync_from);
+                if ($neverSent) {
+                    $this->markSkipped($refund, 'The payment it refunds was never sent to QuickBooks.');
+                    $result['skipped']++;
+                }
+
+                // Otherwise the payment is still waiting its turn: the refund follows it.
+                continue;
+            }
+
+            try {
+                $entry = $this->journal->forRefund($refund, $settings);
+                if ($entry === null) {
+                    $this->markSkipped($refund, 'Nothing to record: the amount is zero.');
+                    $result['skipped']++;
+
+                    continue;
+                }
+                $id = $this->entryId($refund, $entry, 'ref');
+                $refund->update([
+                    'quickbooks_record_id' => $id,
+                    'quickbooks_sync_status' => self::STATUS_SYNCED,
+                    'quickbooks_synced_at' => now(),
+                    'quickbooks_sync_error' => null,
+                ]);
+                $result['sent']++;
+            } catch (QuickbooksException $e) {
+                if ($e->authFailed || $e->transient) {
+                    $refund->update(['quickbooks_sync_error' => $e->getMessage()]);
+
+                    return $e->getMessage();
+                }
+                $this->recordRefusal($refund, $e->getMessage());
+                $result['failed']++;
+            } catch (InvalidArgumentException $e) {
+                $this->recordRefusal($refund, $e->getMessage());
+                $result['failed']++;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Sends Additional Funds applied to repairs as entries of their own: the money was held for the customer and is now income. One
+     * from before the start day is skipped, because the extra payment it comes out of was never sent either.
+     *
+     * @param  array<string, mixed>  $result
+     * @return string|null why the run had to stop early, or null when it got through them all
+     */
+    private function sendFundsApplied(QuickbooksSyncSetting $settings, int $limit, array &$result): ?string
+    {
+        $entries = AdditionalFundsEntry::with('leaseAgreement.customer:id,name')
+            ->where('kind', AdditionalFundsEntry::KIND_REPAIRS)
+            ->whereNull('quickbooks_sync_status')
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+
+        foreach ($entries as $entry) {
+            if ($entry->created_at->setTimezone(BillingClock::TIMEZONE)->toDateString() < $settings->sync_from->toDateString()) {
+                $this->markSkipped($entry, 'Applied before the start day, so the extra payment it comes out of was not sent either.');
+                $result['skipped']++;
+
+                continue;
+            }
+
+            try {
+                $built = $this->journal->forFundsApplied($entry, $settings);
+                if ($built === null) {
+                    $this->markSkipped($entry, 'Nothing to record: the amount is zero.');
+                    $result['skipped']++;
+
+                    continue;
+                }
+                $id = $this->entryId($entry, $built, 'fnd');
+                $entry->update([
+                    'quickbooks_record_id' => $id,
+                    'quickbooks_sync_status' => self::STATUS_SYNCED,
+                    'quickbooks_synced_at' => now(),
+                    'quickbooks_sync_error' => null,
+                ]);
+                $result['sent']++;
+            } catch (QuickbooksException $e) {
+                if ($e->authFailed || $e->transient) {
+                    $entry->update(['quickbooks_sync_error' => $e->getMessage()]);
+
+                    return $e->getMessage();
+                }
+                $this->recordRefusal($entry, $e->getMessage());
+                $result['failed']++;
+            } catch (InvalidArgumentException $e) {
+                $this->recordRefusal($entry, $e->getMessage());
                 $result['failed']++;
             }
         }
@@ -198,7 +332,7 @@ class QuickbooksSyncer
      *
      * @param  array<string, mixed>  $entry
      */
-    private function entryId(Payment $payment, array $entry, string $kind): string
+    private function entryId(Payment|PaymentRefund|AdditionalFundsEntry $payment, array $entry, string $kind): string
     {
         if ($payment->quickbooks_sync_error || $payment->quickbooks_sync_attempts > 0) {
             $found = $this->client->query('JournalEntry', "select * from JournalEntry where DocNumber = '{$entry['DocNumber']}'");
@@ -215,7 +349,7 @@ class QuickbooksSyncer
         return (string) $created['Id'];
     }
 
-    private function markSkipped(Payment $payment, string $why): void
+    private function markSkipped(Payment|PaymentRefund|AdditionalFundsEntry $payment, string $why): void
     {
         $payment->update([
             'quickbooks_sync_status' => self::STATUS_SKIPPED,
@@ -225,10 +359,10 @@ class QuickbooksSyncer
     }
 
     /** QuickBooks (or the entry itself) was refused: count it, and park the payment once it keeps happening. */
-    private function recordRefusal(Payment $payment, string $message): void
+    private function recordRefusal(Payment|PaymentRefund|AdditionalFundsEntry $payment, string $message): void
     {
         $attempts = $payment->quickbooks_sync_attempts + 1;
-        Log::warning('QuickBooks sync of a payment was refused.', ['payment_id' => $payment->id, 'attempts' => $attempts, 'message' => $message]);
+        Log::warning('QuickBooks sync of a payment was refused.', ['payment_id' => $payment instanceof PaymentRefund ? $payment->payment_id : $payment->id, 'refund_id' => $payment instanceof PaymentRefund ? $payment->id : null, 'attempts' => $attempts, 'message' => $message]);
 
         $payment->update([
             'quickbooks_sync_attempts' => $attempts,

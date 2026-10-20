@@ -68,7 +68,10 @@ export default function AdminCustomersPage() {
       const isDeclined = c.status === "suspended";
       if (statusFilter === "declined" && !isDeclined) return false;
       if (!q) return true;
-      return c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q);
+      // A phone number is matched on its digits, so "(555) 123" finds 555-123-4567 however it was typed (client, Joel, 2026-10-19).
+      const digits = q.replace(/\D/g, "");
+      const phoneMatches = digits.length >= 3 && (c.phone ?? "").replace(/\D/g, "").includes(digits);
+      return c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || phoneMatches;
     });
   }, [customers, search, statusFilter]);
 
@@ -144,7 +147,7 @@ export default function AdminCustomersPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or email..."
+            placeholder="Search by name, email or phone..."
             className="w-full max-w-sm rounded-md border border-neutral-200 py-2 pl-10 pr-3 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-red-300 focus:outline-none"
           />
         </div>
@@ -176,11 +179,12 @@ export default function AdminCustomersPage() {
           <p className="py-6 text-sm text-neutral-500">Loading…</p>
         ) : (
           <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <table className="w-full min-w-[760px] text-left text-sm">
               <thead>
                 <tr className="font-heading border-b border-neutral-200 text-xs font-bold uppercase tracking-wide text-neutral-400">
                   <th className="pb-2 font-medium">Customer</th>
                   <th className="pb-2 font-medium">Email</th>
+                  <th className="pb-2 font-medium">Phone</th>
                   <th className="pb-2 font-medium">Joined</th>
                   <th className="pb-2 font-medium">Account</th>
                   <th className="pb-2 font-medium">Status</th>
@@ -198,6 +202,7 @@ export default function AdminCustomersPage() {
                         </Link>
                       </td>
                       <td className="py-3 text-neutral-500">{customer.email}</td>
+                      <td className="whitespace-nowrap py-3 text-neutral-500">{customer.phone || "Not given"}</td>
                       <td className="py-3 text-neutral-500">
                         {customer.created_at ? new Date(customer.created_at).toLocaleDateString() : "—"}
                       </td>

@@ -105,6 +105,8 @@ export function methodLabel(method: Payment["method"]): string {
       return "check";
     case "other":
       return "other method";
+    case "split":
+      return "more than one method";
     default:
       return "an unknown method";
   }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Application;
 use App\Models\Payment;
+use App\Services\AuditLog;
 use App\Services\StripeDepositPaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -91,6 +92,10 @@ class DepositChargeController extends Controller
         }
         /** @var Payment $payment */
         $payment = $result['payment'];
+
+        AuditLog::record('charge.staff_started', sprintf('Staff charged %s to the customer\'s saved %s.', $what, $data['method'] === 'bank' ? 'bank account' : 'card'), [
+            'payment' => $payment, 'amount' => $payment->totalCharged(), 'details' => ['customer_agreed' => true],
+        ]);
 
         $this->leaveNote($application, $payment, $admin->id, $admin->name);
 

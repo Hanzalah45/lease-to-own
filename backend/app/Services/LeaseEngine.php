@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AdditionalFundsEntry;
 use App\Models\AdminPermission;
 use App\Models\Application;
 use App\Models\LeaseAgreement;
@@ -513,8 +514,18 @@ class LeaseEngine
      * payment processor webhook (StripeWebhookController). $recordedBy is
      * null for the latter, since no admin performed the action.
      */
-    public static function applyPaymentStatusChange(Payment $payment, string $status, ?string $method, ?int $recordedBy): Payment
+    public static function applyPaymentStatusChange(Payment $payment, string $status, ?string $method, ?int $recordedBy, array $options = []): Payment
     {
+        // A refund made through PaymentRefunder takes the Additional Funds off itself, a refund at a time, and tells the customer
+        // with its own message that carries the amount.
+        $adjustFunds = $options['adjust_funds'] ?? true;
+        $notifyCustomer = $options['notify_customer'] ?? true;
+        // A payment that was paid in pieces and is now marked paid in one go (the rest was charged the ordinary way, or staff marked
+        // it paid): what was left becomes its last piece, and the payment carries the total card fee and the method of its pieces.
+        if ($status === Payment::STATUS_PAID && ($aggregated = PaymentSplitter::absorbFinalCharge($payment, $method, $recordedBy)) !== null) {
+            $method = $aggregated;
+        }
+        $statusBefore = $payment->status;
         $wasFailed = $payment->status === Payment::STATUS_FAILED;
         $wasPaid = $payment->status === Payment::STATUS_PAID;
 
@@ -556,6 +567,23 @@ class LeaseEngine
             Notification::send($recipients, new PaymentStatusChangedNotification($payment));
         }
 
+        // An extra payment made through a payment link tells the link how it ended.
+        if ($statusBefore !== $status && in_array($status, [Payment::STATUS_PAID, Payment::STATUS_FAILED], true)) {
+            PaymentLinkService::paymentOutcome($payment, $status === Payment::STATUS_PAID);
+        }
+
+        // The audit trail: who moved this payment to its new status, and with what method (nothing is written for a re-save).
+        if ($statusBefore !== $status) {
+            AuditLog::record("payment.{$status}", sprintf(
+                '%s payment of $%s (due %s) went from %s to %s.',
+                str_replace('_', ' ', ucfirst($payment->type)),
+                number_format($payment->totalCharged(), 2),
+                $payment->due_date?->toDateString() ?? 'unknown date',
+                $statusBefore,
+                $status,
+            ), ['payment' => $payment, 'amount' => $payment->totalCharged(), 'details' => ['from' => $statusBefore, 'to' => $status]]);
+        }
+
         self::syncPaymentsPaidToDate($payment->leaseAgreement);
 
         // Additional Funds (contract Section 19): a paid extra payment is added to the lease's additional funds, which lower
@@ -564,12 +592,16 @@ class LeaseEngine
         if ($payment->type === Payment::TYPE_EXTRA_PAYMENT) {
             $lease = $payment->leaseAgreement;
             if ($enteredPaid) {
-                $lease->update(['additional_funds' => round((float) $lease->additional_funds + (float) $payment->amount, 2)]);
+                AdditionalFundsLedger::apply($lease, AdditionalFundsEntry::KIND_ADDED, (float) $payment->amount, [
+                    'payment' => $payment, 'description' => 'Extra payment received.',
+                ]);
                 if (self::epoToday($lease->fresh()) <= 0) {
                     self::earlyPurchasePricePaid($lease->fresh());
                 }
-            } elseif ($wasPaid && $status !== Payment::STATUS_PAID) {
-                $lease->update(['additional_funds' => round(max(0.0, (float) $lease->additional_funds - (float) $payment->amount), 2)]);
+            } elseif ($adjustFunds && $wasPaid && $status !== Payment::STATUS_PAID) {
+                AdditionalFundsLedger::apply($lease, AdditionalFundsEntry::KIND_REVERSED, -1 * (float) $payment->amount, [
+                    'payment' => $payment, 'description' => 'The extra payment is no longer counted as paid.',
+                ]);
             }
         }
 
@@ -598,10 +630,13 @@ class LeaseEngine
             self::activateGuestAccountIfFirstPayment($payment->leaseAgreement);
         }
 
-        if (in_array($status, [Payment::STATUS_PAID, Payment::STATUS_FAILED, Payment::STATUS_REFUNDED], true)) {
+        // The receipt (written for every payment that lands, emailed with its PDF copy) is the customer's email for a paid payment.
+        $receiptMailed = $enteredPaid ? PaymentReceipts::onPaid($payment->fresh(), $notifyCustomer) : false;
+
+        if ($notifyCustomer && in_array($status, [Payment::STATUS_PAID, Payment::STATUS_FAILED, Payment::STATUS_REFUNDED], true)) {
             $customer = $payment->leaseAgreement->customer;
             if ($customer->customerProfile?->payment_reminder_emails ?? true) {
-                $customer->notify(new PaymentStatusChangedNotification($payment));
+                $customer->notify(new PaymentStatusChangedNotification($payment, ! $receiptMailed));
             }
         }
 

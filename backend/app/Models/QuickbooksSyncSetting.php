@@ -19,8 +19,14 @@ class QuickbooksSyncSetting extends Model
         ],
         'rent_income' => [
             'label' => 'Rent income',
-            'help' => 'Monthly rent and LDW, without the sales tax.',
+            'help' => 'Monthly rent, without the LDW and the sales tax.',
             'default_name' => 'Rental Income',
+            'type' => 'Income',
+        ],
+        'ldw_income' => [
+            'label' => 'Loss damage waiver income',
+            'help' => 'The loss damage waiver (LDW) inside each monthly payment, without the sales tax. Choose the same account as rent income if you do not want it apart.',
+            'default_name' => 'Loss Damage Waiver Income',
             'type' => 'Income',
         ],
         'sales_tax' => [
@@ -36,10 +42,10 @@ class QuickbooksSyncSetting extends Model
             'type' => 'Income',
         ],
         'security_deposit' => [
-            'label' => 'Security deposits held',
-            'help' => 'Customer deposits, a liability until they are released or kept.',
-            'default_name' => 'Security Deposits Held',
-            'type' => 'Other Current Liability',
+            'label' => 'Security deposit income',
+            'help' => 'The security deposit. The contract says it is non-refundable, so it is income when it is received.',
+            'default_name' => 'Security Deposit Income',
+            'type' => 'Income',
         ],
         'late_fee_income' => [
             'label' => 'Late fee income',
@@ -48,16 +54,22 @@ class QuickbooksSyncSetting extends Model
             'type' => 'Income',
         ],
         'card_fee_income' => [
-            'label' => 'Card fees collected',
-            'help' => 'The card fee customers pay on top of the bank price.',
-            'default_name' => 'Card Fees Collected',
-            'type' => 'Income',
+            'label' => 'Card fees',
+            'help' => 'The card fee customers pay on top of the bank price. It is credited to this expense account, so it offsets the card fees you pay.',
+            'default_name' => 'Card Processing Fees',
+            'type' => 'Expense',
         ],
         'extra_payment' => [
             'label' => 'Extra payments held',
             'help' => 'Extra payments toward the early purchase price, a liability until applied.',
             'default_name' => 'Customer Extra Payments Held',
             'type' => 'Other Current Liability',
+        ],
+        'repair_income' => [
+            'label' => 'Repair costs recovered',
+            'help' => 'Extra payments the customer made that were applied to the cost of repairs when the equipment came back (contract Section 19). Moved here out of the extra payments held.',
+            'default_name' => 'Repair Cost Recovery Income',
+            'type' => 'Income',
         ],
     ];
 

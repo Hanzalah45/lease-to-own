@@ -16,6 +16,7 @@ const METHOD_LABEL: Record<string, string> = {
   check: "Check",
   other: "Other",
   unknown: "Not recorded",
+  split: "More than one method",
 };
 
 function isoDate(date: Date): string {
@@ -149,10 +150,18 @@ export default function AdminReportsPage() {
         <>
           <div className="grid grid-cols-1 divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
             {[
-              { label: "Sales tax collected", value: money(totals.sales_tax), note: `${totals.payments} payment${totals.payments === 1 ? "" : "s"} collected` },
-              { label: "Taxable sales", value: money(totals.taxable_sales), note: "Rent and LDW, before tax" },
+              {
+                label: "Sales tax collected",
+                value: money(totals.sales_tax),
+                note: `${totals.payments} payment${totals.payments === 1 ? "" : "s"} collected${totals.refunds > 0 ? `, ${totals.refunds} refund${totals.refunds === 1 ? "" : "s"} taken off` : ""}`,
+              },
+              { label: "Taxable sales", value: money(totals.taxable_sales), note: `Rent ${money(totals.rent)} and LDW ${money(totals.ldw)}, before tax` },
               { label: "Card fees", value: money(totals.card_fees), note: "Kept apart, not rent and not taxed" },
-              { label: "Total collected", value: money(totals.total_collected), note: "Everything received, card fees included" },
+              {
+                label: "Total collected",
+                value: money(totals.total_collected),
+                note: totals.refunded > 0 ? `Card fees included, ${money(totals.refunded)} refunded already taken off` : "Everything received, card fees included",
+              },
             ].map((card) => (
               <div key={card.label} className="p-5">
                 <p className="text-xs font-bold uppercase tracking-wide text-neutral-500">{card.label}</p>
@@ -164,15 +173,17 @@ export default function AdminReportsPage() {
 
           <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white p-4 sm:p-5">
             <div className="mb-4">
-              <SectionHeading title="By month" subtitle="By the day each payment was recorded as paid." />
+              <SectionHeading title="By month" subtitle="By the day each payment was recorded as paid, with refunds taken off on the day the money went back." />
             </div>
             <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-              <table className="w-full min-w-[880px] text-left text-sm">
+              <table className="w-full min-w-[960px] text-left text-sm">
                 <thead>
                   <tr className="font-heading border-b border-neutral-200 text-xs font-bold uppercase tracking-wide text-neutral-400">
                     <th className="pb-2 font-medium">Month</th>
                     <th className="pb-2 text-right font-medium">Payments</th>
+                    <th className="pb-2 text-right font-medium">Refunded</th>
                     <th className="pb-2 text-right font-medium">Taxable sales</th>
+                    <th className="pb-2 text-right font-medium">Of which LDW</th>
                     <th className="pb-2 text-right font-medium">Sales tax</th>
                     <th className="pb-2 text-right font-medium">Tracking fees</th>
                     <th className="pb-2 text-right font-medium">Deposits</th>
@@ -185,7 +196,7 @@ export default function AdminReportsPage() {
                 <tbody>
                   {report.months.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-6 text-center text-sm text-neutral-400">
+                      <td colSpan={12} className="py-6 text-center text-sm text-neutral-400">
                         No payments were collected in this period.
                       </td>
                     </tr>
@@ -194,7 +205,9 @@ export default function AdminReportsPage() {
                       <tr key={m.month} className="border-b border-neutral-100 tabular-nums">
                         <td className="py-2.5 font-semibold text-neutral-900">{m.label}</td>
                         <td className="py-2.5 text-right text-neutral-600">{m.payments}</td>
+                        <td className={`py-2.5 text-right ${m.refunded > 0 ? "font-medium text-red-600" : "text-neutral-400"}`}>{m.refunded > 0 ? money(m.refunded) : "—"}</td>
                         <td className="py-2.5 text-right text-neutral-700">{money(m.taxable_sales)}</td>
+                        <td className="py-2.5 text-right text-neutral-500">{money(m.ldw)}</td>
                         <td className="py-2.5 text-right font-semibold text-neutral-900">{money(m.sales_tax)}</td>
                         <td className="py-2.5 text-right text-neutral-700">{money(m.tracking_fees)}</td>
                         <td className="py-2.5 text-right text-neutral-700">{money(m.deposits)}</td>
@@ -211,7 +224,9 @@ export default function AdminReportsPage() {
                     <tr className="font-semibold tabular-nums text-neutral-900">
                       <td className="pt-3">Total</td>
                       <td className="pt-3 text-right">{totals.payments}</td>
+                      <td className="pt-3 text-right">{totals.refunded > 0 ? money(totals.refunded) : "—"}</td>
                       <td className="pt-3 text-right">{money(totals.taxable_sales)}</td>
+                      <td className="pt-3 text-right text-neutral-500">{money(totals.ldw)}</td>
                       <td className="pt-3 text-right">{money(totals.sales_tax)}</td>
                       <td className="pt-3 text-right">{money(totals.tracking_fees)}</td>
                       <td className="pt-3 text-right">{money(totals.deposits)}</td>
@@ -253,6 +268,11 @@ export default function AdminReportsPage() {
                 carries a proportional share. Deposits, late fees, the tracking fee and extra payments carry no tax here.
               </li>
               <li>The tracking fee and first month is one charge: the tracking fee is shown apart and the first month carries its tax. The first monthly line that delivery records next to it is never counted a second time.</li>
+              <li>
+                A refund is taken off on the day the money went back, split the same way as the payment it refunds (its share of the sales tax
+                included), so a month shows what was kept. A refund that is still on its way does not count until the bank confirms it. A
+                chargeback that is lost counts the same way as a refund. The download lists each refund as a line of its own with negative amounts.
+              </li>
               <li>Card fees are shown separately and are not taxed. Sales tax due when a customer exercises the early purchase option is not in this report.</li>
               <li>Please check the method with your accountant before filing: this report shows what the portal recorded.</li>
             </ul>

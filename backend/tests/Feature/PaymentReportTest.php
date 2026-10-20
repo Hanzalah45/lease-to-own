@@ -55,6 +55,34 @@ class PaymentReportTest extends TestCase
         ], $extra));
     }
 
+    public function test_the_loss_damage_waiver_is_told_apart_inside_the_taxable_sales(): void
+    {
+        $lease = $this->lease();
+        $lease->update(['monthly_rental_payment' => 150, 'ldw_selected' => true, 'ldw_amount' => 25]);
+        // Rent $150 plus a $25 waiver at 8.25% tax: $189.44, of which $14.44 is tax.
+        $this->paid($lease->fresh(), Payment::TYPE_RENTAL, 189.44, '2026-10-15');
+
+        $response = $this->actingAs($this->admin(), 'sanctum')->getJson('/api/admin/reports/sales-tax?from=2026-10-01&to=2026-10-31')->assertOk();
+
+        $totals = $response->json('data.totals');
+        $this->assertEqualsWithDelta(175.00, $totals['taxable_sales'], 0.001, 'The taxable sales stay rent and waiver together: that is the figure the sales tax return needs.');
+        $this->assertEqualsWithDelta(150.00, $totals['rent'], 0.001);
+        $this->assertEqualsWithDelta(25.00, $totals['ldw'], 0.001);
+        $this->assertEqualsWithDelta(14.44, $totals['sales_tax'], 0.001);
+        $this->assertEqualsWithDelta(189.44, $totals['total_collected'], 0.001);
+        $this->assertEqualsWithDelta(25.00, $response->json('data.months.0.ldw'), 0.001);
+    }
+
+    public function test_a_lease_without_the_waiver_reports_all_of_its_taxable_sales_as_rent(): void
+    {
+        $this->paid($this->lease(), Payment::TYPE_RENTAL, 216.50, '2026-10-15');
+
+        $totals = $this->actingAs($this->admin(), 'sanctum')->getJson('/api/admin/reports/sales-tax?from=2026-10-01&to=2026-10-31')->assertOk()->json('data.totals');
+
+        $this->assertEqualsWithDelta(200.00, $totals['rent'], 0.001);
+        $this->assertEqualsWithDelta(0.0, $totals['ldw'], 0.001);
+    }
+
     private function admin(): User
     {
         return User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
@@ -125,9 +153,9 @@ class PaymentReportTest extends TestCase
         $this->assertStringContainsString('text/csv', $response->headers->get('Content-Type'));
         $this->assertStringContainsString('payments-2026-10-01-to-2026-10-31.csv', $response->headers->get('Content-Disposition'));
         $lines = array_values(array_filter(explode("\n", trim($response->streamedContent()))));
-        $this->assertSame('"Paid on",Customer,Email,Lease,Type,Method,"Amount (bank price)","Taxable sales","Sales tax","Tracking fee","Card fee","Total collected"', $lines[0]);
+        $this->assertSame('Date,"Payment or refund",Customer,Email,Lease,Type,Method,"Amount (bank price)","Taxable sales (rent and LDW)","Of which loss damage waiver","Sales tax","Tracking fee","Card fee","Total collected"', $lines[0]);
         $this->assertCount(3, $lines);
-        $this->assertStringContainsString("2026-10-15,\"'=HYPERLINK", $lines[2]);
+        $this->assertStringContainsString("2026-10-15,payment,\"'=HYPERLINK", $lines[2]);
         $this->assertStringContainsString(',16.5,', $lines[2]);
     }
 

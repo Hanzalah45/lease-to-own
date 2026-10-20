@@ -75,8 +75,8 @@ export function EndLeaseModal({
           <li>{chosen.effect}</li>
         </ul>
         <p className="rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
-          Money already collected is not refunded here, and a late fee already charged stays owed. A payment still processing at the
-          bank has to clear first.
+          Money already collected is not refunded here (use Refund on the payment itself), and a late fee already charged stays owed.
+          A payment still processing at the bank has to clear first.
         </p>
 
         <div className="space-y-2">

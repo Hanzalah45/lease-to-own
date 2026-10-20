@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Application;
 use App\Models\LeaseAgreement;
+use App\Services\AuditLog;
+use App\Services\AutopayRevocationService;
+use App\Services\CardPricing;
 use App\Services\PaymentMethodSigner;
 use App\Services\StripePaymentMethodService;
 use Illuminate\Http\Request;
@@ -38,8 +41,28 @@ class LeaseCardController extends Controller
             'autopay_enabled' => (bool) $leaseAgreement->autopay_enabled,
             'primary' => $leaseAgreement->autopay_primary_method,
             'bank' => $describe($leaseAgreement->stripe_bank_payment_method_id),
+            // A bank account typed in by hand that is waiting for its two small deposits: not yet chargeable.
+            'bank_pending' => ($pendingBank = $this->paymentMethods->pendingBank($leaseAgreement)) ? ['since' => $pendingBank['since'], 'arrives_by' => $pendingBank['arrives_by']] : null,
             'card' => $describe($leaseAgreement->stripe_card_payment_method_id),
+            // A locked method stays on file but is never charged (fraud, a dispute, a hard decline).
+            'bank_lock' => $this->lockOf($leaseAgreement, 'bank'),
+            'card_lock' => $this->lockOf($leaseAgreement, 'card'),
+            'chargeback_frozen' => $leaseAgreement->chargeback_dispute_id !== null,
+            // The card fee rate, so a part charged to the card can be priced on screen exactly as the server prices it.
+            'card_fee_bps' => CardPricing::rateBps(),
+            // The customer's request to turn AutoPay off, waiting for its day.
+            'autopay_revocation' => (($pending = AutopayRevocationService::pending($leaseAgreement))
+                ? ['requested_at' => $pending->requested_at, 'effective_on' => $pending->effective_on->toDateString(), 'via' => $pending->via]
+                : null),
         ]]);
+    }
+
+    /** @return array{locked_at: mixed, reason: ?string}|null */
+    private function lockOf(LeaseAgreement $lease, string $type): ?array
+    {
+        return $lease->isMethodLocked($type)
+            ? ['locked_at' => $lease->{"{$type}_locked_at"}, 'reason' => $lease->{"{$type}_lock_reason"}]
+            : null;
     }
 
     public function setupIntent(LeaseAgreement $leaseAgreement)
@@ -107,6 +130,8 @@ class LeaseCardController extends Controller
             'author_user_id' => $admin->id,
             'text' => sprintf('A page to link a bank account was opened on the office computer by %s so the customer could link their own account.', $admin->name),
         ]);
+
+        AuditLog::record('method.bank_link_opened', 'A page to link a bank account was opened on the office computer.', ['lease' => $leaseAgreement, 'method' => 'ach']);
 
         return response()->json(['data' => [
             'url' => PaymentMethodSigner::urlFor($leaseAgreement->customer, $leaseAgreement, self::OFFICE_LINK_MINUTES).'&office=1',

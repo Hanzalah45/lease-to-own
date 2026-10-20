@@ -23,6 +23,16 @@ class ExtraPaymentController extends Controller
 
         return response()->json(['data' => CustomerPaymentCharger::extraPaymentOptions($leaseAgreement) + [
             'epo_today' => LeaseEngine::epoToday($leaseAgreement),
+            // What the customer has put toward the early purchase price (contract Section 19), and every movement of it, newest first.
+            'additional_funds' => round((float) $leaseAgreement->additional_funds, 2),
+            'history' => $leaseAgreement->additionalFundsEntries()->get()->sortByDesc('id')->values()->map(fn ($e) => [
+                'id' => $e->id,
+                'kind' => $e->kind,
+                'amount' => $e->amount,
+                'balance_after' => $e->balance_after,
+                'description' => $e->description,
+                'created_at' => $e->created_at,
+            ]),
         ]]);
     }
 

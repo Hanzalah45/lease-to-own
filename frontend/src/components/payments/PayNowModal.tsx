@@ -37,7 +37,26 @@ export function PayNowModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const total = pay && method ? pay.prices[method] : null;
+  // Paying part of what is due (client, Joel, 2026-10-19 checklist, section 7): the rest stays due and can be paid later.
+  const chargeable = pay?.chargeable_amount ?? pay?.prices.bank ?? 0;
+  const minPiece = pay?.min_piece ?? 5;
+  const canPartPay = !!pay?.can_pay_in_parts && chargeable > minPiece;
+  const [partial, setPartial] = useState(false);
+  const [amountText, setAmountText] = useState("");
+  const typed = Number(amountText);
+  const partAmountError = !partial
+    ? null
+    : !/^\d+(\.\d{1,2})?$/.test(amountText.trim()) || typed <= 0
+      ? "Enter dollars and cents, like 25.50."
+      : typed < minPiece
+        ? `A part is at least ${money(minPiece)}.`
+        : Math.round(typed * 100) >= Math.round(chargeable * 100)
+          ? "That is everything that is due. Choose to pay everything instead."
+          : null;
+  const bankAmount = partial && !partAmountError ? typed : chargeable;
+  const feeFor = (amount: number) => Math.floor((Math.round(amount * 100) * (pay?.card_fee_bps ?? 300) + 5000) / 10000) / 100;
+  const priceFor = (m: Method): number => (partial ? (partAmountError ? 0 : bankAmount + (m === "card" ? feeFor(bankAmount) : 0)) : (pay?.prices[m] ?? 0));
+  const total = pay && method && !(partial && partAmountError) ? priceFor(method) : null;
 
   // The window cannot be dismissed while the payment is in flight, or its answer would be lost.
   const close = () => {
@@ -49,7 +68,11 @@ export function PayNowModal({
     setBusy(true);
     setError(null);
     try {
-      const result = await payMyPayment(payment.id, { method, expectedTotalCents: Math.round(total * 100) });
+      const result = await payMyPayment(payment.id, {
+        method,
+        expectedTotalCents: Math.round(total * 100),
+        amount: partial ? typed : undefined,
+      });
 
       if (result.status === "failed") {
         setError(result.message ?? "The payment did not go through. Please try again.");
@@ -79,10 +102,11 @@ export function PayNowModal({
         return;
       }
 
+      const rest = partial ? ` ${money(chargeable - typed)} is still due.` : "";
       onDone(
         result.status === "processing"
-          ? `Your bank payment of ${money(total)} is processing. It usually clears in 1 to 4 business days.`
-          : `Your payment of ${money(total)} was received. Thank you.`,
+          ? `Your bank payment of ${money(total)} is processing. It usually clears in 1 to 4 business days.${rest}`
+          : `Your payment of ${money(total)} was received. Thank you.${rest}`,
       );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "The payment could not be made. Please try again.");
@@ -111,6 +135,44 @@ export function PayNowModal({
             how you want to pay.
           </p>
 
+          {canPartPay && (
+            <fieldset className="space-y-2" disabled={busy}>
+              <legend className="mb-1 text-xs font-bold uppercase tracking-wide text-neutral-500">How much</legend>
+              {(pay.remaining_amount ?? chargeable) < Number(payment.amount) && (
+                <p className="text-xs text-neutral-500">
+                  You have already paid {money(Number(payment.amount) - (pay.remaining_amount ?? chargeable))} of {money(Number(payment.amount))}.
+                </p>
+              )}
+              <label className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${!partial ? "border-red-600 bg-red-50" : "border-neutral-200 hover:bg-neutral-50"}`}>
+                <input type="radio" name="pay-now-amount" className="mt-1" checked={!partial} onChange={() => setPartial(false)} />
+                <span className="text-sm font-semibold text-neutral-900">Everything that is due ({money(chargeable)} before any fee)</span>
+              </label>
+              <label className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${partial ? "border-red-600 bg-red-50" : "border-neutral-200 hover:bg-neutral-50"}`}>
+                <input type="radio" name="pay-now-amount" className="mt-1" checked={partial} onChange={() => setPartial(true)} />
+                <span className="flex-1">
+                  <span className="block text-sm font-semibold text-neutral-900">Part of it now</span>
+                  <span className="block text-xs text-neutral-500">The rest stays due and you can pay it later.</span>
+                  {partial && (
+                    <span className="mt-2 flex items-center gap-1.5">
+                      <span className="text-sm text-neutral-500">$</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        aria-label="Amount to pay now"
+                        value={amountText}
+                        maxLength={10}
+                        onChange={(e) => setAmountText(e.target.value)}
+                        placeholder="0.00"
+                        className="w-32 rounded-md border border-neutral-300 px-3 py-1.5 text-sm tabular-nums"
+                      />
+                    </span>
+                  )}
+                  {partial && amountText !== "" && partAmountError && <span className="mt-1 block text-xs text-red-600">{partAmountError}</span>}
+                </span>
+              </label>
+            </fieldset>
+          )}
+
           <div className="space-y-2">
             {available.map((m) => (
               <label
@@ -132,12 +194,12 @@ export function PayNowModal({
                 />
                 <span className="text-sm">
                   <span className="font-semibold text-neutral-900">
-                    {m === "bank" ? "Bank account" : "Card"}: {money(pay.prices[m])}
+                    {m === "bank" ? "Bank account" : "Card"}: {money(priceFor(m))}
                   </span>
                   <span className="block text-xs text-neutral-500">
                     {m === "bank"
                       ? "No fee. Takes 1 to 4 business days to clear."
-                      : `Includes a ${money(pay.prices.card_fee)} card fee. Paid right away.`}
+                      : `Includes a ${money(partial && !partAmountError ? feeFor(bankAmount) : pay.prices.card_fee)} card fee. Paid right away.`}
                   </span>
                 </span>
               </label>

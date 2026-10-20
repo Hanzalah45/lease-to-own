@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\LeaseAgreement;
 use App\Notifications\PaymentMethodsRequestedNotification;
+use App\Services\AuditLog;
 use App\Services\PaymentMethodSigner;
 use App\Services\StripePaymentMethodService;
 use Illuminate\Http\Request;
@@ -33,6 +34,10 @@ class PaymentMethodController extends Controller
             ...($leaseAgreement->autopay_primary_method === ($data['type'] === 'bank' ? 'ach' : 'card')
                 ? ['autopay_primary_method' => null]
                 : []),
+        ]);
+
+        AuditLog::record('method.cleared', sprintf('The saved %s was cleared.', $data['type'] === 'bank' ? 'bank account' : 'card'), [
+            'lease' => $leaseAgreement, 'method' => $data['type'] === 'bank' ? 'ach' : 'card',
         ]);
 
         // "Delete the card on file" also takes it off the customer's Stripe profile (client, Joel, 2026-10-16), so the

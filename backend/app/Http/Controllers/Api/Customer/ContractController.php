@@ -103,6 +103,8 @@ class ContractController extends Controller
                 // was voided and this is a re-sign — the version count is the
                 // running total across the lease's whole history, not just active ones.
                 'version' => ($lockedLease->contracts()->max('version') ?? 0) + 1,
+                // The wording of the agreement the customer was shown and signed (see Contract::CURRENT_TERMS_VERSION).
+                'terms_version' => Contract::CURRENT_TERMS_VERSION,
                 'signed_at' => now(),
                 'ip_address' => $request->ip(),
                 'user_agent' => substr((string) $request->userAgent(), 0, 512),

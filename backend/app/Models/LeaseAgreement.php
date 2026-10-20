@@ -36,6 +36,7 @@ class LeaseAgreement extends Model
         'billing_cycle',
         'autopay_enabled',
         'autopay_paused_at',
+        'autopay_started_on',
         'stripe_bank_payment_method_id',
         'stripe_card_payment_method_id',
         'autopay_primary_method',
@@ -57,7 +58,24 @@ class LeaseAgreement extends Model
         'ended_at',
         'ended_reason',
         'ended_by',
+        'bank_locked_at',
+        'bank_lock_reason',
+        'bank_locked_by',
+        'card_locked_at',
+        'card_lock_reason',
+        'card_locked_by',
+        'chargeback_dispute_id',
+        'chargeback_locked_method',
+        'chargeback_paused_autopay_at',
+        'bank_pending_setup_intent_id',
+        'bank_pending_since',
+        'bank_pending_arrival',
+        'bank_pending_verify_url',
+        'bank_pending_kind',
     ];
+
+    /** Stripe's own page for confirming the two small deposits is for the customer only. */
+    protected $hidden = ['bank_pending_verify_url'];
 
     protected function casts(): array
     {
@@ -76,8 +94,14 @@ class LeaseAgreement extends Model
             'promo_discount' => 'decimal:2',
             'autopay_enabled' => 'boolean',
             'autopay_paused_at' => 'datetime',
+            'autopay_started_on' => 'date',
             'payment_methods_override_at' => 'datetime',
             'ended_at' => 'datetime',
+            'bank_locked_at' => 'datetime',
+            'card_locked_at' => 'datetime',
+            'chargeback_paused_autopay_at' => 'datetime',
+            'bank_pending_since' => 'datetime',
+            'bank_pending_arrival' => 'date',
         ];
     }
 
@@ -122,6 +146,24 @@ class LeaseAgreement extends Model
     public function contract(): HasOne
     {
         return $this->hasOne(Contract::class)->whereNull('voided_at');
+    }
+
+    /** The latest time the customer turned AutoPay on with the tick box, if they did (see AutopayAgreementService). */
+    public function autopayAgreement(): HasOne
+    {
+        return $this->hasOne(AutopayAgreement::class)->latestOfMany('agreed_at');
+    }
+
+    /** The request to turn AutoPay off that has not taken effect yet, if the customer made one (see AutopayRevocationService). */
+    public function pendingAutopayRevocation(): HasOne
+    {
+        return $this->hasOne(AutopayRevocation::class)->where('status', AutopayRevocation::STATUS_PENDING)->latestOfMany();
+    }
+
+    /** Every movement of the Additional Funds balance, oldest first (see AdditionalFundsLedger). */
+    public function additionalFundsEntries(): HasMany
+    {
+        return $this->hasMany(AdditionalFundsEntry::class)->orderBy('id');
     }
 
     /** Full signature history, voided or not, newest first — for admin audit views. */
@@ -236,10 +278,48 @@ class LeaseAgreement extends Model
     public function paymentMethodFor(?string $type): ?array
     {
         return match ($type) {
-            'bank' => $this->stripe_bank_payment_method_id ? ['type' => 'bank', 'id' => $this->stripe_bank_payment_method_id] : null,
-            'card' => $this->stripe_card_payment_method_id ? ['type' => 'card', 'id' => $this->stripe_card_payment_method_id] : null,
+            'bank' => $this->usableMethodId('bank') ? ['type' => 'bank', 'id' => $this->usableMethodId('bank')] : null,
+            'card' => $this->usableMethodId('card') ? ['type' => 'card', 'id' => $this->usableMethodId('card')] : null,
             default => $this->autopayChargeablePaymentMethod(),
         };
+    }
+
+    /** A saved bank account or card is locked: still on file, but never charged (fraud, a dispute, a hard decline). */
+    public function isMethodLocked(string $type): bool
+    {
+        return $type === 'bank' ? $this->bank_locked_at !== null : $this->card_locked_at !== null;
+    }
+
+    /** The saved method of that type that can be charged: on file and not locked. */
+    public function usableMethodId(string $type): ?string
+    {
+        $id = $type === 'bank' ? $this->stripe_bank_payment_method_id : $this->stripe_card_payment_method_id;
+
+        return $id && ! $this->isMethodLocked($type) ? $id : null;
+    }
+
+    /** What to tell someone who tried to charge a saved method that cannot be used: it is locked, or not on file. */
+    public function methodRefusal(?string $type): string
+    {
+        $onFile = fn (string $t) => (bool) ($t === 'bank' ? $this->stripe_bank_payment_method_id : $this->stripe_card_payment_method_id);
+
+        if ($type !== null && $onFile($type) && $this->isMethodLocked($type)) {
+            return 'That payment method is locked. Please contact us.';
+        }
+        if ($type === null && ($onFile('bank') || $onFile('card'))) {
+            return 'Your saved payment methods are locked. Please contact us.';
+        }
+
+        return $type ? 'That payment method is not on file. Add it first.' : 'Add a bank account or card before paying.';
+    }
+
+    /** Both kinds of saved method that can be charged right now, as the portal lists them ('bank', 'card'). */
+    public function usableMethodTypes(): array
+    {
+        return array_values(array_filter([
+            $this->usableMethodId('bank') ? 'bank' : null,
+            $this->usableMethodId('card') ? 'card' : null,
+        ]));
     }
 
     /**
@@ -250,17 +330,18 @@ class LeaseAgreement extends Model
      */
     public function autopayChargeablePaymentMethod(): ?array
     {
-        if ($this->autopay_primary_method === 'ach' && $this->stripe_bank_payment_method_id) {
-            return ['type' => 'bank', 'id' => $this->stripe_bank_payment_method_id];
+        // A locked method is never chosen, even when it is the customer's primary: the other one is used, or none.
+        if ($this->autopay_primary_method === 'ach' && $this->usableMethodId('bank')) {
+            return ['type' => 'bank', 'id' => $this->usableMethodId('bank')];
         }
-        if ($this->autopay_primary_method === 'card' && $this->stripe_card_payment_method_id) {
-            return ['type' => 'card', 'id' => $this->stripe_card_payment_method_id];
+        if ($this->autopay_primary_method === 'card' && $this->usableMethodId('card')) {
+            return ['type' => 'card', 'id' => $this->usableMethodId('card')];
         }
-        if ($this->stripe_bank_payment_method_id) {
-            return ['type' => 'bank', 'id' => $this->stripe_bank_payment_method_id];
+        if ($this->usableMethodId('bank')) {
+            return ['type' => 'bank', 'id' => $this->usableMethodId('bank')];
         }
-        if ($this->stripe_card_payment_method_id) {
-            return ['type' => 'card', 'id' => $this->stripe_card_payment_method_id];
+        if ($this->usableMethodId('card')) {
+            return ['type' => 'card', 'id' => $this->usableMethodId('card')];
         }
 
         return null;

@@ -68,6 +68,88 @@ class ContractSigningTest extends TestCase
         ]);
     }
 
+    public function test_a_new_signature_records_the_current_wording_of_the_agreement(): void
+    {
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
+
+        $this->actingAs($lease->customer, 'sanctum')->postJson('/api/customer/contracts', [
+            'lease_agreement_id' => $lease->id,
+            'signer_name' => 'Test Signer',
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('contracts', [
+            'lease_agreement_id' => $lease->id,
+            'terms_version' => Contract::CURRENT_TERMS_VERSION,
+        ]);
+    }
+
+    /** The early purchase price sentences of Section 3, with the line breaks of the template flattened. */
+    private function sectionThree(string $html): string
+    {
+        $text = preg_replace('/\s+/', ' ', strip_tags($html));
+        $start = strpos($text, '3. Rental-Purchase Ownership.');
+        $end = strpos($text, '4. Maintenance, Repairs');
+
+        return substr($text, $start, $end - $start);
+    }
+
+    public function test_the_early_purchase_price_deducts_additional_funds_on_the_current_wording_only(): void
+    {
+        Storage::fake('local');
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
+        $make = fn (int $version) => Contract::factory()->create([
+            'lease_agreement_id' => $lease->id,
+            'signer_user_id' => $lease->customer_id,
+            'signer_name' => 'Wording Signer',
+            'terms_version' => $version,
+        ]);
+
+        $current = $make(Contract::CURRENT_TERMS_VERSION);
+        ContractPdfService::ensure($current);
+        $section = $this->sectionThree($current->fresh()->document_html);
+        $this->assertStringContainsString('paid to date and less any additional funds (excludes taxes and fees)', $section);
+        $this->assertStringContainsString('plus any Rental Payments still owed, less any additional funds.', $section);
+        $this->assertStringNotContainsString('still owed and any additional funds', $section);
+
+        // A contract signed on the original wording keeps it, even if its PDF has to be generated again later.
+        $original = $make(1);
+        ContractPdfService::ensure($original);
+        $section = $this->sectionThree($original->fresh()->document_html);
+        $this->assertStringContainsString('paid to date (excludes taxes and fees)', $section);
+        $this->assertStringContainsString('plus any Rental Payments still owed and any additional funds.', $section);
+        $this->assertStringNotContainsString('less any additional funds', $section);
+    }
+
+    public function test_additional_funds_go_to_repairs_before_any_refund_on_the_current_wording_only(): void
+    {
+        Storage::fake('local');
+        $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);
+        $make = fn (int $version) => Contract::factory()->create([
+            'lease_agreement_id' => $lease->id,
+            'signer_user_id' => $lease->customer_id,
+            'signer_name' => 'Repairs Signer',
+            'terms_version' => $version,
+        ]);
+        $sectionNineteen = function (string $html): string {
+            $text = preg_replace('/\s+/', ' ', strip_tags($html));
+            $start = strpos($text, '19. Additional Funds Received.');
+            $end = strpos($text, '20. Written Receipts.');
+
+            return substr($text, $start, $end - $start);
+        };
+        $sentence = 'If the Property is returned in a condition that requires repairs or service in order to be re-sold, any Additional Funds will first be applied to the cost of repairs owed under this Agreement. Only any remaining balance of Additional Funds, if any, will be refundable to you.';
+
+        $current = $make(Contract::CURRENT_TERMS_VERSION);
+        ContractPdfService::ensure($current);
+        $section = $sectionNineteen($current->fresh()->document_html);
+        $this->assertStringContainsString('within a reasonable time. '.$sentence, $section);
+
+        // A contract signed on the original wording does not gain the sentence.
+        $original = $make(1);
+        ContractPdfService::ensure($original);
+        $this->assertStringNotContainsString('requires repairs or service', $sectionNineteen($original->fresh()->document_html));
+    }
+
     public function test_cannot_sign_a_lease_twice_while_active(): void
     {
         $lease = $this->leaseFor(Application::STATUS_WAITING_DEPOSIT);

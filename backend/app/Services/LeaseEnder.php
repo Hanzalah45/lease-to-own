@@ -95,6 +95,10 @@ class LeaseEnder
                 ),
             ]);
 
+            AuditLog::record('lease.ended', sprintf('Lease ended because %s: %d scheduled payment%s removed, AutoPay turned off.', self::LABELS[$reason], $removed, $removed === 1 ? '' : 's'), [
+                'lease' => $locked, 'actor' => $admin, 'details' => ['reason' => $reason, 'note' => $note],
+            ]);
+
             return ['removed' => $removed, 'late_fees_left' => $lateFeesLeft];
         });
     }

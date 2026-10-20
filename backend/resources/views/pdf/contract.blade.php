@@ -197,15 +197,21 @@
     scheduled Rental Payments may be slightly less than the number of Months to Ownership multiplied by the regular
     monthly Rental Payment.
 </p>
+@php
+    // The wording this contract was signed on; an unsaved preview is the current wording.
+    $termsVersion = $contract->terms_version ?? \App\Models\Contract::CURRENT_TERMS_VERSION;
+    $deductFunds = $termsVersion >= \App\Models\Contract::TERMS_DEDUCT_ADDITIONAL_FUNDS;
+    $repairsFirst = $termsVersion >= \App\Models\Contract::TERMS_REPAIRS_BEFORE_REFUND;
+@endphp
 <p class="terms">
     <strong>3. Rental-Purchase Ownership.</strong> If you renew this Agreement for {{ $lease->term_months }} months in
     a row, you will have paid the Total Rental-Purchase Price of ${{ number_format($totalRentalPurchasePrice, 2) }},
     not including taxes or fees, and you will obtain ownership of the Property after the final payment. Or, you can
     exercise an early purchase option ("EPO"). Any time within 90 days of the date the rental term begins (the date
-    you pick up the Property), your EPO price will be the Cash Price less all Rental Payments paid to date (excludes
+    you pick up the Property), your EPO price will be the Cash Price less all Rental Payments paid to date{{ $deductFunds ? ' and less any additional funds' : '' }} (excludes
     taxes and fees). After that time,
     your EPO price will be the Cash Price less 50% of Rental Payments scheduled to date, plus any Rental Payments
-    still owed and any additional funds. You will not own the Property unless you pay the Total Rental-Purchase Price
+    still owed{{ $deductFunds ? ', less any additional funds' : ' and any additional funds' }}. You will not own the Property unless you pay the Total Rental-Purchase Price
     or exercise an EPO. The Total Rental-Purchase Price does not include other charges such as late fees, disclosed
     below. Taxes are also due at the time of exercising an EPO.
 </p>
@@ -463,6 +469,9 @@
     applicable). If no other amounts are accrued, then the Additional Funds will be applied to your EPO unless we are
     otherwise instructed by you. If you do not elect to purchase the Property, and it is returned to us, we will
     refund any remaining Additional Funds within 30 days, upon your request, or otherwise within a reasonable time.
+    @if ($repairsFirst)
+    If the Property is returned in a condition that requires repairs or service in order to be re-sold, any Additional Funds will first be applied to the cost of repairs owed under this Agreement. Only any remaining balance of Additional Funds, if any, will be refundable to you.
+    @endif
 </p>
 <p class="terms">
     <strong>20. Written Receipts.</strong> We will give you a written receipt for any payments made by cash or money

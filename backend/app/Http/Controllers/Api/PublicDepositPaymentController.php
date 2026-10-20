@@ -135,10 +135,8 @@ class PublicDepositPaymentController extends Controller
             // Dual pricing (client, 2026-10-05): bank vs card price for every
             // charge, and which methods can actually be picked.
             'prices' => $lease->pricingSummary(),
-            'available_methods' => array_values(array_filter([
-                $lease->stripe_bank_payment_method_id ? 'bank' : null,
-                $lease->stripe_card_payment_method_id ? 'card' : null,
-            ])),
+            // A locked method stays on file but cannot be picked.
+            'available_methods' => $lease->usableMethodTypes(),
         ];
     }
 

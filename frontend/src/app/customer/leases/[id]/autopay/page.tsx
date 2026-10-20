@@ -4,14 +4,23 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { AutopayAgreementCard } from "@/components/payment-methods/AutopayAgreementCard";
+import { AutopayRevocationCard } from "@/components/payment-methods/AutopayRevocationCard";
 import { AutopaySetupCard } from "@/components/payment-methods/AutopaySetupCard";
 import { DepositPaymentCard } from "@/components/payment-methods/DepositPaymentCard";
 import { getMyLeaseAgreement } from "@/lib/lease-agreements";
 import {
+  agreeToAutopay,
+  cancelBankPending,
+  checkBankPending,
   confirmPaymentMethod,
   createSetupIntent,
   getPaymentMethodsStatus,
+  keepAutopay,
+  removePaymentMethod,
+  revokeAutopay,
   setPrimaryMethod,
+  startBankPending,
   type PaymentMethodsStatus,
 } from "@/lib/payment-methods";
 import {
@@ -95,9 +104,17 @@ export default function AutopaySetupPage() {
         onCreateSetupIntent={(type) => createSetupIntent(leaseId, type)}
         onConfirm={(type, paymentMethodId) => confirmPaymentMethod(leaseId, type, paymentMethodId)}
         onSetPrimary={(type) => setPrimaryMethod(leaseId, type)}
+        onBankPending={(setupIntentId) => startBankPending(leaseId, setupIntentId)}
+        onBankPendingCheck={() => checkBankPending(leaseId)}
+        onBankPendingCancel={() => cancelBankPending(leaseId)}
+        onRemove={(type) => removePaymentMethod(leaseId, type)}
         billingName={user?.name ?? ""}
         billingEmail={user?.email ?? ""}
       />
+
+      <AutopayAgreementCard offer={status.autopay_offer ?? null} onAgree={(version) => agreeToAutopay(leaseId, version)} onAgreed={setStatus} />
+
+      <AutopayRevocationCard status={status} onRevoke={() => revokeAutopay(leaseId)} onKeep={() => keepAutopay(leaseId)} onChanged={setStatus} />
 
       {bothAdded && autopayOn && (
         <p className="text-sm font-semibold text-green-700">You&rsquo;re all set — AutoPay is ready to go.</p>

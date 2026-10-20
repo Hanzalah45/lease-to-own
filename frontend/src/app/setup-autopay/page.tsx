@@ -4,10 +4,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { AutopayAgreementCard } from "@/components/payment-methods/AutopayAgreementCard";
 import { AutopaySetupCard } from "@/components/payment-methods/AutopaySetupCard";
 import { DepositPaymentCard } from "@/components/payment-methods/DepositPaymentCard";
 import { ApiError } from "@/lib/api";
 import {
+  agreeToAutopaySigned,
+  cancelBankPendingSigned,
+  checkBankPendingSigned,
+  startBankPendingSigned,
   confirmSignedPaymentMethod,
   createSignedSetupIntent,
   getSignedPaymentMethodsStatus,
@@ -141,9 +146,20 @@ function SetupAutopayFlow() {
               onCreateSetupIntent={(type) => createSignedSetupIntent(params, type)}
               onConfirm={(type, paymentMethodId) => confirmSignedPaymentMethod(params, type, paymentMethodId)}
               onSetPrimary={(type) => setSignedPrimaryMethod(params, type)}
+              onBankPending={(setupIntentId) => startBankPendingSigned(params, setupIntentId)}
+              onBankPendingCheck={() => checkBankPendingSigned(params)}
+              onBankPendingCancel={() => cancelBankPendingSigned(params)}
               billingName={customerName}
               billingEmail={customerEmail}
             />
+
+            {!office && (
+              <AutopayAgreementCard
+                offer={status.autopay_offer ?? null}
+                onAgree={(version) => agreeToAutopaySigned(params, version)}
+                onAgreed={setStatus}
+              />
+            )}
 
             {office && status.bank_account_added && (
               <p className="text-center text-sm font-semibold text-green-700">

@@ -7,6 +7,7 @@ import { formatDateOnly } from "@/lib/dates";
 import { PayNowModal } from "@/components/payments/PayNowModal";
 import { firstMonthMirrors } from "@/lib/application-progress";
 import { listMyPayments } from "@/lib/payments";
+import { downloadReceipt, listMyReceipts, type MyReceipt } from "@/lib/receipts";
 import { ApiError } from "@/lib/api";
 import type { Payment } from "@/types/lease-agreement";
 
@@ -35,6 +36,8 @@ export default function CustomerPaymentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [paying, setPaying] = useState<Payment | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [receipts, setReceipts] = useState<MyReceipt[]>([]);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   function load() {
     return listMyPayments()
@@ -46,6 +49,24 @@ export default function CustomerPaymentsPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  // The receipts are a convenience: the page works without them.
+  useEffect(() => {
+    listMyReceipts()
+      .then(setReceipts)
+      .catch(() => {});
+  }, [payments]);
+
+  async function downloadMine(receipt: MyReceipt) {
+    setDownloadingId(receipt.id);
+    try {
+      await downloadReceipt(receipt.id, receipt.receipt_number, false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not download the receipt.");
+    } finally {
+      setDownloadingId(null);
+    }
+  }
 
   // The first month's record row is bookkeeping: its money is the tracking fee and first month payment, which is listed once.
   const history = useMemo(() => {
@@ -177,6 +198,12 @@ export default function CustomerPaymentsPage() {
                       {num(row.card_fee_amount) > 0 && (
                         <span className="ml-1.5 text-xs font-normal text-neutral-400">includes {money(num(row.card_fee_amount))} card fee</span>
                       )}
+                      {/* Paid in parts: what has been paid so far and what is left (client, Joel, 2026-10-19 checklist, section 7). */}
+                      {row.status !== "paid" && row.status !== "refunded" && (row.parts ?? []).some((x) => x.status === "paid") && (
+                        <span className="mt-0.5 block text-xs font-normal text-neutral-500">
+                          {money(num(row.amount) - num(row.remaining_amount))} paid so far, {money(num(row.remaining_amount))} still due
+                        </span>
+                      )}
                       {row.type === "late_fee" && (
                         <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
                           Late fee
@@ -198,7 +225,7 @@ export default function CustomerPaymentsPage() {
                         </span>
                       )}
                     </td>
-                    <td className="py-3 text-neutral-600">{row.method ?? "—"}</td>
+                    <td className="py-3 text-neutral-600">{row.method === "split" ? "More than one" : (row.method ?? "—")}</td>
                     <td className="py-3">
                       <span className={`inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide ${STATUS_COLOR[row.status]}`}>
                         <span className={`h-1.5 w-1.5 rounded-full ${row.status === "paid" ? "bg-green-500" : row.status === "failed" ? "bg-red-500" : "bg-neutral-300"}`} />
@@ -223,6 +250,42 @@ export default function CustomerPaymentsPage() {
           </table>
         </div>
       </div>
+
+      {receipts.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white p-4 sm:p-5">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="h-4 w-1 shrink-0 rounded-full bg-red-600" />
+            <h2 className="font-heading text-base font-bold uppercase tracking-wide text-neutral-900">Receipts</h2>
+          </div>
+          <p className="mb-3 text-xs text-neutral-500">A receipt is written for every payment you make and every refund. Download one as a PDF.</p>
+          <ul className="divide-y divide-neutral-100">
+            {receipts.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-neutral-900">
+                    {r.receipt_number}
+                    <span className="font-normal text-neutral-500"> · {r.kind === "refund" ? "Refund of " : ""}{r.description}</span>
+                  </p>
+                  <p className="text-xs text-neutral-400">{new Date(r.issued_at).toLocaleDateString()}</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className={`text-sm font-semibold tabular-nums ${r.kind === "refund" ? "text-red-600" : "text-neutral-900"}`}>
+                    {r.kind === "refund" ? "−" : ""}
+                    {money(num(r.amount))}
+                  </span>
+                  <button
+                    onClick={() => void downloadMine(r)}
+                    disabled={downloadingId === r.id}
+                    className="font-heading rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-bold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                  >
+                    {downloadingId === r.id ? "Downloading…" : "Download"}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {paying && (
         <PayNowModal

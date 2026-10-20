@@ -15,7 +15,7 @@ class PaymentController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Payment::with(['leaseAgreement.customer:id,name,email', 'recordedBy:id,name', 'attempts'])->latest('due_date');
+        $query = Payment::with(PaymentRefundController::WITH)->latest('due_date');
 
         if ($request->filled('lease_agreement_id')) {
             $query->where('lease_agreement_id', $request->integer('lease_agreement_id'));
@@ -52,16 +52,20 @@ class PaymentController extends Controller
 
     public function show(Payment $payment)
     {
-        return response()->json(['data' => $payment->load(['leaseAgreement.customer:id,name,email', 'recordedBy:id,name', 'attempts'])]);
+        return response()->json(['data' => $payment->load(PaymentRefundController::WITH)]);
     }
 
     /** Admins record manual payments here (cash/check/ACH confirmation), or a processor webhook records one automatically — see LeaseEngine::applyPaymentStatusChange(). */
     public function update(Request $request, Payment $payment)
     {
         $data = $request->validate([
-            'status' => ['required', Rule::in([Payment::STATUS_PENDING, Payment::STATUS_PAID, Payment::STATUS_FAILED, Payment::STATUS_REFUNDED])],
+            // A refund is made with the Refund button (PaymentRefundController), which gives the money back and keeps the record of it.
+            'status' => ['required', Rule::in([Payment::STATUS_PENDING, Payment::STATUS_PAID, Payment::STATUS_FAILED])],
             'method' => ['sometimes', 'nullable', Rule::in(['ach', 'card', 'cash', 'check', 'other'])],
         ]);
+
+        // Money that has gone back (or is on its way) cannot be un-paid by changing the status afterwards.
+        abort_if($payment->refunds()->counting()->exists() || $payment->status === Payment::STATUS_REFUNDED, 422, 'This payment has been refunded, so its status can no longer be changed.');
 
         $payment = LeaseEngine::applyPaymentStatusChange($payment, $data['status'], $data['method'] ?? null, Auth::id());
 

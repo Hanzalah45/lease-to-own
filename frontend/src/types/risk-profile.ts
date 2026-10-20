@@ -9,7 +9,9 @@ export type RedFlagType =
   | "bank_account_change"
   | "suspicious_behavior"
   | "undisclosed_move"
-  | "gps_anomaly";
+  | "gps_anomaly"
+  | "chargeback"
+  | "hard_decline";
 
 export interface RiskRedFlag {
   id: number;

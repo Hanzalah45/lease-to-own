@@ -15,11 +15,12 @@ class PaymentStatusChangedNotification extends Notification
 {
     use BuildsMailFromArray;
 
-    public function __construct(private readonly Payment $payment) {}
+    /** @param bool $mail false when the customer was already emailed a receipt for this payment: the portal notice is still made. */
+    public function __construct(private readonly Payment $payment, private readonly bool $mail = true) {}
 
     public function via(object $notifiable): array
     {
-        return ['database', 'mail'];
+        return ! $this->mail && ! $notifiable->isStaff() ? ['database'] : ['database', 'mail'];
     }
 
     public function toArray(object $notifiable): array

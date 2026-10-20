@@ -1,8 +1,11 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\AdditionalFundsController as AdminAdditionalFundsController;
 use App\Http\Controllers\Api\Admin\AdminUserController;
 use App\Http\Controllers\Api\Admin\ApplicationController as AdminApplicationController;
+use App\Http\Controllers\Api\Admin\AuditLogController as AdminAuditLogController;
 use App\Http\Controllers\Api\Admin\AutopayController as AdminAutopayController;
+use App\Http\Controllers\Api\Admin\AutopayLogController as AdminAutopayLogController;
 use App\Http\Controllers\Api\Admin\ContractController as AdminContractController;
 use App\Http\Controllers\Api\Admin\CustomerController as AdminCustomerController;
 use App\Http\Controllers\Api\Admin\DealerNoteController;
@@ -14,8 +17,14 @@ use App\Http\Controllers\Api\Admin\ExtraPaymentController as AdminExtraPaymentCo
 use App\Http\Controllers\Api\Admin\LeaseAgreementController as AdminLeaseAgreementController;
 use App\Http\Controllers\Api\Admin\LeaseCardController as AdminLeaseCardController;
 use App\Http\Controllers\Api\Admin\LeaseEndController;
+use App\Http\Controllers\Api\Admin\MethodLockController as AdminMethodLockController;
 use App\Http\Controllers\Api\Admin\PaymentController as AdminPaymentController;
+use App\Http\Controllers\Api\Admin\PaymentLinkController as AdminPaymentLinkController;
 use App\Http\Controllers\Api\Admin\PaymentMethodController as AdminPaymentMethodController;
+use App\Http\Controllers\Api\Admin\PaymentNoteController as AdminPaymentNoteController;
+use App\Http\Controllers\Api\Admin\PaymentPartController as AdminPaymentPartController;
+use App\Http\Controllers\Api\Admin\PaymentReceiptController as AdminPaymentReceiptController;
+use App\Http\Controllers\Api\Admin\PaymentRefundController as AdminPaymentRefundController;
 use App\Http\Controllers\Api\Admin\PricingController as AdminPricingController;
 use App\Http\Controllers\Api\Admin\QuickbooksConnectionController;
 use App\Http\Controllers\Api\Admin\QuickbooksSyncController;
@@ -41,6 +50,7 @@ use App\Http\Controllers\Api\Customer\NotificationPreferencesController;
 use App\Http\Controllers\Api\Customer\PaymentController;
 use App\Http\Controllers\Api\Customer\PaymentMethodController;
 use App\Http\Controllers\Api\Customer\PlaidController;
+use App\Http\Controllers\Api\Customer\ReceiptController as CustomerReceiptController;
 use App\Http\Controllers\Api\GuestApplicationController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProfileController;
@@ -48,6 +58,7 @@ use App\Http\Controllers\Api\PublicAccountActivationController;
 use App\Http\Controllers\Api\PublicContractController;
 use App\Http\Controllers\Api\PublicDepositPaymentController;
 use App\Http\Controllers\Api\PublicInfoRequestController;
+use App\Http\Controllers\Api\PublicPaymentLinkController;
 use App\Http\Controllers\Api\PublicPaymentMethodController;
 use App\Http\Controllers\Api\PublicPlaidVerificationController;
 use App\Http\Controllers\Api\QuickbooksOAuthCallbackController;
@@ -105,10 +116,16 @@ Route::post('/contracts/verify-activate-account', [PublicAccountActivationContro
 // Signed-link AutoPay payment-method setup (client, 2026-10-01): same
 // guest-no-login gap as the contract-signing routes above. See
 // PaymentMethodSigner / PaymentMethodsRequestedNotification.
+Route::post('/pay-links/show', [PublicPaymentLinkController::class, 'show'])->middleware('throttle:30,1');
+Route::post('/pay-links/pay', [PublicPaymentLinkController::class, 'pay'])->middleware('throttle:10,1');
 Route::post('/payment-methods/verify-show', [PublicPaymentMethodController::class, 'show'])->middleware('throttle:10,1');
 Route::post('/payment-methods/verify-setup-intent', [PublicPaymentMethodController::class, 'setupIntent'])->middleware('throttle:10,1');
 Route::post('/payment-methods/verify-confirm', [PublicPaymentMethodController::class, 'confirm'])->middleware('throttle:10,1');
 Route::post('/payment-methods/verify-primary', [PublicPaymentMethodController::class, 'setPrimary'])->middleware('throttle:10,1');
+Route::post('/payment-methods/verify-bank-pending', [PublicPaymentMethodController::class, 'bankPending'])->middleware('throttle:10,1');
+Route::post('/payment-methods/verify-bank-pending-check', [PublicPaymentMethodController::class, 'bankPendingCheck'])->middleware('throttle:20,1');
+Route::post('/payment-methods/verify-bank-pending-cancel', [PublicPaymentMethodController::class, 'bankPendingCancel'])->middleware('throttle:10,1');
+Route::post('/payment-methods/verify-autopay', [PublicPaymentMethodController::class, 'agreeToAutopay'])->middleware('throttle:10,1');
 
 // Signed-link deposit charging (client, Joel, 2026-10-01) — reuses the same
 // AutoPay signed link above rather than minting a new Signer: this is a
@@ -167,6 +184,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/lease-agreements/{leaseAgreement}/payment-methods/setup-intent', [PaymentMethodController::class, 'setupIntent']);
         Route::post('/lease-agreements/{leaseAgreement}/payment-methods/confirm', [PaymentMethodController::class, 'confirm']);
         Route::post('/lease-agreements/{leaseAgreement}/payment-methods/primary', [PaymentMethodController::class, 'setPrimary']);
+        Route::post('/lease-agreements/{leaseAgreement}/payment-methods/remove', [PaymentMethodController::class, 'remove'])->middleware('throttle:10,1');
+        Route::post('/lease-agreements/{leaseAgreement}/payment-methods/bank-pending', [PaymentMethodController::class, 'bankPending'])->middleware('throttle:10,1');
+        Route::post('/lease-agreements/{leaseAgreement}/payment-methods/bank-pending/check', [PaymentMethodController::class, 'bankPendingCheck'])->middleware('throttle:20,1');
+        Route::post('/lease-agreements/{leaseAgreement}/payment-methods/bank-pending/cancel', [PaymentMethodController::class, 'bankPendingCancel'])->middleware('throttle:10,1');
+        Route::post('/lease-agreements/{leaseAgreement}/autopay-agreement', [PaymentMethodController::class, 'agreeToAutopay']);
+        Route::post('/lease-agreements/{leaseAgreement}/autopay/revoke', [PaymentMethodController::class, 'revokeAutopay'])->middleware('throttle:10,1');
+        Route::post('/lease-agreements/{leaseAgreement}/autopay/keep', [PaymentMethodController::class, 'keepAutopay'])->middleware('throttle:10,1');
         Route::get('/lease-agreements/{leaseAgreement}/extra-payment', [CustomerExtraPaymentController::class, 'show']);
         Route::post('/lease-agreements/{leaseAgreement}/extra-payment', [CustomerExtraPaymentController::class, 'store'])->middleware('throttle:10,1');
         Route::get('/lease-agreements/{leaseAgreement}/deposit-payment', [DepositPaymentController::class, 'show']);
@@ -177,6 +201,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/contracts/{contract}/download', [ContractController::class, 'download']);
         Route::apiResource('payments', PaymentController::class)->only(['index', 'show']);
         Route::post('/payments/{payment}/pay', [PaymentController::class, 'pay'])->middleware('throttle:10,1');
+        Route::get('/receipts', [CustomerReceiptController::class, 'index']);
+        Route::get('/receipts/{receipt}/download', [CustomerReceiptController::class, 'download']);
 
         // Read-only: the equipment on this customer's own leases.
         Route::get('/equipment', [CustomerEquipmentController::class, 'index']);
@@ -259,17 +285,39 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::middleware('permission:payment_tracking')->group(function () {
             Route::post('/lease-agreements/{leaseAgreement}/autopay/pause', [AdminAutopayController::class, 'pause']);
             Route::post('/lease-agreements/{leaseAgreement}/autopay/resume', [AdminAutopayController::class, 'resume']);
+            Route::post('/lease-agreements/{leaseAgreement}/autopay/revocation', [AdminAutopayController::class, 'recordRevocation'])->middleware('throttle:20,1');
             Route::post('/payments/{payment}/retry-autopay', [AdminAutopayController::class, 'retry']);
             Route::post('/applications/{application}/charge-deposit', [AdminDepositChargeController::class, 'store']);
             Route::post('/applications/{application}/charge-pickup-balance', [AdminDepositChargeController::class, 'storePickupBalance']);
             Route::get('/lease-agreements/{leaseAgreement}/autopay-methods', [AdminLeaseCardController::class, 'show']);
+            Route::post('/lease-agreements/{leaseAgreement}/method-lock', [AdminMethodLockController::class, 'store'])->middleware('throttle:30,1');
             Route::post('/lease-agreements/{leaseAgreement}/card/setup-intent', [AdminLeaseCardController::class, 'setupIntent']);
             Route::post('/lease-agreements/{leaseAgreement}/card', [AdminLeaseCardController::class, 'store']);
             Route::post('/lease-agreements/{leaseAgreement}/bank-link', [AdminLeaseCardController::class, 'bankLink']);
             Route::post('/lease-agreements/{leaseAgreement}/extra-payment', [AdminExtraPaymentController::class, 'store']);
+            Route::get('/lease-agreements/{leaseAgreement}/additional-funds', [AdminAdditionalFundsController::class, 'show']);
+            Route::post('/lease-agreements/{leaseAgreement}/additional-funds/repairs', [AdminAdditionalFundsController::class, 'applyToRepairs'])->middleware('throttle:20,1');
+            Route::post('/lease-agreements/{leaseAgreement}/additional-funds/refund', [AdminAdditionalFundsController::class, 'refundBalance'])->middleware('throttle:10,1');
             Route::post('/lease-agreements/{leaseAgreement}/end', [LeaseEndController::class, 'store']);
             Route::get('/reports/sales-tax', [ReportController::class, 'salesTax']);
             Route::get('/reports/payments.csv', [ReportController::class, 'paymentsCsv']);
+            Route::get('/payments/{payment}/history', [AdminPaymentNoteController::class, 'history']);
+            Route::post('/payments/{payment}/notes', [AdminPaymentNoteController::class, 'store'])->middleware('throttle:60,1');
+            Route::get('/payment-audit-log', [AdminAuditLogController::class, 'index']);
+            Route::get('/autopay-log', [AdminAutopayLogController::class, 'index']);
+            Route::post('/payments/{payment}/parts', [AdminPaymentPartController::class, 'store'])->middleware('throttle:30,1');
+            Route::get('/lease-agreements/{leaseAgreement}/receipts', [AdminPaymentReceiptController::class, 'index']);
+            Route::get('/payment-receipts/{receipt}/download', [AdminPaymentReceiptController::class, 'download']);
+            Route::post('/payment-receipts/{receipt}/send', [AdminPaymentReceiptController::class, 'send'])->middleware('throttle:30,1');
+            Route::get('/lease-agreements/{leaseAgreement}/payment-links', [AdminPaymentLinkController::class, 'index']);
+            Route::post('/payments/{payment}/links', [AdminPaymentLinkController::class, 'store'])->middleware('throttle:30,1');
+            Route::post('/lease-agreements/{leaseAgreement}/payment-links/extra', [AdminPaymentLinkController::class, 'storeExtra'])->middleware('throttle:30,1');
+            Route::post('/payment-links/{paymentLink}/resend', [AdminPaymentLinkController::class, 'resend'])->middleware('throttle:30,1');
+            Route::post('/payment-links/{paymentLink}/cancel', [AdminPaymentLinkController::class, 'cancel']);
+            Route::post('/applications/{application}/payment-parts', [AdminPaymentPartController::class, 'storeForApplication'])->middleware('throttle:30,1');
+            Route::post('/payment-parts/{paymentPart}/cancel', [AdminPaymentPartController::class, 'cancel']);
+            Route::post('/payments/{payment}/refunds', [AdminPaymentRefundController::class, 'store'])->middleware('throttle:20,1');
+            Route::post('/payment-refunds/{paymentRefund}/cancel', [AdminPaymentRefundController::class, 'cancel']);
             Route::apiResource('payments', AdminPaymentController::class);
         });
     });

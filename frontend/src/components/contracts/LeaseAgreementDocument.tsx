@@ -111,6 +111,15 @@ function SignatureBlock({ name, date, status }: { name: string; date: string | n
   );
 }
 
+/**
+ * The wording of the agreement a signature is given on. Must match Contract::CURRENT_TERMS_VERSION on the backend. A signed contract shows
+ * the wording it was signed with (its own terms_version, 1 for everything signed before the change); a contract not yet signed shows the
+ * current one. From version 2 the early purchase price in Section 3 deducts any additional funds, as the Technical Project Plan says.
+ */
+const CURRENT_CONTRACT_TERMS_VERSION = 2;
+const TERMS_DEDUCT_ADDITIONAL_FUNDS = 2;
+const TERMS_REPAIRS_BEFORE_REFUND = 2;
+
 export function LeaseAgreementDocument({
   lease,
   customerName,
@@ -133,6 +142,9 @@ export function LeaseAgreementDocument({
   const taxRatePct = (num(lease.sales_tax_rate) * 100).toFixed(2);
   const signedName = lease.contract ? customerName : "";
   const signedDate = lease.contract?.signed_at ?? null;
+  const termsVersion = lease.contract?.terms_version ?? CURRENT_CONTRACT_TERMS_VERSION;
+  const deductFunds = termsVersion >= TERMS_DEDUCT_ADDITIONAL_FUNDS;
+  const repairsFirst = termsVersion >= TERMS_REPAIRS_BEFORE_REFUND;
 
   // Joel doesn't have a business phone number set up yet (2026-09-11) — both
   // stay blank until then, and this line reads the same as it does today.
@@ -331,9 +343,9 @@ export function LeaseAgreementDocument({
           not including taxes or fees, and you will obtain ownership of the Property after the final payment. Or, you
           can exercise an early purchase option (&quot;EPO&quot;). Any time within 90 days of the date the rental term
           begins (the date you pick up the Property), your EPO price will be the Cash Price less all Rental Payments
-          paid to date (excludes taxes and fees). After that time, your EPO price will be the Cash Price less 50% of
+          paid to date{deductFunds ? " and less any additional funds" : ""} (excludes taxes and fees). After that time, your EPO price will be the Cash Price less 50% of
           Rental Payments
-          scheduled to date, plus any Rental Payments still owed and any additional funds. You will not own the
+          scheduled to date, plus any Rental Payments still owed{deductFunds ? ", less any additional funds" : " and any additional funds"}. You will not own the
           Property unless you pay the Total Rental-Purchase Price or exercise an EPO. The Total Rental-Purchase
           Price does not include other charges such as late fees, disclosed below. Taxes are also due at the time
           of exercising an EPO.
@@ -723,6 +735,7 @@ export function LeaseAgreementDocument({
           Payment (&quot;Additional Funds&quot;), they will be applied to any amounts previously accrued, then to
           your EPO unless otherwise instructed. If the Property is returned without purchase, we will refund any
           remaining Additional Funds within 30 days upon request.
+          {repairsFirst && " If the Property is returned in a condition that requires repairs or service in order to be re-sold, any Additional Funds will first be applied to the cost of repairs owed under this Agreement. Only any remaining balance of Additional Funds, if any, will be refundable to you."}
         </p>
         <p className="mt-3 text-xs italic leading-relaxed text-neutral-400 print:break-inside-avoid">
           <strong>20. Written Receipts.</strong> We will give you a written receipt for any payments made by cash or

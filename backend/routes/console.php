@@ -18,6 +18,10 @@ Schedule::command('payments:send-autopay-reminders')->dailyAt('08:00')->timezone
 Schedule::command('payments:charge-late-fees')->dailyAt('08:00')->timezone(BillingClock::TIMEZONE);
 Schedule::command('deposits:forfeit-expired-holds')->daily();
 
+// Switches AutoPay off where a customer's three business day notice has run out, in the small hours Central time and so before the first
+// AutoPay charges of the day (which also refuse a lease whose request has taken effect). See AutopayRevocationService.
+Schedule::command('autopay:apply-revocations')->dailyAt('00:30')->timezone(BillingClock::TIMEZONE);
+
 // Charges due monthly payments (a no-op until AUTOPAY_CHARGING_ENABLED is on).
 // Every 15 minutes so a charge with an unknown outcome is replayed promptly and
 // a failed bank debit falls back to the card the same morning; first attempts

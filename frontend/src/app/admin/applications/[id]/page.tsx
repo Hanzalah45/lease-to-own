@@ -18,10 +18,14 @@ import { ChangeMowerModal } from "@/components/applications/detail/ChangeMowerMo
 import { AddCardForCustomerModal } from "@/components/applications/detail/AddCardForCustomerModal";
 import { AutopayMethodsCard } from "@/components/applications/detail/AutopayMethodsCard";
 import { ChargeDepositModal } from "@/components/applications/detail/ChargeDepositModal";
+import { TakePaymentModal } from "@/components/applications/detail/TakePaymentModal";
 import { EndLeaseModal } from "@/components/applications/detail/EndLeaseModal";
 import { RecordExtraPaymentModal } from "@/components/applications/detail/RecordExtraPaymentModal";
 import { ProgressCard } from "@/components/applications/detail/ProgressCard";
+import { AdditionalFundsCard } from "@/components/applications/detail/AdditionalFundsCard";
+import { PaymentLinksCard } from "@/components/applications/detail/PaymentLinksCard";
 import { PaymentsCard } from "@/components/applications/detail/PaymentsCard";
+import { ReceiptsCard } from "@/components/applications/detail/ReceiptsCard";
 import { EmailsCard } from "@/components/emails/EmailsCard";
 import { computeApplicationProgress, firstMonthCharge, firstMonthMirror, methodLabel, outcomeUnknown, paymentTotal } from "@/lib/application-progress";
 import { FileInput } from "@/components/applications/wizard/fields";
@@ -96,6 +100,8 @@ const RED_FLAG_LABEL: Record<string, string> = {
   suspicious_behavior: "Suspicious behavior",
   undisclosed_move: "Undisclosed move",
   gps_anomaly: "GPS anomaly",
+  chargeback: "Chargeback",
+  hard_decline: "Hard decline",
 };
 
 const BADGE_STYLE: Record<AppStatus, { label: string; color: string }> = {
@@ -155,6 +161,7 @@ export default function ApplicationDetailPage() {
   const [changeNotice, setChangeNotice] = useState<string | null>(null);
   const [showChargeDeposit, setShowChargeDeposit] = useState(false);
   const [showChargeBalance, setShowChargeBalance] = useState(false);
+  const [takePart, setTakePart] = useState<"deposit" | "pickup_balance" | null>(null);
   const [showRecordExtra, setShowRecordExtra] = useState(false);
   const [showEndLease, setShowEndLease] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
@@ -593,6 +600,16 @@ export default function ApplicationDetailPage() {
     !balanceOnRecord &&
     (status === "waiting_deposit" || status === "waiting_delivery") &&
     !!(lease?.stripe_card_payment_method_id || lease?.stripe_bank_payment_method_id);
+  // A payment taken toward the deposit or the tracking fee and first month, in whole or in part (client, Joel, 2026-10-19 checklist,
+  // section 7: part cash and part card). It may be paid in several parts, by different methods; it counts as paid when they add up.
+  const unpaidRow = (type: "deposit" | "pickup_balance") =>
+    lease?.payments
+      ?.filter((p) => p.type === type && (p.status === "pending" || p.status === "failed"))
+      .sort((a, b) => b.id - a.id)[0];
+  const depositPaid = !!lease?.payments?.some((p) => p.type === "deposit" && p.status === "paid");
+  const balancePaid = !!lease?.payments?.some((p) => p.type === "pickup_balance" && p.status === "paid");
+  const canTakeDeposit = can("payment_tracking") && signed && !depositPaid && (status === "waiting_deposit" || status === "waiting_delivery" || status === "finished");
+  const canTakeBalance = can("payment_tracking") && signed && !balancePaid && (status === "waiting_deposit" || status === "waiting_delivery");
   // An extra payment taken in the office, toward the early purchase price (client, Joel, 2026-10-16). Only once the lease has
   // started and while something is left to pay toward the price; the server enforces the rest (nothing due, the range).
   const canRecordExtra =
@@ -1366,7 +1383,7 @@ export default function ApplicationDetailPage() {
             );
           })}
           {showAutopayMethods && lease && (
-            <AutopayMethodsCard leaseId={lease.id} refreshKey={methodsRefresh} onChangeCard={() => setShowAddCard(true)} />
+            <AutopayMethodsCard leaseId={lease.id} refreshKey={methodsRefresh} onChangeCard={() => setShowAddCard(true)} agreement={lease.autopay_agreement} />
           )}
           {canChargeDeposit && (
             <div className="-mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
@@ -1404,6 +1421,33 @@ export default function ApplicationDetailPage() {
               </button>
             </div>
           )}
+          {([["deposit", canTakeDeposit], ["pickup_balance", canTakeBalance]] as const).map(([kind, allowed]) => {
+            if (!allowed || !lease) return null;
+            const row = unpaidRow(kind);
+            const due = lease.pricing?.[kind]?.bank ?? 0;
+            const left = row ? (row.remaining_amount ?? Number(row.amount)) : due;
+            const inParts = (row?.parts ?? []).some((x) => x.status === "paid");
+            const label = kind === "deposit" ? "the deposit" : "the tracking fee and first month";
+
+            return (
+              <div key={kind} className="-mt-3 rounded-xl border border-neutral-200 bg-white p-4">
+                <p className="text-sm font-semibold text-neutral-900">
+                  {inParts ? `Part of ${label} has been paid` : `Take a payment toward ${label}`}
+                </p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  {inParts
+                    ? `${money(left)} is still due. Take the rest in cash, by check, or by charging the saved card or bank account.`
+                    : "In cash, by check, or by charging the saved card or bank account. It can be paid in parts, for example part in cash and the rest on a card."}
+                </p>
+                <button
+                  onClick={() => setTakePart(kind)}
+                  className="font-heading mt-3 rounded-md border border-neutral-300 px-3.5 py-2 text-sm font-bold text-neutral-700 hover:bg-neutral-50"
+                >
+                  {inParts ? "Take the rest" : "Take a payment"}
+                </button>
+              </div>
+            );
+          })}
           {application.deposit_forfeited_at ? (
             <p className="-mt-3 text-xs text-red-600">
               Deposit forfeited {new Date(application.deposit_forfeited_at).toLocaleDateString()} — unit not picked up in time.
@@ -1468,7 +1512,15 @@ export default function ApplicationDetailPage() {
         </div>
       )}
 
-      {progress && can("payment_tracking") && <PaymentsCard payments={lease?.payments ?? []} />}
+      {lease && can("payment_tracking") && <AdditionalFundsCard leaseId={lease.id} onChanged={() => void load()} />}
+
+      {progress && can("payment_tracking") && (
+        <PaymentsCard payments={lease?.payments ?? []} canManage customerEmail={customer?.email} onChanged={() => void load()} />
+      )}
+
+      {lease && can("payment_tracking") && <ReceiptsCard leaseId={lease.id} customerEmail={customer?.email} refreshKey={lease.payments} />}
+
+      {lease && can("payment_tracking") && <PaymentLinksCard leaseId={lease.id} customerEmail={customer?.email} refreshKey={lease.payments} />}
 
       <EmailsCard customerId={application.customer_id} />
 
@@ -1529,6 +1581,18 @@ export default function ApplicationDetailPage() {
                 ? "Deposit charged. The payment is recorded and a note was added to this application."
                 : "Deposit bank debit started. It will show as paid once the bank settles it (a few business days).",
             );
+            void load();
+          }}
+        />
+      )}
+
+      {takePart && lease && (
+        <TakePaymentModal
+          target={{ kind: "application", applicationId: application.id, leaseId: lease.id, type: takePart, due: lease.pricing?.[takePart]?.bank ?? 0, existing: unpaidRow(takePart) }}
+          onClose={() => setTakePart(null)}
+          onDone={(message) => {
+            setTakePart(null);
+            setChangeNotice(message);
             void load();
           }}
         />

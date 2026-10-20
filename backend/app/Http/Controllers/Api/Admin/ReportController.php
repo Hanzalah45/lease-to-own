@@ -30,14 +30,17 @@ class ReportController extends Controller
         [$from, $to] = $this->range($request);
         $rows = $report->rows($from, $to);
         $columns = [
-            'paid_date' => 'Paid on',
+            // The day it was paid, or for a refund the day the money went back (a refund is a row of its own with negative figures).
+            'paid_date' => 'Date',
+            'kind' => 'Payment or refund',
             'customer' => 'Customer',
             'customer_email' => 'Email',
             'lease_id' => 'Lease',
             'type' => 'Type',
             'method' => 'Method',
             'amount' => 'Amount (bank price)',
-            'taxable_sales' => 'Taxable sales',
+            'taxable_sales' => 'Taxable sales (rent and LDW)',
+            'ldw' => 'Of which loss damage waiver',
             'sales_tax' => 'Sales tax',
             'tracking_fees' => 'Tracking fee',
             'card_fees' => 'Card fee',
