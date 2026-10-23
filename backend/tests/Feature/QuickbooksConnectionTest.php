@@ -188,4 +188,30 @@ class QuickbooksConnectionTest extends TestCase
         $this->assertNull(QuickbooksConnection::first());
         Http::assertSent(fn ($request) => str_contains($request->url(), 'tokens/revoke'));
     }
+
+    public function test_disconnect_switches_sending_off_and_forgets_the_chosen_accounts_because_another_company_has_other_accounts(): void
+    {
+        $admin = $this->superAdmin();
+        QuickbooksConnection::create([
+            'realm_id' => '999',
+            'access_token' => 'secret-access',
+            'access_token_expires_at' => now()->addHour(),
+            'refresh_token' => 'secret-refresh',
+            'refresh_token_expires_at' => now()->addDays(100),
+            'connected_by' => $admin->id,
+        ]);
+        QuickbooksSyncSetting::current()->update([
+            'sync_enabled' => true,
+            'sync_from' => '2026-10-01',
+            'accounts' => ['rent_income' => ['id' => '14', 'name' => 'Rental Income']],
+        ]);
+        Http::fake(['developer.api.intuit.com/*' => Http::response('', 200)]);
+
+        $this->actingAs($admin, 'sanctum')->deleteJson('/api/admin/quickbooks/disconnect')->assertOk();
+
+        $settings = QuickbooksSyncSetting::current();
+        $this->assertFalse($settings->sync_enabled);
+        $this->assertSame([], $settings->accounts ?? []);
+        $this->assertSame('2026-10-01', $settings->sync_from?->toDateString(), 'The start day is the business\'s own choice and stays.');
+    }
 }

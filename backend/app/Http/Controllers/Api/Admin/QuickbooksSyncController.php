@@ -101,6 +101,16 @@ class QuickbooksSyncController extends Controller
         $accounts = $settings->accounts ?? [];
 
         try {
+            // A choice that points at an account this company does not have (the connection was moved to another company, or the
+            // account was deleted) is as good as no choice: it is found by name or created again instead of being kept.
+            $known = collect($this->client->accounts())->pluck('id');
+            foreach (array_keys(QuickbooksSyncSetting::ACCOUNTS) as $key) {
+                if (isset($accounts[$key]['id']) && ! $known->contains((string) $accounts[$key]['id'])) {
+                    unset($accounts[$key]);
+                }
+            }
+            $settings->accounts = $accounts;
+
             foreach ($settings->missingAccounts() as $key) {
                 $spec = QuickbooksSyncSetting::ACCOUNTS[$key];
                 $found = $this->client->query('Account', "select * from Account where Name = '{$spec['default_name']}'");

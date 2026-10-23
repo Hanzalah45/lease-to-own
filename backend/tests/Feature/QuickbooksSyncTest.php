@@ -848,6 +848,24 @@ class QuickbooksSyncTest extends TestCase
         $this->assertCount(8, $created);
     }
 
+    public function test_creating_the_missing_accounts_replaces_a_choice_the_connected_company_does_not_have(): void
+    {
+        $admin = $this->admin();
+        $this->connect($admin);
+        $this->quickbooksAccounts[] = ['Id' => '900', 'Name' => 'Rental Income', 'FullyQualifiedName' => 'Rental Income', 'AccountType' => 'Income', 'Active' => true];
+        // One choice is an account of this company, one points at an id it has never had (a connection moved to another company).
+        QuickbooksSyncSetting::current()->update(['accounts' => [
+            'late_fee_income' => ['id' => '105', 'name' => 'Account 5'],
+            'rent_income' => ['id' => '5555', 'name' => 'Rental Income'],
+        ]]);
+
+        $this->actingAs($admin, 'sanctum')->postJson('/api/admin/quickbooks/accounts/create-missing')->assertOk()->assertJsonPath('data.missing', []);
+
+        $saved = QuickbooksSyncSetting::current();
+        $this->assertSame('105', $saved->accountId('late_fee_income'), 'A choice that exists in this company is left alone.');
+        $this->assertSame('900', $saved->accountId('rent_income'), 'A choice this company does not have is replaced by the account of that name.');
+    }
+
     public function test_send_now_sends_the_waiting_payments_and_reports_what_happened(): void
     {
         $admin = $this->admin();

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\QuickbooksConnection;
+use App\Models\QuickbooksSyncSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -81,6 +82,11 @@ class QuickbooksConnectionController extends Controller
         ]);
 
         $connection->delete();
+
+        // The accounts that were chosen belong to the company that was just disconnected. Another company can have different accounts
+        // under the same ids, so keeping the choices could post to the wrong account. Sending stops and the choices start clean; a
+        // reconnect after an expired connection (no disconnect) still keeps them.
+        QuickbooksSyncSetting::current()->update(['sync_enabled' => false, 'accounts' => []]);
 
         return response()->json(['message' => 'Disconnected.']);
     }

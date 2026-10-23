@@ -130,7 +130,9 @@ export function QuickbooksSyncCard() {
 
   const allChosen = sync.accounts.every((slot) => (draftAccounts[slot.key] ?? "") !== "");
   const canSwitchOn = allChosen && draftFrom !== "";
-  const missingSlots = sync.accounts.filter((slot) => !slot.selected);
+  // A choice the connected company does not have counts as missing too (the connection was moved to another company, or the account
+  // was deleted in QuickBooks), so "Create the missing accounts" offers to replace it instead of leaving a broken choice behind.
+  const missingSlots = sync.accounts.filter((slot) => !slot.selected || (accounts !== null && !accounts.some((a) => a.id === slot.selected?.id)));
 
   async function handleSave() {
     setNotice(null);
