@@ -233,6 +233,13 @@ export function PaymentTrackingPanel() {
     else if (!nextMonthly.has(p.lease_agreement_id)) nextMonthly.set(p.lease_agreement_id, p);
   }
   const upcomingRows = [...nextMonthly.values(), ...otherUpcoming].sort(byDue);
+  // What is expected at the next billing cycle (client, Joel, 2026-10-21: "just show the financial earnings that will be expected at
+  // the next cycle, the upcoming amount"): the monthly payments that fall due on the soonest upcoming due date (the 1st or the 15th),
+  // at the bank price, with how many of them are on AutoPay.
+  const nextCycleDate = [...nextMonthly.values()].map((p) => p.due_date.slice(0, 10)).sort()[0];
+  const nextCharges = [...nextMonthly.values()].filter((p) => p.due_date.slice(0, 10) === nextCycleDate).sort(byDue);
+  const nextChargeTotal = nextCharges.reduce((sum, p) => sum + Number(p.amount), 0);
+  const nextChargeAutopay = nextCharges.filter((p) => p.lease_agreement?.autopay_enabled).length;
   const trackingRows = [...failedRows, ...overdueRows, ...processingRows, ...upcomingRows];
   const groupCounts: Record<TrackingFilter, number> = { all: trackingRows.length, attention: 0, processing: 0, autopay: 0, upcoming: 0 };
   for (const row of trackingRows) groupCounts[trackingGroup(row)]++;
@@ -380,7 +387,7 @@ export function PaymentTrackingPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
+      <div className="grid grid-cols-1 divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-5">
         <StatCard
           label="Collected this month"
           value={money(collectedThisMonth)}
@@ -390,6 +397,19 @@ export function PaymentTrackingPanel() {
           iconBg="#DCFCE7"
           iconColor="#16A34A"
           noteIcon={ArrowUpRightIcon}
+        />
+        <StatCard
+          label="Expected next cycle"
+          value={money(nextChargeTotal)}
+          note={
+            nextCharges.length === 0
+              ? "Nothing scheduled"
+              : `${nextCharges.length} payment${nextCharges.length === 1 ? "" : "s"} due ${formatDateOnly(nextCycleDate)}, ${nextChargeAutopay} by AutoPay`
+          }
+          noteTone="neutral"
+          icon={ClockIcon}
+          iconBg="#E0E7FF"
+          iconColor="#4F46E5"
         />
         <StatCard
           label="Overdue"
