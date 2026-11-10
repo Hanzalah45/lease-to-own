@@ -189,7 +189,9 @@ class QuickbooksJournal
 
     /**
      * The entry for Additional Funds applied to repairs: the money the customer paid toward the early purchase price, held as a
-     * liability, becomes income that covers the repair. Debit the held-funds account, credit the repair income account.
+     * liability, pays for the repair. Debit the held-funds account, credit the repair expense account, so the repair expense is
+     * reduced by the amount recovered (the accountant's choice, client, Joel, 2026-11-02; the account is still stored under the
+     * key `repair_income`).
      *
      * @return array<string, mixed>|null
      */

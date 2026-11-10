@@ -66,10 +66,12 @@ class QuickbooksSyncSetting extends Model
             'type' => 'Other Current Liability',
         ],
         'repair_income' => [
+            // The accountant's choice (client, Joel, 2026-11-02): money applied to repairs is booked as a reduction of the repair
+            // expense, not as income. So this is an expense account, credited. The key stays `repair_income` so saved choices keep working.
             'label' => 'Repair costs recovered',
-            'help' => 'Extra payments the customer made that were applied to the cost of repairs when the equipment came back (contract Section 19). Moved here out of the extra payments held.',
-            'default_name' => 'Repair Cost Recovery Income',
-            'type' => 'Income',
+            'help' => 'Extra payments the customer made that were applied to the cost of repairs when the equipment came back (contract Section 19). Moved here out of the extra payments held. Choose your repair expense account: the amount is credited to it, so it reduces the repair expense.',
+            'default_name' => 'Repairs and Maintenance',
+            'type' => 'Expense',
         ],
     ];
 

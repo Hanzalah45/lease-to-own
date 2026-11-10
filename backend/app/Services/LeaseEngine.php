@@ -635,7 +635,9 @@ class LeaseEngine
 
         if ($notifyCustomer && in_array($status, [Payment::STATUS_PAID, Payment::STATUS_FAILED, Payment::STATUS_REFUNDED], true)) {
             $customer = $payment->leaseAgreement->customer;
-            if ($customer->customerProfile?->payment_reminder_emails ?? true) {
+            // A payment that did not go through is crucial communication to keep the lease in good standing (client, Joel, 2026-11-09):
+            // it is sent even to a customer who switched off payment reminder emails. The other updates keep respecting that choice.
+            if ($status === Payment::STATUS_FAILED || ($customer->customerProfile?->payment_reminder_emails ?? true)) {
                 $customer->notify(new PaymentStatusChangedNotification($payment, ! $receiptMailed));
             }
         }

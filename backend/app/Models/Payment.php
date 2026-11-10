@@ -57,6 +57,7 @@ class Payment extends Model
         'quickbooks_sync_error',
         'quickbooks_sync_attempts',
         'quickbooks_reversal_id',
+        'overdue_notice_sent_at',
         'payment_link_id',
     ];
 
@@ -68,6 +69,7 @@ class Payment extends Model
             'amount' => 'decimal:2',
             'card_fee_amount' => 'decimal:2',
             'quickbooks_synced_at' => 'datetime',
+            'overdue_notice_sent_at' => 'datetime',
         ];
     }
 

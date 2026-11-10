@@ -16,6 +16,8 @@ Schedule::command('risk:flag-missed-payments')->dailyAt('08:00')->timezone(Billi
 Schedule::command('lease:process-renewals')->dailyAt('08:00')->timezone(BillingClock::TIMEZONE);
 Schedule::command('payments:send-autopay-reminders')->dailyAt('08:00')->timezone(BillingClock::TIMEZONE);
 Schedule::command('payments:charge-late-fees')->dailyAt('08:00')->timezone(BillingClock::TIMEZONE);
+// The day after a due date: a payment that was not received is told to the customer (the AutoPay charger works at its morning hour).
+Schedule::command('payments:send-overdue-notices')->dailyAt('10:00')->timezone(BillingClock::TIMEZONE);
 Schedule::command('deposits:forfeit-expired-holds')->daily();
 
 // Switches AutoPay off where a customer's three business day notice has run out, in the small hours Central time and so before the first

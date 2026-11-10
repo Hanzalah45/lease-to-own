@@ -117,6 +117,7 @@ class EmailLog extends Model
         'ActivateAccountNotification' => 'Account setup link',
         'VerifyEmailNotification' => 'Email verification',
         'PaymentStatusChangedNotification' => 'Payment update',
+        'PaymentOverdueNotification' => 'Payment overdue notice',
         'PaymentReceiptNotification' => 'Payment receipt',
         'PaymentLinkNotification' => 'Payment link',
         'PaymentRefundedNotification' => 'Refund notice',

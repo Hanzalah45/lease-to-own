@@ -664,7 +664,7 @@ class QuickbooksSyncTest extends TestCase
         $this->assertSame('skipped', $refund->refresh()->quickbooks_sync_status);
     }
 
-    public function test_funds_applied_to_repairs_move_from_the_held_account_to_repair_income(): void
+    public function test_funds_applied_to_repairs_move_from_the_held_account_to_the_repair_expense_and_reduce_it(): void
     {
         $this->connect();
         $this->enableSync();
@@ -843,7 +843,8 @@ class QuickbooksSyncTest extends TestCase
         $this->assertContains(['Security Deposit Income', 'Income'], $created);
         $this->assertNotContains(['Rental Income', 'Income'], $created);
         $this->assertNotContains(['Late Fee Income', 'Income'], $created);
-        $this->assertContains(['Repair Cost Recovery Income', 'Income'], $created);
+        // The accountant wants money applied to repairs to reduce the repair expense, so it is an expense account that is credited.
+        $this->assertContains(['Repairs and Maintenance', 'Expense'], $created);
         $this->assertContains(['Loss Damage Waiver Income', 'Income'], $created);
         $this->assertCount(8, $created);
     }
