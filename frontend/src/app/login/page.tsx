@@ -115,6 +115,15 @@ function LoginForm() {
           <Link href="/register" className="font-semibold text-neutral-900 underline">
             Create an account
           </Link>
+          <span className="mt-2 block text-xs text-neutral-500">
+            <Link href="/privacy" className="hover:text-neutral-900 hover:underline">
+              Privacy Policy
+            </Link>
+            <span className="mx-2">&middot;</span>
+            <Link href="/terms" className="hover:text-neutral-900 hover:underline">
+              Terms of Use
+            </Link>
+          </span>
         </>
       }
     >
