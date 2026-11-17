@@ -10,15 +10,23 @@ function readCookie(name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+/**
+ * Marks the cookie Secure whenever the site is on https (Intuit's security requirements for QuickBooks apps ask for it), so a
+ * browser never sends the sign-in token over plain http. Local development on http://localhost still works without it.
+ */
+function secureFlag(): string {
+  return typeof location !== "undefined" && location.protocol === "https:" ? "; Secure" : "";
+}
+
 function writeCookie(name: string, value: string): void {
   if (typeof document === "undefined") return;
   // 7-day expiry; adjust once "remember me" / refresh flows are designed.
-  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax`;
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Lax${secureFlag()}`;
 }
 
 function deleteCookie(name: string): void {
   if (typeof document === "undefined") return;
-  document.cookie = `${name}=; path=/; max-age=0`;
+  document.cookie = `${name}=; path=/; max-age=0${secureFlag()}`;
 }
 
 export function getToken(): string | null {

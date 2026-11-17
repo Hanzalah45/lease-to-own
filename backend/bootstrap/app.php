@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureAdminHasPermission;
 use App\Http\Middleware\EnsureUserHasRole;
+use App\Http\Middleware\NoStoreResponses;
 use App\Services\EmailLogger;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -20,6 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => EnsureUserHasRole::class,
             'permission' => EnsureAdminHasPermission::class,
         ]);
+
+        // Global rather than in the api group: a refused sign-in (401) is answered before the group's own middleware gets to run.
+        $middleware->append(NoStoreResponses::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // An email the service refused or could not be reached for: settle the email log

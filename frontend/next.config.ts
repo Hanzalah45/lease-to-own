@@ -27,6 +27,20 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  /**
+   * No page is kept in a browser or proxy cache (Intuit's security requirements for QuickBooks apps ask for "no-cache" and
+   * "no-store" on pages that can hold sensitive data). Files with a dot in the name (the logo, the fingerprinted scripts under
+   * /_next/static) are left alone so they stay cached and the site stays fast.
+   */
+  async headers() {
+    return [
+      {
+        source: "/((?!_next/|api/)(?!.*\\.).*)",
+        headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
